@@ -45,7 +45,17 @@ build_aur_package() {
     
     # Case 3: Directory doesn't exist - clone
     else
-        git clone "https://aur.archlinux.org/${pkg}.git" || {
+        # Get the package base from AUR RPC (some packages have different repo names)
+        local pkg_base=$(curl -s "https://aur.archlinux.org/rpc/?v=5&type=info&arg[]=$pkg" | jq -r '.results[0].PackageBase // empty')
+        
+        # Fall back to package name if API call fails or returns nothing
+        if [[ -z "$pkg_base" ]]; then
+            pkg_base="$pkg"
+        elif [[ "$pkg_base" != "$pkg" ]]; then
+            echo "    Using package base: $pkg_base"
+        fi
+        
+        git clone "https://aur.archlinux.org/${pkg_base}.git" "$pkg" || {
             echo "    Failed to clone $pkg"
             FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
             return 1

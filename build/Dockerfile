@@ -2,7 +2,7 @@ FROM archlinux:latest
 
 # Update system and install build tools
 RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm base-devel git sudo wget
+    pacman -S --noconfirm base-devel git sudo wget jq
 
 # Create build user
 RUN useradd -m -G wheel builder && \
