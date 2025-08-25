@@ -1,0 +1,186 @@
+#!/bin/bash
+# Omarchy Repository Database Manager
+# Updates the repository database with all packages
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Repository configuration
+REPO_DIR="/home/ryan/Dev/omarchy-repo"
+ARCH_DIR="$REPO_DIR/x86_64"
+REPO_NAME="omarchy"
+DB_FILE="$ARCH_DIR/${REPO_NAME}.db.tar.zst"
+FILES_FILE="$ARCH_DIR/${REPO_NAME}.files.tar.zst"
+
+# Function to print colored messages
+print_msg() {
+    local color=$1
+    local msg=$2
+    echo -e "${color}${msg}${NC}"
+}
+
+# Function to update repository database
+update_database() {
+    print_msg "$BLUE" "==> Updating repository database..."
+    
+    # Change to architecture directory
+    cd "$ARCH_DIR"
+    
+    # Remove old database files and symlinks
+    rm -f "${REPO_NAME}.db" "${REPO_NAME}.db.tar.zst"
+    rm -f "${REPO_NAME}.files" "${REPO_NAME}.files.tar.zst"
+    rm -f "${REPO_NAME}.db.tar.zst.old" "${REPO_NAME}.files.tar.zst.old"
+    
+    # Check if there are any packages
+    if ! ls *.pkg.tar.* 1> /dev/null 2>&1; then
+        print_msg "$YELLOW" "Warning: No packages found in $ARCH_DIR"
+        print_msg "$YELLOW" "Run ./scripts/build-packages.sh first to build packages"
+        exit 1
+    fi
+    
+    # Add all packages to the database (excluding signature files)
+    print_msg "$GREEN" "  -> Adding packages to database..."
+    # Process packages in smaller batches to avoid command line limits
+    # Use -n 5 to process 5 packages at a time
+    find . -maxdepth 1 -name "*.pkg.tar.*" ! -name "*.sig" -exec basename {} \; | xargs -n 5 repo-add "$DB_FILE" || {
+        print_msg "$RED" "Error: Failed to update repository database"
+        exit 1
+    }
+    
+    # Create symlinks for compatibility
+    ln -sf "${REPO_NAME}.db.tar.zst" "${REPO_NAME}.db"
+    ln -sf "${REPO_NAME}.files.tar.zst" "${REPO_NAME}.files"
+    
+    # Count packages
+    PACKAGE_COUNT=$(ls -1 *.pkg.tar.* 2>/dev/null | wc -l)
+    
+    print_msg "$GREEN" "  -> Database updated successfully!"
+    print_msg "$BLUE" "  -> Total packages in repository: $PACKAGE_COUNT"
+}
+
+# Function to verify database
+verify_database() {
+    print_msg "$BLUE" "\n==> Verifying repository database..."
+    
+    if [[ -f "$DB_FILE" ]]; then
+        # List packages in database
+        print_msg "$GREEN" "  -> Packages in database:"
+        tar -tf "$DB_FILE" 2>/dev/null | grep -E "^[^/]+/$" | sed 's|/$||' | sort -u | while read -r pkg; do
+            echo "      - $pkg"
+        done
+        
+        print_msg "$GREEN" "  -> Database verification complete!"
+    else
+        print_msg "$RED" "Error: Database file not found!"
+        exit 1
+    fi
+}
+
+# Function to sign database (optional)
+sign_database() {
+    print_msg "$BLUE" "\n==> Signing repository database..."
+    
+    # Check if GPG key is available
+    if ! gpg --list-secret-keys 2>/dev/null | grep -q "sec"; then
+        print_msg "$YELLOW" "Warning: No GPG key found, skipping signing"
+        print_msg "$YELLOW" "To enable signing, create a GPG key and configure it"
+        return
+    fi
+    
+    # Sign the database
+    gpg --detach-sign --use-agent "$DB_FILE" 2>/dev/null && {
+        print_msg "$GREEN" "  -> Database signed successfully!"
+    } || {
+        print_msg "$YELLOW" "  -> Database signing failed (optional)"
+    }
+}
+
+# Function to generate repository statistics
+generate_stats() {
+    print_msg "$BLUE" "\n==> Repository Statistics:"
+    
+    cd "$ARCH_DIR"
+    
+    # Count packages by type
+    local total_packages=$(ls -1 *.pkg.tar.* 2>/dev/null | wc -l)
+    local total_size=$(du -sh . 2>/dev/null | cut -f1)
+    
+    print_msg "$GREEN" "  -> Total packages: $total_packages"
+    print_msg "$GREEN" "  -> Repository size: $total_size"
+    
+    # List largest packages
+    if [[ $total_packages -gt 0 ]]; then
+        print_msg "$GREEN" "  -> Largest packages:"
+        ls -lhS *.pkg.tar.* 2>/dev/null | head -5 | awk '{print "      " $9 " (" $5 ")"}'
+    fi
+}
+
+# Main execution
+main() {
+    print_msg "$BLUE" "================================"
+    print_msg "$BLUE" "Omarchy Repository Database Manager"
+    print_msg "$BLUE" "================================"
+    
+    # Parse command line arguments
+    VERIFY_ONLY=false
+    SIGN_DB=false
+    STATS_ONLY=false
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --verify)
+                VERIFY_ONLY=true
+                shift
+                ;;
+            --sign)
+                SIGN_DB=true
+                shift
+                ;;
+            --stats)
+                STATS_ONLY=true
+                shift
+                ;;
+            -h|--help)
+                echo "Usage: $0 [OPTIONS]"
+                echo ""
+                echo "Options:"
+                echo "  --verify   Only verify the database"
+                echo "  --sign     Sign the database with GPG"
+                echo "  --stats    Show repository statistics only"
+                echo "  -h, --help Show this help message"
+                exit 0
+                ;;
+            *)
+                print_msg "$RED" "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Execute based on options
+    if [[ "$STATS_ONLY" == true ]]; then
+        generate_stats
+    elif [[ "$VERIFY_ONLY" == true ]]; then
+        verify_database
+    else
+        update_database
+        
+        if [[ "$SIGN_DB" == true ]]; then
+            sign_database
+        fi
+        
+        verify_database
+        generate_stats
+    fi
+    
+    print_msg "$GREEN" "\n==> Repository update complete!"
+}
+
+# Run main function
+main "$@"
