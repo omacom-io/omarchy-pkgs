@@ -3,8 +3,8 @@
 # Format: packagename [options]
 # Options: skip-pgp
 
-1password-beta skip-pgp
-1password-cli skip-pgp
+1password-beta
+1password-cli
 limine-mkinitcpio-hook
 limine-snapper-sync
 localsend-bin
@@ -12,7 +12,6 @@ omarchy-chromium-bin
 pinta
 python-terminaltexteffects
 spotify
-ttf-font-awesome
 ttf-ia-writer
 typora
 tzupdate
