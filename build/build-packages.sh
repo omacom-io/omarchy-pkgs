@@ -1,50 +1,48 @@
 #!/bin/bash
 # Main build script that runs inside Docker container
-set -e
+# Don't use set -e so we can handle errors gracefully
 
-echo "==> Setting up local repository..."
-# Create a temporary repo directory for build dependencies
-mkdir -p /tmp/build-repo
+# Import GPG keys
+/build/import-gpg-keys.sh
 
-# Add local repo to pacman.conf so AUR packages can find their dependencies
-sudo tee -a /etc/pacman.conf > /dev/null << EOF
-
-[omarchy-build]
-SigLevel = Optional TrustAll
-Server = file:///tmp/build-repo
-EOF
-
-# Create initial empty database
-repo-add /tmp/build-repo/omarchy-build.db.tar.gz 2>/dev/null || true
-
-# Sync pacman to recognize the new repo
+# Sync pacman database
 sudo pacman -Sy
 
-echo "==> Processing package list..."
+echo "==> Processing package lists..."
 FAILED_PACKAGES=""
 PROCESSED_PACKAGES=""
+
+# Merge and deduplicate all *.packages files from /build/packages
+cat /build/packages/*.packages 2>/dev/null | \
+    grep -v '^#' | grep -v '^$' | \
+    awk '!seen[$1]++ {print}' > /tmp/packages.merged
+
+# If ONLY_PACKAGES is set, filter the merged list
+if [[ -n "$ONLY_PACKAGES" ]]; then
+    echo "==> Filtering packages: $ONLY_PACKAGES"
+    > /tmp/packages.filtered
+    for pkg in $ONLY_PACKAGES; do
+        grep "^$pkg\( \|$\)" /tmp/packages.merged >> /tmp/packages.filtered || echo "  -> Warning: $pkg not found in package lists"
+    done
+    mv /tmp/packages.filtered /tmp/packages.merged
+fi
 
 # Separate packages into official and AUR
 > /tmp/packages.official
 > /tmp/packages.aur
 
-if [[ -f /home/builder/packages ]]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-        [[ "$line" =~ ^#.*$ ]] && continue
-        [[ -z "$line" ]] && continue
-        
-        # Parse package name and options
-        package=$(echo "$line" | awk '{print $1}')
-        options=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
-        
-        # Check if it's in official repos
-        if pacman -Si "$package" &>/dev/null; then
-            echo "$package" >> /tmp/packages.official
-        else
-            echo "$line" >> /tmp/packages.aur  # Keep options for AUR packages
-        fi
-    done < /home/builder/packages
-fi
+while IFS= read -r line || [ -n "$line" ]; do
+    # Parse package name and options
+    package=$(echo "$line" | awk '{print $1}')
+    options=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
+    
+    # Check if it's in official repos
+    if pacman -Si "$package" &>/dev/null; then
+        echo "$package" >> /tmp/packages.official
+    else
+        echo "$line" >> /tmp/packages.aur  # Keep options for AUR packages
+    fi
+done < /tmp/packages.merged
 
 # Show package counts
 echo "==> Package breakdown:"
@@ -60,25 +58,73 @@ if [[ -s /tmp/packages.aur ]]; then
 fi
 
 echo "==> Downloading official packages..."
+OFFICIAL_FAILED=""
 if [[ -s /tmp/packages.official ]]; then
     while IFS= read -r package || [ -n "$package" ]; do
         echo "  -> Downloading $package..."
         
         # Download package without installing (will use default cache which is now /output)
-        sudo pacman -Sw --noconfirm "$package" || {
+        if ! sudo pacman -Sw --noconfirm "$package" 2>/dev/null; then
             # Fallback to direct download
             url=$(pacman -Sp "$package" 2>/dev/null)
             if [[ -n "$url" ]]; then
-                wget -q -P /output "$url" || echo "  -> Failed: $package"
+                if ! wget -q -P /output "$url"; then
+                    echo "    -> Failed to download $package"
+                    OFFICIAL_FAILED="$OFFICIAL_FAILED $package"
+                fi
+            else
+                echo "    -> Failed to download $package"
+                OFFICIAL_FAILED="$OFFICIAL_FAILED $package"
             fi
-        }
+        fi
     done < /tmp/packages.official
 fi
 
 # Source the AUR build functions
-source /home/builder/build-aur.sh
+source /build/build-aur.sh
 
 # Build AUR packages
 build_aur_packages
 
-echo "==> Build complete!"
+echo ""
+echo "==> Build Summary:"
+
+# Count successes
+TOTAL_OFFICIAL=$(wc -l < /tmp/packages.official 2>/dev/null || echo 0)
+TOTAL_AUR=$(wc -l < /tmp/packages.aur 2>/dev/null || echo 0)
+
+# Report official packages
+if [[ -n "$OFFICIAL_FAILED" ]]; then
+    OFFICIAL_FAILED_COUNT=$(echo $OFFICIAL_FAILED | wc -w)
+    OFFICIAL_SUCCESS=$((TOTAL_OFFICIAL - OFFICIAL_FAILED_COUNT))
+    echo "  Official packages: $OFFICIAL_SUCCESS/$TOTAL_OFFICIAL succeeded"
+    echo "  Failed official packages:"
+    for pkg in $OFFICIAL_FAILED; do
+        echo "    - $pkg"
+    done
+else
+    echo "  Official packages: $TOTAL_OFFICIAL/$TOTAL_OFFICIAL succeeded"
+fi
+
+# Report AUR packages (FAILED_PACKAGES comes from build-aur.sh)
+if [[ -n "$FAILED_PACKAGES" ]]; then
+    AUR_FAILED_COUNT=$(echo $FAILED_PACKAGES | wc -w)
+    AUR_SUCCESS=$((TOTAL_AUR - AUR_FAILED_COUNT))
+    echo "  AUR packages: $AUR_SUCCESS/$TOTAL_AUR succeeded"
+    echo "  Failed AUR packages:"
+    for pkg in $FAILED_PACKAGES; do
+        echo "    - $pkg"
+    done
+else
+    echo "  AUR packages: $TOTAL_AUR/$TOTAL_AUR succeeded"
+fi
+
+# Exit with error if any packages failed
+if [[ -n "$OFFICIAL_FAILED" ]] || [[ -n "$FAILED_PACKAGES" ]]; then
+    echo ""
+    echo "==> Some packages failed to build/download"
+    exit 1
+else
+    echo ""
+    echo "==> All packages processed successfully!"
+fi
