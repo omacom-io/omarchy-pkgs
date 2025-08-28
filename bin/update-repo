@@ -6,7 +6,7 @@ set -e
 
 # Source common functions
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
-source "$BUILD_ROOT/lib/common.sh"
+source "$BUILD_ROOT/lib/message-helpers.sh"
 
 # Repository configuration
 ARCH_DIR="$BUILD_ROOT/x86_64"
@@ -82,18 +82,30 @@ sign_database() {
   print_info "Signing repository database..."
 
   # Check if GPG key is available
-  if ! gpg --list-secret-keys 2>/dev/null | grep -q "sec"; then
+  local KEY_ID=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep "sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+  if [[ -z "$KEY_ID" ]]; then
     print_warning "No GPG key found, skipping signing"
     print_warning "To enable signing, create a GPG key and configure it"
     return
   fi
 
-  # Sign the database
-  gpg --detach-sign --use-agent "$DB_FILE" 2>/dev/null && {
-    print_success "Database signed successfully!"
-  } || {
-    print_warning "Database signing failed (optional)"
-  }
+  # Sign the database using the same method as package signing
+  if [[ -n "$GPG_PASSPHRASE" ]]; then
+    # Use passphrase if available (same as build script)
+    gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+      --detach-sign --local-user "$KEY_ID" "$DB_FILE" 2>/dev/null && {
+      print_success "Database signed successfully!"
+    } || {
+      print_warning "Database signing failed (optional)"
+    }
+  else
+    # Fall back to agent-based signing
+    gpg --detach-sign --use-agent --local-user "$KEY_ID" "$DB_FILE" 2>/dev/null && {
+      print_success "Database signed successfully!"
+    } || {
+      print_warning "Database signing failed (optional)"
+    }
+  fi
 }
 
 # Function to generate repository statistics
@@ -148,7 +160,7 @@ main() {
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --clean    Remove existing database and rebuild from scratch"
+      echo "  --clean    Remove existing database and rebuild from scratch. Does not remove package files."
       echo "  --verify   Only verify the database"
       echo "  --sign     Sign the database with GPG"
       echo "  --stats    Show repository statistics only"
@@ -184,4 +196,3 @@ main() {
 
 # Run main function
 main "$@"
-

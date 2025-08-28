@@ -1,0 +1,76 @@
+#!/bin/bash
+# Meta command for Omarchy repository management
+# Usage: ./bin/repo <command> [options]
+
+set -e
+
+# Get the directory of this script
+SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
+BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
+
+# Source common functions
+source "$BUILD_ROOT/lib/message-helpers.sh"
+
+# Show usage
+show_usage() {
+  echo "Usage: $0 <command> [options]"
+  echo ""
+  echo "Commands:"
+  echo "  build       Build AUR packages"
+  echo "  update      Update repository database"
+  echo "  clean       Clean old package versions"
+  echo "  list        List packages in repository"
+  echo "  remove      Remove a specific package"
+  echo "  sync        Sync repository to remote"
+  echo ""
+  echo "Examples:"
+  echo "  $0 build                    # Build all packages"
+  echo "  $0 update --clean           # Update database (clean rebuild)"
+  echo "  $0 clean --dry-run          # Preview cleanup"
+  echo "  $0 list                     # List all packages"
+  echo "  $0 remove package-name      # Remove a package"
+  echo "  $0 sync x86_64              # Sync to remote"
+  echo ""
+  echo "For command-specific help, use:"
+  echo "  $0 <command> --help"
+  exit 0
+}
+
+# Check if no command provided
+if [[ $# -eq 0 ]]; then
+  show_usage
+fi
+
+# Get command and shift arguments
+COMMAND="$1"
+shift
+
+# Route to appropriate script
+case $COMMAND in
+build)
+  exec "$SCRIPT_DIR/build" "$@"
+  ;;
+update)
+  exec "$SCRIPT_DIR/update-repo" "$@"
+  ;;
+clean)
+  exec "$SCRIPT_DIR/clean-repo" "$@"
+  ;;
+list)
+  exec "$SCRIPT_DIR/list-packages" "$@"
+  ;;
+remove)
+  exec "$SCRIPT_DIR/remove-package" "$@"
+  ;;
+sync)
+  exec "$SCRIPT_DIR/sync-repo" "$@"
+  ;;
+-h | --help | help)
+  show_usage
+  ;;
+*)
+  print_error "Unknown command: $COMMAND"
+  echo ""
+  show_usage
+  ;;
+esac

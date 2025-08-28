@@ -2,26 +2,17 @@ FROM archlinux:latest
 
 # Update system and install build tools
 RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm base-devel git sudo wget jq
+    pacman -S --noconfirm base-devel git sudo wget jq gnupg
 
-# Create build user
+# Create build user (required for makepkg)
 RUN useradd -m -G wheel builder && \
     echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-# Create output directory
-RUN mkdir -p /output && chown builder:builder /output
-
 USER builder
-WORKDIR /home/builder
+WORKDIR /src
 
-# Copy package list
-COPY --chown=builder:builder packages ./
+# Setup GPG directory
+RUN mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
 
-# Copy build scripts
-COPY --chown=builder:builder build-packages.sh ./
-COPY --chown=builder:builder build-aur.sh ./
-
-# Make scripts executable
-RUN chmod +x build-packages.sh build-aur.sh
-
-CMD ["./build-packages.sh"]
+# Default command
+CMD ["/build/build.sh"]

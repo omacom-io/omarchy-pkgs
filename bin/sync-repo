@@ -1,13 +1,26 @@
 #!/bin/bash
 
-# Default remote
-REMOTE="pkgs.omarchy.org:omarchy-pkgs"
+# Source common functions
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/lib/message-helpers.sh"
+
+# Default remote (production)
+DEFAULT_REMOTE="pkgs.omarchy.org:omarchy-pkgs"
+REMOTE="$DEFAULT_REMOTE"
+SKIP_PROD_CHECK=false
 
 # Parse arguments
 if [ $# -eq 0 ]; then
-  echo "Usage: $0 [directory] [options]"
+  echo "Usage: $0 <directory> [options]"
+  echo ""
   echo "Options:"
-  echo "  --remote <remote>  Specify rclone remote (default: pkgs.omarchy.org:omarchy-pkgs)"
+  echo "  --remote <remote>      Specify rclone remote (default: $DEFAULT_REMOTE)"
+  echo "  --skip-prod-check      Skip production sync confirmation"
+  echo ""
+  echo "Examples:"
+  echo "  $0 x86_64                                  # Sync to production (with confirmation)"
+  echo "  $0 x86_64 --remote test:bucket             # Sync to test remote"
+  echo "  $0 x86_64 --skip-prod-check                # Sync to production without confirmation"
   exit 1
 fi
 
@@ -21,12 +34,26 @@ while [[ $# -gt 0 ]]; do
     REMOTE="$2"
     shift 2
     ;;
+  --skip-prod-check)
+    SKIP_PROD_CHECK=true
+    shift
+    ;;
   *)
-    echo "Unknown option: $1"
+    print_error "Unknown option: $1"
     exit 1
     ;;
   esac
 done
 
-echo "Syncing to: $REMOTE"
+# Check if syncing to production and warn user
+if [[ "$REMOTE" == "$DEFAULT_REMOTE" ]] && [[ "$SKIP_PROD_CHECK" != true ]]; then
+  print_warning "You are about to sync to PRODUCTION ($REMOTE)"
+  echo ""
+  gum confirm "Are you sure you want to sync to production?" || {
+    print_info "Sync cancelled"
+    exit 0
+  }
+fi
+
+print_info "Syncing to: $REMOTE"
 rclone sync "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)" --checksum --progress --copy-links --delete-after -v

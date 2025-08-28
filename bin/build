@@ -5,7 +5,7 @@ set -e
 
 # Source common functions
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
-source "$BUILD_ROOT/lib/common.sh"
+source "$BUILD_ROOT/lib/message-helpers.sh"
 
 # Prepare build directories
 ARCH_DIR="$BUILD_ROOT/x86_64"
