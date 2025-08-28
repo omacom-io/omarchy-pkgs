@@ -1,0 +1,36 @@
+#!/bin/bash
+set -e
+
+# Get the directory of this script
+SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
+BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
+
+ARCH_DIR="$BUILD_ROOT/x86_64"
+cd "$ARCH_DIR"
+
+if [[ -z "$1" ]]; then
+  echo "Usage: $0 <package-name>"
+  exit 1
+fi
+
+# Find exact package files (not subpackages like yay-debug)
+FILES=$(ls ${1}-[0-9]*.pkg.tar.* 2>/dev/null || true)
+
+if [[ -z "$FILES" ]]; then
+  echo "Package '$1' not found"
+  exit 1
+fi
+
+# Confirm with gum
+gum confirm "Remove package '$FILES'?"
+
+# Remove from database
+repo-remove omarchy.db.tar.zst "$1"
+
+# Remove files (only the exact package, not subpackages)
+for file in $FILES; do
+  rm -f "$file"
+done
+
+echo "Package '$1' removed"
+
