@@ -1,214 +1,122 @@
 #!/bin/bash
-# Omarchy Repository Package Builder - Docker Isolated
-# Builds packages in Docker without affecting the host system
 
+# Abort if anything fails
 set -e
 
 # Source common functions
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/lib/common.sh"
 
-# Repository paths
-REPO_DIR="/home/ryan/Dev/omarchy-repo"
-ARCH_DIR="$REPO_DIR/x86_64"
-BUILD_DIR="$REPO_DIR/build"
+# Prepare build directories
+ARCH_DIR="$BUILD_ROOT/x86_64"
+SRC_DIR="$BUILD_ROOT/src"
+BUILD_DIR="$BUILD_ROOT/build"
 
 # Create directories if they don't exist
-mkdir -p "$ARCH_DIR" "$BUILD_DIR"
+mkdir -p "$ARCH_DIR" "$SRC_DIR"
 
+# Check for Docker
+if ! command -v docker &>/dev/null; then
+  print_error "Docker is not installed"
+  exit 1
+fi
 
-# Function to build Docker image
-build_docker_image() {
-    print_info "Building Docker image..."
-    
-    # Check if Dockerfile exists
-    if [[ ! -f "$BUILD_DIR/Dockerfile" ]]; then
-        print_error "Dockerfile not found at $BUILD_DIR/Dockerfile"
-        exit 1
-    fi
-    
-    # Build image
-    cd "$BUILD_DIR"
-    docker build -t omarchy-builder . || {
-        print_error "Failed to build Docker image"
-        exit 1
-    }
-    
-    print_success "Docker image built successfully!"
-}
+# Check if Docker daemon is running
+if ! docker info &>/dev/null; then
+  print_error "Docker daemon is not running"
+  print_warning "Start Docker with: sudo systemctl start docker"
+  exit 1
+fi
 
-# Function to run build in Docker
-run_docker_build() {
-    print_info "Running package build in Docker..."
-    
-    # Create src directory if it doesn't exist
-    mkdir -p "$REPO_DIR/src"
-    
-    # Build docker run command with options
-    DOCKER_ENV=""
-    if [[ "$SKIP_PGP" == true ]]; then
-        print_warning "Skipping PGP signature verification"
-        DOCKER_ENV="$DOCKER_ENV -e SKIP_PGP=true"
-    fi
-    if [[ "$FORCE_REBUILD" == true ]]; then
-        print_warning "Forcing rebuild of all packages"
-        DOCKER_ENV="$DOCKER_ENV -e FORCE_REBUILD=true"
-    fi
-    if [[ -n "$ONLY_PACKAGES" ]]; then
-        print_warning "Filtering packages: $ONLY_PACKAGES"
-        DOCKER_ENV="$DOCKER_ENV -e ONLY_PACKAGES='$ONLY_PACKAGES'"
-    fi
-    
-    docker run --rm \
-        $DOCKER_ENV \
-        -v "$ARCH_DIR:/output" \
-        -v "$ARCH_DIR:/var/cache/pacman/pkg" \
-        -v "$REPO_DIR/src:/src" \
-        -v "$BUILD_DIR:/build:ro" \
-        omarchy-builder
-    
-    # Check exit code but don't fail immediately
-    BUILD_EXIT_CODE=$?
-    if [[ $BUILD_EXIT_CODE -ne 0 ]]; then
-        print_warning "Some packages failed (see summary above)"
-        return $BUILD_EXIT_CODE
-    fi
-    
-    print_success "Package build complete!"
-}
+print_header "Omarchy AUR Package Builder"
 
-# Function to clean Docker resources
-clean_docker() {
-    print_info "Cleaning Docker resources..."
-    
-    # Remove image
-    docker rmi omarchy-builder 2>/dev/null || true
-    
-    # Nothing to clean for packages anymore
-    
-    print_success "Cleanup complete!"
-}
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  -h | --help)
+    echo "Usage: $0"
+    echo ""
+    echo "This script builds AUR packages from:"
+    echo "  build/packages/omarchy-aur.packages"
+    echo ""
+    exit 0
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
 
-# Main execution
-main() {
-    print_header "Omarchy Repository Docker Builder"
-    
-    # Check for Docker
-    if ! command -v docker &> /dev/null; then
-        print_error "Docker is not installed"
-        print_warning "Please install Docker first:"
-        echo "  sudo pacman -S docker"
-        echo "  sudo systemctl start docker"
-        echo "  sudo usermod -aG docker $USER"
-        exit 1
-    fi
-    
-    # Check if Docker daemon is running
-    if ! docker info &> /dev/null; then
-        print_error "Docker daemon is not running"
-        print_warning "Start Docker with: sudo systemctl start docker"
-        exit 1
-    fi
-    
-    # Parse command line arguments
-    CLEAN_ONLY=false
-    KEEP_IMAGE=false
-    ONLY_PACKAGES=""
-    SKIP_PGP=false
-    FORCE_REBUILD=false
-    
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --clean)
-                CLEAN_ONLY=true
-                shift
-                ;;
-            --keep-image)
-                KEEP_IMAGE=true
-                shift
-                ;;
-            --only)
-                ONLY_PACKAGES="$2"
-                shift 2
-                ;;
-            --skip-pgp)
-                SKIP_PGP=true
-                shift
-                ;;
-            --force)
-                FORCE_REBUILD=true
-                shift
-                ;;
-            -h|--help)
-                echo "Usage: $0 [OPTIONS]"
-                echo ""
-                echo "Options:"
-                echo "  --clean       Clean Docker resources only"
-                echo "  --keep-image  Keep Docker image after build"
-                echo "  --only \"pkg1 pkg2\"  Only build specific packages"
-                echo "  --skip-pgp    Skip PGP signature verification"
-                echo "  --force       Force rebuild even if no updates"
-                echo "  -h, --help    Show this help message"
-                echo ""
-                echo "Examples:"
-                echo "  $0                          # Build all packages"
-                echo "  $0 --only \"yay walker-bin\"  # Only build yay and walker-bin"
-                echo "  $0 --skip-pgp               # Build without PGP checks"
-                echo ""
-                echo "This script builds all packages listed in:"
-                echo "  - build/packages/*.packages files"
-                echo ""
-                echo "All builds happen inside a Docker container."
-                echo "No packages are installed on your host system."
-                exit 0
-                ;;
-            *)
-                print_error "Unknown option: $1"
-                exit 1
-                ;;
-        esac
-    done
-    
-    # Execute based on options
-    if [[ "$CLEAN_ONLY" == true ]]; then
-        clean_docker
-    else
-        # Build packages
-        build_docker_image
-        run_docker_build
-        BUILD_RESULT=$?
-        
-        # Clean up unless keeping image
-        if [[ "$KEEP_IMAGE" != true ]]; then
-            clean_docker
-        else
-            print_warning "Docker image kept: omarchy-builder"
-            print_warning "Remove with: docker rmi omarchy-builder"
-        fi
-        
-        # Show results
-        echo ""
-        print_info "Final Summary:"
-        local count=$(ls -1 "$ARCH_DIR"/*.pkg.tar.* 2>/dev/null | wc -l)
-        if [[ $count -gt 0 ]]; then
-            print_step "Total packages in repository: $count"
-            print_step "Packages are in: $ARCH_DIR"
-            if [[ $BUILD_RESULT -eq 0 ]]; then
-                print_success "All requested packages processed successfully"
-            else
-                print_warning "Some packages failed (check output above)"
-            fi
-            echo ""
-            print_warning "Next step: Run ./scripts/update-repo.sh"
-        else
-            print_warning "No packages in repository"
-            print_warning "Check your package lists"
-        fi
-        
-        # Exit with the build result code
-        exit $BUILD_RESULT
-    fi
-}
+# Check if AUR package list exists
+if [[ ! -f "$BUILD_DIR/packages/omarchy-aur.packages" ]]; then
+  print_error "omarchy-aur.packages not found at $BUILD_DIR/packages/"
+  exit 1
+fi
 
-# Run main function
-main "$@"
+# Get GPG key from 1Password or environment for signing
+if [[ -z "$GPG_PRIVATE_KEY" ]]; then
+  print_info "Fetching GPG signing key from 1Password..."
+  GPG_PRIVATE_KEY=$(op document get "Omarchy GPG Private Key" --account=omarchy.1password.com) || {
+    print_error "Failed to fetch GPG key from 1Password or environment"
+    exit 1
+  }
+else
+  print_info "Using existing GPG signing key from environment"
+fi
+export GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY"
+
+# Get passphrase from 1Password or environment
+if [[ -z "$GPG_PASSPHRASE" ]]; then
+  print_info "Fetching GPG key passphrase from 1Password..."
+  GPG_PASSPHRASE=$(op item get "Omarchy GPG Private Key" --account=omarchy.1password.com --fields password --reveal) || {
+    print_error "Failed to fetch GPG passphrase from 1Password or environment"
+    exit 1
+  }
+else
+  print_info "Using existing GPG passphrase from environment"
+fi
+export GPG_PASSPHRASE
+print_success "GPG signing key and passphrase loaded"
+
+# Build/update the Docker image
+print_info "Building Docker image..."
+docker build -t omarchy-aur-builder:latest -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
+
+print_info "Running AUR package build..."
+# Build Docker arguments
+DOCKER_ARGS=(
+  --rm
+  -e GPG_PRIVATE_KEY
+  -e GPG_PASSPHRASE
+  -v "$ARCH_DIR:/output"
+  -v "$SRC_DIR:/src"
+  -v "$BUILD_DIR:/build:ro"
+)
+
+# Use local pacman cache if you already have one on host to speed up repeat runs
+if [ -d "/var/cache/pacman/pkg" ]; then
+  DOCKER_ARGS+=(-v "/var/cache/pacman/pkg:/var/cache/pacman/pkg")
+fi
+
+# Run the builder with assembled args
+docker run "${DOCKER_ARGS[@]}" omarchy-aur-builder:latest /build/build.sh
+
+# Clear the GPG key and passphrase from environment
+unset GPG_PRIVATE_KEY
+unset GPG_PASSPHRASE
+
+BUILD_RESULT=$?
+
+# Summary
+echo ""
+if [[ $BUILD_RESULT -eq 0 ]]; then
+  print_success "AUR build completed successfully!"
+  echo ""
+  print_info "Next steps:"
+  echo "  1. Run ./bin/update-repo to update the repository"
+  echo "  2. Commit and push changes"
+else
+  print_warning "Some AUR packages failed (see details above)"
+  exit $BUILD_RESULT
+fi
