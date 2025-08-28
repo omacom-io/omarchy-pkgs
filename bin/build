@@ -33,8 +33,16 @@ print_header "Omarchy AUR Package Builder"
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
+  --skip-signing)
+    SKIP_SIGNING=true
+    shift
+    ;;
   -h | --help)
-    echo "Usage: $0"
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --skip-signing  Build packages without GPG signing"
+    echo "  -h, --help      Show this help message"
     echo ""
     echo "This script builds AUR packages from:"
     echo "  build/packages/omarchy-aur.packages"
@@ -54,30 +62,35 @@ if [[ ! -f "$BUILD_DIR/packages/omarchy-aur.packages" ]]; then
   exit 1
 fi
 
-# Get GPG key from 1Password or environment for signing
-if [[ -z "$GPG_PRIVATE_KEY" ]]; then
-  print_info "Fetching GPG signing key from 1Password..."
-  GPG_PRIVATE_KEY=$(op document get "Omarchy GPG Private Key" --account=omarchy.1password.com) || {
-    print_error "Failed to fetch GPG key from 1Password or environment"
-    exit 1
-  }
+# Handle GPG signing setup
+if [[ "$SKIP_SIGNING" == true ]]; then
+  print_warning "Skipping GPG signing (--skip-signing flag set)"
 else
-  print_info "Using existing GPG signing key from environment"
-fi
-export GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY"
+  # Get GPG key from 1Password or environment for signing
+  if [[ -z "$GPG_PRIVATE_KEY" ]]; then
+    print_info "Fetching GPG signing key from 1Password..."
+    GPG_PRIVATE_KEY=$(op document get "Omarchy GPG Private Key" --account=omarchy.1password.com) || {
+      print_error "Failed to fetch GPG key from 1Password or environment"
+      exit 1
+    }
+  else
+    print_info "Using existing GPG signing key from environment"
+  fi
+  export GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY"
 
-# Get passphrase from 1Password or environment
-if [[ -z "$GPG_PASSPHRASE" ]]; then
-  print_info "Fetching GPG key passphrase from 1Password..."
-  GPG_PASSPHRASE=$(op item get "Omarchy GPG Private Key" --account=omarchy.1password.com --fields password --reveal) || {
-    print_error "Failed to fetch GPG passphrase from 1Password or environment"
-    exit 1
-  }
-else
-  print_info "Using existing GPG passphrase from environment"
+  # Get passphrase from 1Password or environment
+  if [[ -z "$GPG_PASSPHRASE" ]]; then
+    print_info "Fetching GPG key passphrase from 1Password..."
+    GPG_PASSPHRASE=$(op item get "Omarchy GPG Private Key" --account=omarchy.1password.com --fields password --reveal) || {
+      print_error "Failed to fetch GPG passphrase from 1Password or environment"
+      exit 1
+    }
+  else
+    print_info "Using existing GPG passphrase from environment"
+  fi
+  export GPG_PASSPHRASE
+  print_success "GPG signing key and passphrase loaded"
 fi
-export GPG_PASSPHRASE
-print_success "GPG signing key and passphrase loaded"
 
 # Build/update the Docker image
 print_info "Building Docker image..."
@@ -87,6 +100,7 @@ print_info "Running AUR package build..."
 # Build Docker arguments
 DOCKER_ARGS=(
   --rm
+  -e SKIP_SIGNING
   -e GPG_PRIVATE_KEY
   -e GPG_PASSPHRASE
   -v "$ARCH_DIR:/output"
