@@ -1,8 +1,32 @@
 #!/bin/bash
 
+# Default remote
+REMOTE="pkgs.omarchy.org:omarchy-pkgs"
+
+# Parse arguments
 if [ $# -eq 0 ]; then
-  echo "Usage: sync-repo.sh [directory]"
+  echo "Usage: $0 [directory] [options]"
+  echo "Options:"
+  echo "  --remote <remote>  Specify rclone remote (default: pkgs.omarchy.org:omarchy-pkgs)"
   exit 1
 fi
 
-rclone sync "$1" "pkgs.omarchy.org:omarchy-pkgs/$(basename $1)" --checksum --progress --copy-links --delete-after -v
+DIRECTORY="$1"
+shift
+
+# Parse optional arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --remote)
+      REMOTE="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+done
+
+echo "Syncing to: $REMOTE"
+rclone sync "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)" --checksum --progress --copy-links --delete-after -v
