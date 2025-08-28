@@ -8,12 +8,13 @@ ARCH_DIR="$BUILD_ROOT/x86_64"
 DB_FILE="$ARCH_DIR/omarchy.db.tar.zst"
 
 if [[ ! -f "$DB_FILE" ]]; then
-    echo "Repository database not found"
-    exit 1
+  echo "Repository database not found"
+  exit 1
 fi
 
 # Extract package names and versions from database
-tar -xOf "$DB_FILE" --wildcards "*/desc" 2>/dev/null | 
-    awk '/%NAME%/{getline; name=$0} 
-         /%VERSION%/{getline; print name "-" $0}' | 
-    sort
+tar -xOf "$DB_FILE" --wildcards "*/desc" 2>/dev/null |
+  awk '/%NAME%/{getline; name=$0} 
+         /%VERSION%/{getline; print name "-" $0}' |
+  sort
+

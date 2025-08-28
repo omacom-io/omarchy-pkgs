@@ -33,4 +33,3 @@ for file in $FILES; do
 done
 
 echo "Package '$1' removed"
-
