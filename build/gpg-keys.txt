@@ -7,3 +7,6 @@ https://download.spotify.com/debian/pubkey_C85668DF69375001.gpg
 
 # 1Password (Agilebits PGP code signing key)
 3FEF9748469ADBE15DA7CA80AC2D62742012EA22
+
+# Dropbox
+FC918B335044912E
