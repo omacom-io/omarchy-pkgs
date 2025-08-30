@@ -97,6 +97,11 @@ build_github_package() {
     for pkg_file in *.pkg.tar.*; do
       if [[ -f "$pkg_file" ]]; then
         cp "$pkg_file" /output/
+        # Check for install option to make package available for dependencies
+        if [[ "$opts" == *"install"* ]] && [[ "$pkg_file" =~ ^${pkg}-[0-9].*\.pkg\.tar\..* ]] && [[ "$pkg_file" != *.sig ]]; then
+          echo "    Installing locally for dependencies..."
+          sudo pacman -U --noconfirm --needed "$pkg_file" 2>/dev/null || true
+        fi
       fi
     done
     echo "    ✓ Successfully built $github_repo"
@@ -143,6 +148,19 @@ build_aur_package() {
   if [[ "$local_version" == "$aur_version" ]]; then
     echo "    ✓ Up to date: $local_version - Skipping"
     SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
+
+    # If install option is set, install the existing package for dependencies
+    if [[ "$opts" == *"install"* ]]; then
+      echo "    Installing existing package for dependencies..."
+      # Find the main package file in output directory (match package-version pattern, not debug)
+      local latest_pkg=$(ls -t /output/${pkg}-[0-9]*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+      if [[ -f "$latest_pkg" ]]; then
+        sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
+      else
+        echo "    Warning: Package file not found in /output"
+      fi
+    fi
+
     return 0
   elif [[ -n "$local_version" ]]; then
     echo "    Update available: $local_version -> $aur_version"
@@ -186,6 +204,11 @@ build_aur_package() {
     for pkg_file in *.pkg.tar.*; do
       if [[ -f "$pkg_file" ]]; then
         cp "$pkg_file" /output/
+        # Check for install option to make package available for dependencies
+        if [[ "$opts" == *"install"* ]] && [[ "$pkg_file" =~ ^${pkg}-[0-9].*\.pkg\.tar\..* ]] && [[ "$pkg_file" != *.sig ]]; then
+          echo "    Installing locally for dependencies..."
+          sudo pacman -U --noconfirm --needed "$pkg_file" 2>/dev/null || true
+        fi
       fi
     done
     echo "    ✓ Successfully built $pkg"

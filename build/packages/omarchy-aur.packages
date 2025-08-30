@@ -3,7 +3,9 @@
 # Formats:
 #   - AUR: packagename [options]
 #   - GitHub: owner/repo [options]
-# Options: skip-pgp
+# Options: 
+#   - skip-pgp: Skip PGP signature verification
+#   - install: Install package in container (for dependencies)
 # Note: GitHub packages skip version checking and are built every time
 
 #Core Install
@@ -33,8 +35,9 @@ cursor-bin
 claude-code
 lmstudio
 crush-bin
+bun-bin install # for opencode
 opencode
 symfony-cli
-dropbox
+dropbox install
 dropbox-cli
 nautilus-dropbox
