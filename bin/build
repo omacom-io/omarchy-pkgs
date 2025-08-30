@@ -65,6 +65,7 @@ fi
 # Handle GPG signing setup
 if [[ "$SKIP_SIGNING" == true ]]; then
   print_warning "Skipping GPG signing (--skip-signing flag set)"
+  export SKIP_SIGNING=true
 else
   # Get GPG key from 1Password or environment for signing
   if [[ -z "$GPG_PRIVATE_KEY" ]]; then
