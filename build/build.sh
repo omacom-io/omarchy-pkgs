@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simplified AUR-only build script that runs inside Docker container
+# Build script that handles both AUR and GitHub packages inside Docker container
 
 # Import GPG keys
 /build/import-gpg-keys.sh || exit 1
@@ -7,7 +7,7 @@
 # Sync pacman database
 sudo pacman -Sy
 
-echo "==> AUR Package Builder"
+echo "==> Package Builder (AUR & GitHub)"
 echo "==> Processing omarchy-aur.packages"
 
 # Track failures
@@ -30,13 +30,94 @@ get_local_version() {
   fi
 }
 
+# Build a GitHub package
+build_github_package() {
+  local github_repo="$1"
+  local opts="$2"
+
+  echo ""
+  echo "  -> Processing GitHub: $github_repo..."
+
+  # Extract owner and repo name
+  local owner=$(echo "$github_repo" | cut -d'/' -f1)
+  local repo=$(echo "$github_repo" | cut -d'/' -f2)
+
+  if [[ -z "$owner" ]] || [[ -z "$repo" ]]; then
+    echo "    ❌ Invalid GitHub format. Use: owner/repo"
+    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
+    return 1
+  fi
+
+  # Use repo name as package name for local tracking
+  local pkg="$repo"
+
+  echo "    GitHub repository: https://github.com/$github_repo"
+  echo "    Note: Skipping version check for GitHub packages"
+
+  # Always fresh clone for GitHub packages
+  cd /src
+  rm -rf "$pkg"
+
+  git clone "https://github.com/${github_repo}.git" "$pkg" || {
+    echo "    ❌ Failed to clone $github_repo"
+    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
+    return 1
+  }
+
+  cd "$pkg"
+
+  # Check if PKGBUILD exists
+  if [[ ! -f "PKGBUILD" ]]; then
+    echo "    ❌ No PKGBUILD found in repository"
+    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
+    cd /src
+    return 1
+  fi
+
+  # Build package with signing
+  MAKEPKG_FLAGS="-sc --noconfirm"
+
+  # Only add sign flag if we have a GPG key configured
+  if grep -q "^GPGKEY=" ~/.makepkg.conf 2>/dev/null; then
+    GPG_KEY=$(grep "^GPGKEY=" ~/.makepkg.conf | cut -d'"' -f2)
+    echo "    Using GPG key: $GPG_KEY"
+    MAKEPKG_FLAGS="$MAKEPKG_FLAGS --sign --key $GPG_KEY"
+  else
+    echo "    No GPG key configured in makepkg.conf"
+  fi
+
+  # Check for skip-pgp in options
+  if [[ "$opts" == *"skip-pgp"* ]]; then
+    MAKEPKG_FLAGS="$MAKEPKG_FLAGS --skippgpcheck"
+    echo "    (skipping PGP verification)"
+  fi
+
+  if makepkg $MAKEPKG_FLAGS; then
+    # Copy to output (including signature files)
+    for pkg_file in *.pkg.tar.*; do
+      if [[ -f "$pkg_file" ]]; then
+        cp "$pkg_file" /output/
+      fi
+    done
+    echo "    ✓ Successfully built $github_repo"
+    SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $github_repo"
+  else
+    echo "    ❌ Failed to build $github_repo"
+    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
+    cd /src
+    return 1
+  fi
+
+  cd /src
+}
+
 # Build an AUR package
 build_aur_package() {
   local pkg="$1"
   local opts="$2"
 
   echo ""
-  echo "  -> Processing $pkg..."
+  echo "  -> Processing AUR: $pkg..."
 
   # Get version from AUR API (also gets package base)
   local aur_info=$(curl -s "https://aur.archlinux.org/rpc/?v=5&type=info&arg[]=$pkg")
@@ -136,8 +217,14 @@ if [[ -f /build/packages/omarchy-aur.packages ]]; then
     package=$(echo "$line" | awk '{print $1}')
     options=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
 
-    # Build the package
-    build_aur_package "$package" "$options"
+    # Check if this is a GitHub package (contains /)
+    if [[ "$package" == *"/"* ]]; then
+      # GitHub package format: owner/repo
+      build_github_package "$package" "$options"
+    else
+      # Regular AUR package
+      build_aur_package "$package" "$options"
+    fi
   done </build/packages/omarchy-aur.packages
 
   echo ""
@@ -173,4 +260,3 @@ else
   echo "Error: /build/packages/omarchy-aur.packages not found"
   exit 1
 fi
-
