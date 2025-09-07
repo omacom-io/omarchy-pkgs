@@ -47,6 +47,9 @@ while [[ $# -gt 0 ]]; do
     echo "This script builds AUR packages from:"
     echo "  build/packages/omarchy-aur.packages"
     echo ""
+    echo "Example:"
+    echo "  $0 --skip-signing"
+    echo ""
     exit 0
     ;;
   *)
