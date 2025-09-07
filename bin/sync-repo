@@ -56,4 +56,17 @@ if [[ "$REMOTE" == "$DEFAULT_REMOTE" ]] && [[ "$SKIP_PROD_CHECK" != true ]]; the
 fi
 
 print_info "Syncing to: $REMOTE"
-rclone sync "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)" --checksum --progress --copy-links --delete-after -v
+
+# First sync packages (excluding database files to ensure packages are uploaded first)
+print_info "Syncing packages..."
+rclone sync "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)" \
+  --exclude "omarchy.db*" \
+  --exclude "omarchy.files*" \
+  --checksum --progress --copy-links --delete-after -v
+
+# Then sync database files last to ensure repository integrity
+print_info "Updating repository database..."
+rclone copy "$DIRECTORY"/omarchy.* "$REMOTE/$(basename $DIRECTORY)/" \
+  --checksum --progress -v
+
+print_success "Sync complete!"
