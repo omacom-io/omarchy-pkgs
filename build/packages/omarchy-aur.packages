@@ -6,7 +6,8 @@
 # Options: 
 #   - skip-pgp: Skip PGP signature verification
 #   - install: Install package in container (for dependencies)
-# Note: GitHub packages skip version checking and are built every time
+#   - always-build: Always build package with timestamp version (unique filename)
+#   - source:owner/repo: For -git packages, specify the actual source repo to check
 
 #Core Install
 1password-beta
@@ -14,8 +15,8 @@
 limine-mkinitcpio-hook
 limine-snapper-sync
 localsend-bin
-omacom-io/asdcontrol-git
-omacom-io/omarchy-lazyvim
+omacom-io/asdcontrol-git source:nikosdion/asdcontrol
+omacom-io/omarchy-lazyvim always-build
 omarchy-chromium-bin
 pinta
 python-terminaltexteffects
@@ -24,7 +25,7 @@ ttf-ia-writer
 typora
 tzupdate
 ufw-docker
-walker-bin
+# walker-bin # Not maintained any longer
 wl-screenrec
 yaru-icon-theme
 yay
@@ -41,3 +42,4 @@ symfony-cli
 dropbox install
 dropbox-cli
 nautilus-dropbox
+openai-codex-bin

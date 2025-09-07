@@ -20,7 +20,8 @@ get_local_version() {
   local pkg="$1"
   if [[ -f /output/omarchy.db.tar.zst ]]; then
     # Find the exact desc file for this package
-    local desc_file=$(tar -tf /output/omarchy.db.tar.zst | grep "^${pkg}-[0-9].*/desc$" | head -1)
+    # For VCS packages, version might start with 'r' instead of a digit
+    local desc_file=$(tar -tf /output/omarchy.db.tar.zst | grep "^${pkg}-[0-9r].*/desc$" | head -1)
 
     if [[ -n "$desc_file" ]]; then
       # Extract that specific file and get the version
@@ -52,9 +53,56 @@ build_github_package() {
   local pkg="$repo"
 
   echo "    GitHub repository: https://github.com/$github_repo"
-  echo "    Note: Skipping version check for GitHub packages"
 
-  # Always fresh clone for GitHub packages
+  # Check for always-build option
+  if [[ "$opts" == *"always-build"* ]]; then
+    echo "    Note: Package flagged as always-build, will use timestamp version"
+    # Skip version checking for always-build packages
+  elif [[ "$pkg" == *-git ]]; then
+    # For -git packages, check if we need to rebuild based on commit
+    # Check if a source repo is specified (for packages where PKGBUILD repo != source repo)
+    local source_repo=""
+    if [[ "$opts" =~ source:([^ ]+) ]]; then
+      source_repo="${BASH_REMATCH[1]}"
+      echo "    Checking source repository: $source_repo"
+    fi
+
+    # Use source repo if specified, otherwise use the PKGBUILD repo
+    local check_repo="${source_repo:-$github_repo}"
+    local latest_commit=$(git ls-remote "https://github.com/${check_repo}.git" HEAD 2>/dev/null | cut -f1 | head -c 7)
+
+    if [[ -n "$latest_commit" ]]; then
+      local local_version=$(get_local_version "$pkg")
+
+      if [[ -n "$local_version" ]]; then
+        # Extract commit hash from version (format: r<rev>.<commit>-<pkgrel>)
+        local local_commit=$(echo "$local_version" | grep -oE '\.[a-f0-9]{7}' | cut -d'.' -f2)
+
+        if [[ "$local_commit" == "$latest_commit" ]]; then
+          echo "    ✓ Up to date: commit $latest_commit - Skipping"
+          SKIPPED_PACKAGES="$SKIPPED_PACKAGES $github_repo"
+
+          # If install option is set, install the existing package for dependencies
+          if [[ "$opts" == *"install"* ]]; then
+            echo "    Installing existing package for dependencies..."
+            local latest_pkg=$(ls -t /output/${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+            if [[ -f "$latest_pkg" ]]; then
+              sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
+            fi
+          fi
+          return 0
+        else
+          echo "    Update available: $local_commit -> $latest_commit"
+        fi
+      else
+        echo "    New package (commit: $latest_commit)"
+      fi
+    fi
+  else
+    echo "    Note: Non-git GitHub package, will check PKGBUILD version"
+  fi
+
+  # Fresh clone for building
   cd /src
   rm -rf "$pkg"
 
@@ -72,6 +120,21 @@ build_github_package() {
     FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
     cd /src
     return 1
+  fi
+
+  # For always-build packages, inject timestamp into pkgver to ensure unique filename
+  if [[ "$opts" == *"always-build"* ]]; then
+    # Get current date/time as version suffix
+    local timestamp=$(date +%Y%m%d.%H%M%S)
+    echo "    Injecting timestamp: $timestamp"
+
+    # Modify PKGBUILD to append timestamp to pkgver
+    if grep -q '^pkgver=' PKGBUILD; then
+      # Get current pkgver and append timestamp
+      local current_pkgver=$(grep '^pkgver=' PKGBUILD | cut -d'=' -f2 | tr -d "'\"")
+      sed -i "s/^pkgver=.*/pkgver=${current_pkgver}.${timestamp}/" PKGBUILD
+      echo "    Modified pkgver to: ${current_pkgver}.${timestamp}"
+    fi
   fi
 
   # Build package with signing
