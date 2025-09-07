@@ -9,7 +9,7 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/lib/message-helpers.sh"
 
 # Repository configuration
-ARCH_DIR="$BUILD_ROOT/x86_64"
+ARCH_DIR="$BUILD_ROOT/output/x86_64"
 REPO_NAME="omarchy"
 DB_FILE="$ARCH_DIR/${REPO_NAME}.db.tar.zst"
 FILES_FILE="$ARCH_DIR/${REPO_NAME}.files.tar.zst"

@@ -7,8 +7,11 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/lib/message-helpers.sh"
 
+# Set default architecture
+ARCH=${ARCH:-x86_64}
+
 # Prepare build directories
-ARCH_DIR="$BUILD_ROOT/x86_64"
+ARCH_DIR="$BUILD_ROOT/output/$ARCH"
 SRC_DIR="$BUILD_ROOT/src"
 BUILD_DIR="$BUILD_ROOT/build"
 
@@ -33,6 +36,10 @@ print_header "Omarchy AUR Package Builder"
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
+  --arch)
+    ARCH="$2"
+    shift 2
+    ;;
   --skip-signing)
     SKIP_SIGNING=true
     shift
@@ -41,14 +48,16 @@ while [[ $# -gt 0 ]]; do
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
+    echo "  --arch <arch>   Target architecture (x86_64 or aarch64, default: x86_64)"
     echo "  --skip-signing  Build packages without GPG signing"
     echo "  -h, --help      Show this help message"
     echo ""
     echo "This script builds AUR packages from:"
     echo "  build/packages/omarchy-aur.packages"
     echo ""
-    echo "Example:"
+    echo "Examples:"
     echo "  $0 --skip-signing"
+    echo "  $0 --arch aarch64"
     echo ""
     exit 0
     ;;
@@ -58,6 +67,10 @@ while [[ $# -gt 0 ]]; do
     ;;
   esac
 done
+
+# Show target architecture after parsing args
+print_info "Target architecture: $ARCH"
+print_info "Output directory: $ARCH_DIR"
 
 # Check if AUR package list exists
 if [[ ! -f "$BUILD_DIR/packages/omarchy-aur.packages" ]]; then
@@ -104,10 +117,11 @@ print_info "Running AUR package build..."
 # Build Docker arguments
 DOCKER_ARGS=(
   --rm
+  -e ARCH="$ARCH"
   -e SKIP_SIGNING
   -e GPG_PRIVATE_KEY
   -e GPG_PASSPHRASE
-  -v "$ARCH_DIR:/output"
+  -v "$BUILD_ROOT/output:/output"
   -v "$SRC_DIR:/src"
   -v "$BUILD_DIR:/build:ro"
 )

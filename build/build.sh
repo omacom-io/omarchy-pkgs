@@ -7,8 +7,17 @@
 # Sync pacman database
 sudo pacman -Sy
 
+# Get architecture (default to x86_64 if not set)
+ARCH=${ARCH:-x86_64}
+OUTPUT_DIR="/output/$ARCH"
+
 echo "==> Package Builder (AUR & GitHub)"
+echo "==> Target architecture: $ARCH"
+echo "==> Output directory: $OUTPUT_DIR"
 echo "==> Processing omarchy-aur.packages"
+
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
 
 # Track failures
 FAILED_PACKAGES=""
@@ -18,14 +27,14 @@ SKIPPED_PACKAGES=""
 # Get version from local repo database
 get_local_version() {
   local pkg="$1"
-  if [[ -f /output/omarchy.db.tar.zst ]]; then
+  if [[ -f "$OUTPUT_DIR/omarchy.db.tar.zst" ]]; then
     # Find the exact desc file for this package
     # For VCS packages, version might start with 'r' instead of a digit
-    local desc_file=$(tar -tf /output/omarchy.db.tar.zst | grep "^${pkg}-[0-9r].*/desc$" | head -1)
+    local desc_file=$(tar -tf "$OUTPUT_DIR/omarchy.db.tar.zst" | grep "^${pkg}-[0-9r].*/desc$" | head -1)
 
     if [[ -n "$desc_file" ]]; then
       # Extract that specific file and get the version
-      tar -xOf /output/omarchy.db.tar.zst "$desc_file" 2>/dev/null |
+      tar -xOf "$OUTPUT_DIR/omarchy.db.tar.zst" "$desc_file" 2>/dev/null |
         awk '/%VERSION%/{getline; print; exit}'
     fi
   fi
@@ -85,7 +94,7 @@ build_github_package() {
           # If install option is set, install the existing package for dependencies
           if [[ "$opts" == *"install"* ]]; then
             echo "    Installing existing package for dependencies..."
-            local latest_pkg=$(ls -t /output/${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+            local latest_pkg=$(ls -t $OUTPUT_DIR/${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
             if [[ -f "$latest_pkg" ]]; then
               sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
             fi
@@ -159,7 +168,7 @@ build_github_package() {
     # Copy to output (including signature files)
     for pkg_file in *.pkg.tar.*; do
       if [[ -f "$pkg_file" ]]; then
-        cp "$pkg_file" /output/
+        cp "$pkg_file" $OUTPUT_DIR/
         # Check for install option to make package available for dependencies
         if [[ "$opts" == *"install"* ]] && [[ "$pkg_file" =~ ^${pkg}-[0-9].*\.pkg\.tar\..* ]] && [[ "$pkg_file" != *.sig ]]; then
           echo "    Installing locally for dependencies..."
@@ -216,7 +225,7 @@ build_aur_package() {
     if [[ "$opts" == *"install"* ]]; then
       echo "    Installing existing package for dependencies..."
       # Find the main package file in output directory (match package-version pattern, not debug)
-      local latest_pkg=$(ls -t /output/${pkg}-[0-9]*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+      local latest_pkg=$(ls -t $OUTPUT_DIR/${pkg}-[0-9]*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
       if [[ -f "$latest_pkg" ]]; then
         sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
       else
@@ -266,7 +275,7 @@ build_aur_package() {
     # Copy to output (including signature files)
     for pkg_file in *.pkg.tar.*; do
       if [[ -f "$pkg_file" ]]; then
-        cp "$pkg_file" /output/
+        cp "$pkg_file" $OUTPUT_DIR/
         # Check for install option to make package available for dependencies
         if [[ "$opts" == *"install"* ]] && [[ "$pkg_file" =~ ^${pkg}-[0-9].*\.pkg\.tar\..* ]] && [[ "$pkg_file" != *.sig ]]; then
           echo "    Installing locally for dependencies..."
