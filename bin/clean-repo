@@ -9,7 +9,7 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/lib/message-helpers.sh"
 
 # Repository configuration
-ARCH_DIR="$BUILD_ROOT/x86_64"
+ARCH_DIR="$BUILD_ROOT/output/x86_64"
 KEEP_VERSIONS=2
 
 # Function to clean old packages

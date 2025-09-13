@@ -15,6 +15,7 @@
 limine-mkinitcpio-hook
 limine-snapper-sync
 localsend-bin
+macbook12-spi-driver-dkms
 omacom-io/asdcontrol-git source:nikosdion/asdcontrol
 omacom-io/omarchy-lazyvim always-build
 omarchy-chromium-bin

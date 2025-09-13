@@ -66,7 +66,8 @@ rclone sync "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)" \
 
 # Then sync database files last to ensure repository integrity
 print_info "Updating repository database..."
-rclone copy "$DIRECTORY"/omarchy.* "$REMOTE/$(basename $DIRECTORY)/" \
-  --checksum --progress -v
+rclone copy "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)/" \
+  --include "omarchy.*" \
+  --checksum --progress --copy-links -v
 
 print_success "Sync complete!"

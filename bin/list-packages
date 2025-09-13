@@ -4,7 +4,7 @@
 SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
 BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 
-ARCH_DIR="$BUILD_ROOT/x86_64"
+ARCH_DIR="$BUILD_ROOT/output/x86_64"
 DB_FILE="$ARCH_DIR/omarchy.db.tar.zst"
 
 if [[ ! -f "$DB_FILE" ]]; then
@@ -17,4 +17,3 @@ tar -xOf "$DB_FILE" --wildcards "*/desc" 2>/dev/null |
   awk '/%NAME%/{getline; name=$0} 
          /%VERSION%/{getline; print name "-" $0}' |
   sort
-
