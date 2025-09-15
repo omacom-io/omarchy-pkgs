@@ -12,6 +12,17 @@
 #Core Install
 1password-beta
 1password-cli
+elephant
+elephant-archlinuxpkgs
+elephant-calc
+elephant-clipboard
+elephant-desktopapplications
+elephant-files
+elephant-menus
+elephant-providerlist
+elephant-runner
+elephant-symbols
+elephant-websearch
 limine-mkinitcpio-hook
 limine-snapper-sync
 localsend-bin
@@ -26,6 +37,7 @@ ttf-ia-writer
 typora
 tzupdate
 ufw-docker
+walker
 # walker-bin # Not maintained any longer
 wl-screenrec
 yaru-icon-theme
