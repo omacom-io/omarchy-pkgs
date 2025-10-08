@@ -12,16 +12,19 @@
 #Core Install
 1password-beta
 1password-cli
-elephant
+elephant install
 elephant-archlinuxpkgs
+elephant-bluetooth
 elephant-calc
 elephant-clipboard
-elephant-desktopapplications
+elephant-desktopapplications install
 elephant-files
 elephant-menus
-elephant-providerlist
+elephant-providerlist install
 elephant-runner
 elephant-symbols
+elephant-todo
+elephant-unicode
 elephant-websearch
 limine-mkinitcpio-hook
 limine-snapper-sync
