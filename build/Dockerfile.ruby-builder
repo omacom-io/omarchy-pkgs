@@ -1,0 +1,32 @@
+# Multi-platform Dockerfile for Ruby builds
+# Uses menci/archlinuxarm which supports both amd64 and arm64
+FROM menci/archlinuxarm:latest
+
+# Initialize pacman keyring (needed for ALARM, harmless for Arch)
+RUN pacman-key --init && pacman-key --populate
+
+# Update package database and install only necessary packages (skip full system upgrade to avoid slow downloads)
+RUN pacman -Sy --noconfirm && \
+    pacman -S --noconfirm --needed git curl sudo ca-certificates openssl zlib libyaml libffi readline ncurses base-devel jq && \
+    pacman -Scc --noconfirm
+
+# Set mise environment variables for a consistent, container-friendly path
+ENV MISE_DATA_DIR=/mise
+ENV MISE_CONFIG_DIR=/mise
+ENV MISE_CACHE_DIR=/mise/cache
+ENV MISE_INSTALL_PATH=/usr/local/bin/mise
+ENV PATH=/mise/shims:$PATH
+
+# Install mise
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN curl https://mise.run | sh
+
+# Set Ruby build options for relocatable/portable compilation
+ENV MISE_RUBY_BUILD_OPTS="--enable-load-relative --with-static-linked-ext"
+
+# Copy the build script
+COPY build-ruby.sh /build/build-ruby.sh
+RUN chmod +x /build/build-ruby.sh
+
+# Default command
+CMD ["/build/build-ruby.sh"]
