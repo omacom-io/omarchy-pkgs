@@ -7,7 +7,6 @@
 # Sync pacman database
 sudo pacman -Sy
 
-# Get architecture (default to x86_64 if not set)
 ARCH=${ARCH:-x86_64}
 OUTPUT_DIR="/output/$ARCH"
 
@@ -16,10 +15,8 @@ echo "==> Target architecture: $ARCH"
 echo "==> Output directory: $OUTPUT_DIR"
 echo "==> Processing omarchy-aur.packages"
 
-# Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
 
-# Track failures
 FAILED_PACKAGES=""
 SUCCESSFUL_PACKAGES=""
 SKIPPED_PACKAGES=""
@@ -40,44 +37,33 @@ get_local_version() {
   fi
 }
 
-# Build a GitHub package
-build_github_package() {
-  local github_repo="$1"
+# Common build logic for all package types
+# Expects to be called with pkg directory already prepared in /src/$pkg
+build_package() {
+  local pkg="$1"
   local opts="$2"
+  local check_repo="$3"  # Optional: repository to check for updates (for -git packages)
 
-  echo ""
-  echo "  -> Processing GitHub: $github_repo..."
+  cd "/src/$pkg" || return 1
 
-  # Extract owner and repo name
-  local owner=$(echo "$github_repo" | cut -d'/' -f1)
-  local repo=$(echo "$github_repo" | cut -d'/' -f2)
-
-  if [[ -z "$owner" ]] || [[ -z "$repo" ]]; then
-    echo "    ❌ Invalid GitHub format. Use: owner/repo"
-    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
-    return 1
-  fi
-
-  # Use repo name as package name for local tracking
-  local pkg="$repo"
-
-  echo "    GitHub repository: https://github.com/$github_repo"
+  # Handle version checking
+  local should_build=true
 
   # Check for always-build option
   if [[ "$opts" == *"always-build"* ]]; then
     echo "    Note: Package flagged as always-build, will use timestamp version"
-    # Skip version checking for always-build packages
-  elif [[ "$pkg" == *-git ]]; then
-    # For -git packages, check if we need to rebuild based on commit
-    # Check if a source repo is specified (for packages where PKGBUILD repo != source repo)
-    local source_repo=""
-    if [[ "$opts" =~ source:([^ ]+) ]]; then
-      source_repo="${BASH_REMATCH[1]}"
-      echo "    Checking source repository: $source_repo"
-    fi
 
-    # Use source repo if specified, otherwise use the PKGBUILD repo
-    local check_repo="${source_repo:-$github_repo}"
+    # Inject timestamp into pkgver to ensure unique filename
+    local timestamp=$(date +%Y%m%d.%H%M%S)
+    echo "    Injecting timestamp: $timestamp"
+
+    if grep -q '^pkgver=' PKGBUILD; then
+      local current_pkgver=$(grep '^pkgver=' PKGBUILD | cut -d'=' -f2 | tr -d "'\"")
+      sed -i "s/^pkgver=.*/pkgver=${current_pkgver}.${timestamp}/" PKGBUILD
+      echo "    Modified pkgver to: ${current_pkgver}.${timestamp}"
+    fi
+  elif [[ "$pkg" == *-git ]] && [[ -n "$check_repo" ]]; then
+    # For -git packages, check if we need to rebuild based on commit
     local latest_commit=$(git ls-remote "https://github.com/${check_repo}.git" HEAD 2>/dev/null | cut -f1 | head -c 7)
 
     if [[ -n "$latest_commit" ]]; then
@@ -89,17 +75,8 @@ build_github_package() {
 
         if [[ "$local_commit" == "$latest_commit" ]]; then
           echo "    ✓ Up to date: commit $latest_commit - Skipping"
-          SKIPPED_PACKAGES="$SKIPPED_PACKAGES $github_repo"
-
-          # If install option is set, install the existing package for dependencies
-          if [[ "$opts" == *"install"* ]]; then
-            echo "    Installing existing package for dependencies..."
-            local latest_pkg=$(ls -t $OUTPUT_DIR/${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
-            if [[ -f "$latest_pkg" ]]; then
-              sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
-            fi
-          fi
-          return 0
+          SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
+          should_build=false
         else
           echo "    Update available: $local_commit -> $latest_commit"
         fi
@@ -107,47 +84,42 @@ build_github_package() {
         echo "    New package (commit: $latest_commit)"
       fi
     fi
-  else
-    echo "    Note: Non-git GitHub package, will check PKGBUILD version"
-  fi
+  elif [[ ! "$pkg" == *-git ]]; then
+    # For non-git packages, check PKGBUILD version
+    local pkgbuild_version=$(bash -c 'source PKGBUILD; echo "${pkgver}-${pkgrel}"' 2>/dev/null)
 
-  # Fresh clone for building
-  cd /src
-  rm -rf "$pkg"
+    if [[ -n "$pkgbuild_version" ]]; then
+      local local_version=$(get_local_version "$pkg")
 
-  git clone "https://github.com/${github_repo}.git" "$pkg" || {
-    echo "    ❌ Failed to clone $github_repo"
-    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
-    return 1
-  }
-
-  cd "$pkg"
-
-  # Check if PKGBUILD exists
-  if [[ ! -f "PKGBUILD" ]]; then
-    echo "    ❌ No PKGBUILD found in repository"
-    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
-    cd /src
-    return 1
-  fi
-
-  # For always-build packages, inject timestamp into pkgver to ensure unique filename
-  if [[ "$opts" == *"always-build"* ]]; then
-    # Get current date/time as version suffix
-    local timestamp=$(date +%Y%m%d.%H%M%S)
-    echo "    Injecting timestamp: $timestamp"
-
-    # Modify PKGBUILD to append timestamp to pkgver
-    if grep -q '^pkgver=' PKGBUILD; then
-      # Get current pkgver and append timestamp
-      local current_pkgver=$(grep '^pkgver=' PKGBUILD | cut -d'=' -f2 | tr -d "'\"")
-      sed -i "s/^pkgver=.*/pkgver=${current_pkgver}.${timestamp}/" PKGBUILD
-      echo "    Modified pkgver to: ${current_pkgver}.${timestamp}"
+      if [[ "$local_version" == "$pkgbuild_version" ]]; then
+        echo "    ✓ Up to date: $local_version - Skipping"
+        SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
+        should_build=false
+      elif [[ -n "$local_version" ]]; then
+        echo "    Update available: $local_version -> $pkgbuild_version"
+      else
+        echo "    New package (version: $pkgbuild_version)"
+      fi
     fi
   fi
 
+  # If package is up to date but has install flag, install it for dependencies
+  if [[ "$should_build" == false ]] && [[ "$opts" == *"install"* ]]; then
+    echo "    Installing existing package for dependencies..."
+    local latest_pkg=$(ls -t $OUTPUT_DIR/${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+    if [[ -f "$latest_pkg" ]]; then
+      sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
+    fi
+    return 0
+  fi
+
+  # Skip building if not needed
+  if [[ "$should_build" == false ]]; then
+    return 0
+  fi
+
   # Build package with signing
-  MAKEPKG_FLAGS="-sc --noconfirm"
+  MAKEPKG_FLAGS="-scf --noconfirm"
 
   # Only add sign flag if we have a GPG key configured
   if grep -q "^GPGKEY=" ~/.makepkg.conf 2>/dev/null; then
@@ -176,16 +148,109 @@ build_github_package() {
         fi
       fi
     done
-    echo "    ✓ Successfully built $github_repo"
-    SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $github_repo"
+    echo "    ✓ Successfully built $pkg"
+    SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $pkg"
+    return 0
   else
-    echo "    ❌ Failed to build $github_repo"
+    echo "    ❌ Failed to build $pkg"
+    FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+    return 1
+  fi
+}
+
+# Prepare and build a local PKGBUILD package
+build_local_package() {
+  local pkg="$1"
+  local opts="$2"
+
+  # Check if package exists locally
+  if [[ ! -d "/pkgbuilds/$pkg" ]] || [[ ! -f "/pkgbuilds/$pkg/PKGBUILD" ]]; then
+    return 1  # Not a local package
+  fi
+
+  echo ""
+  echo "  -> Processing local: $pkg..."
+  echo "    Source: /pkgbuilds/$pkg"
+
+  # Check for source repo override for -git packages
+  local check_repo=""
+  if [[ "$opts" =~ source:([^ ]+) ]]; then
+    check_repo="${BASH_REMATCH[1]}"
+    echo "    Update check repository: $check_repo"
+  fi
+
+  # Copy to build directory
+  cd /src
+  rm -rf "$pkg"
+  cp -r "/pkgbuilds/$pkg" "$pkg"
+
+  # Build the package
+  build_package "$pkg" "$opts" "$check_repo"
+  local result=$?
+
+  cd /src
+  return $result
+}
+
+# Build a GitHub package
+build_github_package() {
+  local github_repo="$1"
+  local opts="$2"
+
+  echo ""
+  echo "  -> Processing GitHub: $github_repo..."
+
+  # Extract owner and repo name
+  local owner=$(echo "$github_repo" | cut -d'/' -f1)
+  local repo=$(echo "$github_repo" | cut -d'/' -f2)
+
+  if [[ -z "$owner" ]] || [[ -z "$repo" ]]; then
+    echo "    ❌ Invalid GitHub format. Use: owner/repo"
+    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
+    return 1
+  fi
+
+  # Use repo name as package name for local tracking
+  local pkg="$repo"
+
+  echo "    GitHub repository: https://github.com/$github_repo"
+
+  # Check for source repo override for -git packages
+  local check_repo=""
+  if [[ "$opts" =~ source:([^ ]+) ]]; then
+    check_repo="${BASH_REMATCH[1]}"
+    echo "    Update check repository: $check_repo"
+  elif [[ "$pkg" == *-git ]]; then
+    # Default to the GitHub repo for checking updates
+    check_repo="$github_repo"
+  fi
+
+  # Fresh clone for building
+  cd /src
+  rm -rf "$pkg"
+
+  git clone "https://github.com/${github_repo}.git" "$pkg" || {
+    echo "    ❌ Failed to clone $github_repo"
+    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
+    return 1
+  }
+
+  cd "$pkg"
+
+  # Check if PKGBUILD exists
+  if [[ ! -f "PKGBUILD" ]]; then
+    echo "    ❌ No PKGBUILD found in repository"
     FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
     cd /src
     return 1
   fi
 
+  # Build the package using common logic
+  build_package "$pkg" "$opts" "$check_repo"
+  local result=$?
+
   cd /src
+  return $result
 }
 
 # Build an AUR package
@@ -214,7 +279,7 @@ build_aur_package() {
     echo "    Using package base: $pkg_base"
   fi
 
-  # Check if we need to build
+  # Check if we need to build (quick check before cloning)
   local local_version=$(get_local_version "$pkg")
 
   if [[ "$local_version" == "$aur_version" ]]; then
@@ -224,15 +289,11 @@ build_aur_package() {
     # If install option is set, install the existing package for dependencies
     if [[ "$opts" == *"install"* ]]; then
       echo "    Installing existing package for dependencies..."
-      # Find the main package file in output directory (match package-version pattern, not debug)
       local latest_pkg=$(ls -t $OUTPUT_DIR/${pkg}-[0-9]*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
       if [[ -f "$latest_pkg" ]]; then
         sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
-      else
-        echo "    Warning: Package file not found in /output"
       fi
     fi
-
     return 0
   elif [[ -n "$local_version" ]]; then
     echo "    Update available: $local_version -> $aur_version"
@@ -240,7 +301,7 @@ build_aur_package() {
     echo "    New package (AUR: $aur_version)"
   fi
 
-  # Always fresh clone when building
+  # Clone from AUR
   cd /src
   rm -rf "$pkg"
 
@@ -250,49 +311,13 @@ build_aur_package() {
     return 1
   }
 
-  cd "$pkg"
-
-  # Build package with signing
-  MAKEPKG_FLAGS="-sc --noconfirm"
-
-  # Only add sign flag if we have a GPG key configured
-  if grep -q "^GPGKEY=" ~/.makepkg.conf 2>/dev/null; then
-    GPG_KEY=$(grep "^GPGKEY=" ~/.makepkg.conf | cut -d'"' -f2)
-    echo "    Using GPG key: $GPG_KEY"
-    # We already tested signing in import-gpg-keys.sh, just add the flags
-    MAKEPKG_FLAGS="$MAKEPKG_FLAGS --sign --key $GPG_KEY"
-  else
-    echo "    No GPG key configured in makepkg.conf"
-  fi
-
-  # Check for skip-pgp in options
-  if [[ "$opts" == *"skip-pgp"* ]]; then
-    MAKEPKG_FLAGS="$MAKEPKG_FLAGS --skippgpcheck"
-    echo "    (skipping PGP verification)"
-  fi
-
-  if makepkg $MAKEPKG_FLAGS; then
-    # Copy to output (including signature files)
-    for pkg_file in *.pkg.tar.*; do
-      if [[ -f "$pkg_file" ]]; then
-        cp "$pkg_file" $OUTPUT_DIR/
-        # Check for install option to make package available for dependencies
-        if [[ "$opts" == *"install"* ]] && [[ "$pkg_file" =~ ^${pkg}-[0-9].*\.pkg\.tar\..* ]] && [[ "$pkg_file" != *.sig ]]; then
-          echo "    Installing locally for dependencies..."
-          sudo pacman -U --noconfirm --needed "$pkg_file" 2>/dev/null || true
-        fi
-      fi
-    done
-    echo "    ✓ Successfully built $pkg"
-    SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $pkg"
-  else
-    echo "    ❌ Failed to build $pkg"
-    FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
-    cd /src
-    return 1
-  fi
+  # Build the package using common logic
+  # No check_repo for AUR packages - version checking is done above
+  build_package "$pkg" "$opts" ""
+  local result=$?
 
   cd /src
+  return $result
 }
 
 # Main execution
@@ -311,6 +336,17 @@ if [[ -f /build/packages/omarchy-aur.packages ]]; then
     # Parse package name and options
     package=$(echo "$line" | awk '{print $1}')
     options=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
+
+    # Check build source in priority order:
+    # 1. Local PKGBUILD in /pkgbuilds/
+    # 2. GitHub repository (contains /)
+    # 3. AUR package
+
+    # Try local package first
+    if build_local_package "$package" "$options"; then
+      # Package was handled locally (either built, skipped, or failed)
+      continue
+    fi
 
     # Check if this is a GitHub package (contains /)
     if [[ "$package" == *"/"* ]]; then

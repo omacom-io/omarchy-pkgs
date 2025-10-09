@@ -1,17 +1,31 @@
-# Omarchy Package List (AUR & GitHub)
-# Supports both AUR packages and GitHub repositories
+# Omarchy Package List (AUR, GitHub, and Local)
+# Supports AUR packages, GitHub repositories, and local PKGBUILDs
+#
+# Build source priority:
+#   1. Local: Checks /pkgbuilds/<packagename>/ first
+#   2. GitHub: If contains "/", fetches from GitHub
+#   3. AUR: Otherwise, fetches from AUR
+#
 # Formats:
-#   - AUR: packagename [options]
+#   - Local: packagename [options] (if exists in /pkgbuilds/)
 #   - GitHub: owner/repo [options]
-# Options: 
+#   - AUR: packagename [options]
+#
+# Options:
 #   - skip-pgp: Skip PGP signature verification
 #   - install: Install package in container (for dependencies)
 #   - always-build: Always build package with timestamp version (unique filename)
-#   - source:owner/repo: For -git packages, specify the actual source repo to check
+#   - source:owner/repo: For -git packages, specify the actual source repo to check for updates
+#
+# Examples:
+#   asdcontrol-git source:nikosdion/asdcontrol  # Uses local PKGBUILD, checks nikosdion/asdcontrol for updates
+#   omacom-io/some-package                      # Fetches from GitHub
+#   yay                                          # Fetches from AUR
 
 #Core Install
 1password-beta
 1password-cli
+asdcontrol
 elephant install
 elephant-archlinuxpkgs
 elephant-bluetooth
@@ -30,9 +44,9 @@ limine-mkinitcpio-hook
 limine-snapper-sync
 localsend-bin
 macbook12-spi-driver-dkms
-omacom-io/asdcontrol-git source:nikosdion/asdcontrol
-omacom-io/omarchy-lazyvim always-build
 omarchy-chromium-bin
+omarchy-lazyvim always-build
+omarchy-wl-screenrec
 pinta
 python-terminaltexteffects
 spotify
@@ -41,8 +55,6 @@ typora
 tzupdate
 ufw-docker
 walker
-# walker-bin # Not maintained any longer
-wl-screenrec
 yaru-icon-theme
 yay
 
