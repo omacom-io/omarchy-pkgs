@@ -46,8 +46,7 @@ limine-snapper-sync
 localsend-bin
 macbook12-spi-driver-dkms
 omarchy-chromium-bin
-omarchy-lazyvim always-build
-omarchy-wl-screenrec
+omarchy-nvim always-build
 pinta
 python-terminaltexteffects
 spotify

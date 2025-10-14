@@ -8,6 +8,7 @@ url="https://github.com/LazyVim/LazyVim"
 license=('MIT')
 depends=('neovim>=0.9.0' 'git')
 makedepends=('git' 'nodejs' 'npm' 'tree-sitter-cli')
+conflicts=('omarchy-lazyvim')
 source=("git+https://github.com/LazyVim/starter.git")
 sha256sums=('SKIP')
 
