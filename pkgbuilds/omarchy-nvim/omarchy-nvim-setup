@@ -1,10 +1,10 @@
 #!/bin/bash
-# Setup script for omarchy-lazyvim
+# Setup script for omarchy-nvim
 # This can be called from Omarchy setup scripts
 
 set -euo pipefail
 
-PACKAGE_DIR="/usr/share/omarchy-lazyvim"
+PACKAGE_DIR="/usr/share/omarchy-nvim"
 CONFIG_DIR="${HOME}/.config/nvim"
 DATA_DIR="${HOME}/.local/share/nvim"
 STATE_DIR="${HOME}/.local/state/nvim"
@@ -12,7 +12,7 @@ CACHE_DIR="${HOME}/.cache/nvim"
 
 # Check if package is installed
 if [[ ! -d "$PACKAGE_DIR" ]]; then
-  echo "Error: omarchy-lazyvim package not installed"
+  echo "Error: omarchy-nvim package not installed"
   exit 1
 fi
 
@@ -29,7 +29,7 @@ if [[ -d "$CONFIG_DIR" ]]; then
   fi
 fi
 
-echo "Setting up LazyVim configuration..."
+echo "Setting up Neovim configuration..."
 
 # Make sure everything is clear
 rm -rf $DATA_DIR $CACHE_DIR $STATE_DIR
@@ -50,4 +50,4 @@ for dir in $DATA_DIR/lazy/*/; do
   fi
 done
 
-echo "LazyVim setup complete!"
+echo "Neovim setup complete!"
