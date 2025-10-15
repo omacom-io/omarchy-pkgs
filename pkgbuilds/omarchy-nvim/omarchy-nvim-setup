@@ -44,6 +44,11 @@ cp -r "$PACKAGE_DIR/config" "$CONFIG_DIR"
 cp -r "$PACKAGE_DIR/data" "$DATA_DIR"
 cp -r "$PACKAGE_DIR/cache" "$CACHE_DIR"
 
+# Ensure proper ownership of all nvim directories
+chown -R "${USER}:${USER}" "$CONFIG_DIR"
+chown -R "${USER}:${USER}" "$DATA_DIR"
+chown -R "${USER}:${USER}" "$CACHE_DIR"
+
 # Create link for current theme
 ln -snf "${HOME}/.config/omarchy/current/theme/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
 
