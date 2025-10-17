@@ -25,6 +25,7 @@
 #Core Install
 1password-beta
 1password-cli
+aether
 asdcontrol
 elephant install
 elephant-archlinuxpkgs
@@ -71,3 +72,4 @@ dropbox install
 dropbox-cli
 nautilus-dropbox
 openai-codex-bin
+openai-codex
