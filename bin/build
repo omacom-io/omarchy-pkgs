@@ -42,20 +42,32 @@ while [[ $# -gt 0 ]]; do
     SKIP_SIGNING=true
     shift
     ;;
+  --package)
+    SINGLE_PACKAGE="$2"
+    shift 2
+    ;;
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --arch <arch>   Target architecture (x86_64 or aarch64, default: x86_64)"
-    echo "  --skip-signing  Build packages without GPG signing"
-    echo "  -h, --help      Show this help message"
+    echo "  --arch <arch>        Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --skip-signing       Build packages without GPG signing"
+    echo "  --package <name>     Build only the specified package (with optional options)"
+    echo "  -h, --help           Show this help message"
     echo ""
     echo "This script builds AUR packages from:"
     echo "  build/packages/omarchy-aur.packages"
     echo ""
+    echo "Or build a single package with --package:"
+    echo "  Package can be: AUR package, GitHub repo (owner/repo), or local PKGBUILD"
+    echo "  Options can be appended after package name (skip-pgp, install, always-build, etc.)"
+    echo ""
     echo "Examples:"
     echo "  $0 --skip-signing"
     echo "  $0 --arch aarch64"
+    echo "  $0 --package yay"
+    echo "  $0 --package \"elephant install\""
+    echo "  $0 --package \"owner/repo skip-pgp\""
     echo ""
     exit 0
     ;;
@@ -70,10 +82,14 @@ done
 print_info "Target architecture: $ARCH"
 print_info "Output directory: $ARCH_DIR"
 
-# Check if AUR package list exists
-if [[ ! -f "$BUILD_DIR/packages/omarchy-aur.packages" ]]; then
-  print_error "omarchy-aur.packages not found at $BUILD_DIR/packages/"
-  exit 1
+# Check if AUR package list exists (only required if not building single package)
+if [[ -z "$SINGLE_PACKAGE" ]]; then
+  if [[ ! -f "$BUILD_DIR/packages/omarchy-aur.packages" ]]; then
+    print_error "omarchy-aur.packages not found at $BUILD_DIR/packages/"
+    exit 1
+  fi
+else
+  print_info "Building single package: $SINGLE_PACKAGE"
 fi
 
 # Handle GPG signing setup
@@ -119,6 +135,7 @@ DOCKER_ARGS=(
   -e SKIP_SIGNING
   -e GPG_PRIVATE_KEY
   -e GPG_PASSPHRASE
+  -e SINGLE_PACKAGE="$SINGLE_PACKAGE"
   -v "$BUILD_ROOT/output:/output"
   -v "$SRC_DIR:/src"
   -v "$BUILD_DIR:/build:ro"

@@ -4,11 +4,25 @@
 # Import GPG keys
 /build/import-gpg-keys.sh || exit 1
 
-# Sync pacman database
-sudo pacman -Sy
-
+# Add Omarchy repository to pacman.conf if database exists
 ARCH=${ARCH:-x86_64}
 OUTPUT_DIR="/output/$ARCH"
+
+if [[ -f "$OUTPUT_DIR/omarchy.db.tar.zst" ]]; then
+  echo "==> Configuring Omarchy repository for dependency resolution..."
+  sudo tee -a /etc/pacman.conf > /dev/null <<EOF
+
+[omarchy]
+SigLevel = Optional TrustAll
+Server = file://$OUTPUT_DIR
+EOF
+  echo "  -> Omarchy repository added to pacman.conf"
+else
+  echo "==> No Omarchy repository database found (this is normal for first build)"
+fi
+
+# Sync pacman database
+sudo pacman -Sy
 
 echo "==> Package Builder (AUR & GitHub)"
 echo "==> Target architecture: $ARCH"
@@ -323,8 +337,17 @@ build_aur_package() {
 # Main execution
 cd /src
 
-# Read and process the AUR package file
-if [[ -f /build/packages/omarchy-aur.packages ]]; then
+# Determine input source: single package or package file
+if [[ -n "$SINGLE_PACKAGE" ]]; then
+  echo "==> Single Package Build Mode: $SINGLE_PACKAGE"
+  PACKAGE_INPUT=$(echo "$SINGLE_PACKAGE")
+else
+  echo "==> Processing omarchy-aur.packages"
+  PACKAGE_INPUT=$(cat /build/packages/omarchy-aur.packages)
+fi
+
+# Read and process packages
+if [[ -n "$PACKAGE_INPUT" ]]; then
   TOTAL_COUNT=0
 
   while IFS= read -r line || [ -n "$line" ]; do
@@ -356,7 +379,7 @@ if [[ -f /build/packages/omarchy-aur.packages ]]; then
       # Regular AUR package
       build_aur_package "$package" "$options"
     fi
-  done </build/packages/omarchy-aur.packages
+  done <<< "$PACKAGE_INPUT"
 
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -388,6 +411,6 @@ if [[ -f /build/packages/omarchy-aur.packages ]]; then
     echo "==> All packages processed successfully!"
   fi
 else
-  echo "Error: /build/packages/omarchy-aur.packages not found"
+  echo "Error: No packages to build"
   exit 1
 fi
