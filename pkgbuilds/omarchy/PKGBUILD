@@ -8,14 +8,138 @@ license=('MIT')
 provides=('omarchy')
 
 depends=(
+  # Core Wayland/Hyprland stack
   'hyprland'
   'waybar'
+  'hypridle'
+  'hyprlock'
+  'hyprsunset'
+  'swaybg'
+  'swayosd'
+  'mako'
+  'uwsm'
   'walker'
+  'elephant'
+
+  # Terminal & Shell
+  'alacritty'
   'ghostty'
+  'bash-completion'
+  'starship'
+
+  # Core utilities
   'neovim'
+  'mise'
+  'ripgrep'
+  'fzf'
+  'fd'
+  'eza'
+  'bat'
+  'zoxide'
+  'jq'
+
+  # System essentials
+  'polkit-gnome'
+  'gnome-keyring'
+  'xdg-desktop-portal-hyprland'
+  'xdg-desktop-portal-gtk'
+
+  # Fonts
+  'noto-fonts'
+  'noto-fonts-emoji'
+  'ttf-jetbrains-mono-nerd'
+
+  # File management
+  'gvfs-mtp'
+  'gvfs-smb'
+ 
+  # Audio/Video
+  'wireplumber'
+  'playerctl'
+  'pamixer'
+
+  # Networking
+  'iwd'
+  'avahi'
+  'nss-mdns'
+
+  # Screenshots & Screen tools
+  'grim'
+  'slurp'
+  'satty'
+  'wayfreeze-git'
+  'gpu-screen-recorder'
+
+  # Interactive utilities
+  'gum'
+
+  # System utilities
+  'fastfetch'
+  'brightnessctl'
+  'power-profiles-daemon'
 )
 
-source=('omarchy-installer::git+file://../../omarchy-installer')
+optdepends=(
+  # Development tools
+  '1password: Password manager'
+  '1password-cli: 1Password CLI'
+  'github-cli: GitHub CLI tool'
+  'lazygit: Terminal UI for git'
+  'lazydocker: Terminal UI for docker'
+
+  # Browsers & Communication
+  'omarchy-chromium: Customized Chromium browser'
+  'signal-desktop: Encrypted messaging'
+  'spotify: Music streaming'
+
+  # Productivity
+  'obsidian: Note-taking app'
+  'typora: Markdown editor'
+  'libreoffice: Office suite'
+
+  # Media & Graphics
+  'obs-studio: Screen recording and streaming'
+  'mpv: Video player'
+  'imv: Image viewer'
+  'kdenlive: Video editor'
+  'pinta: Image editor'
+
+  # System utilities
+  'btop: System monitor'
+
+  # Printing
+  'cups: Printing support'
+  'system-config-printer: Printer configuration'
+
+  # Additional elephant modules
+  'elephant-bluetooth: Bluetooth module for Walker'
+  'elephant-calc: Calculator module for Walker'
+  'elephant-clipboard: Clipboard manager for Walker'
+  'elephant-files: File search for Walker'
+  'elephant-menus: Menu module for Walker'
+  'elephant-symbols: Symbol picker for Walker'
+  'elephant-todo: Todo list for Walker'
+  'elephant-websearch: Web search for Walker'
+
+  # Hardware support
+  'asdcontrol: Apple display brightness control'
+  'blueberry: Bluetooth manager'
+
+  # Developer tools
+  'cargo: Rust package manager'
+  'clang: C/C++ compiler'
+  'python-poetry-core: Python packaging'
+  'tree-sitter-cli: Parser generator tool'
+)
+
+backup=(
+  'etc/docker/daemon.json'
+  'etc/systemd/resolved.conf.d/20-docker-dns.conf'
+  'etc/systemd/system/docker.service.d/no-block-boot.conf'
+  'etc/skel/.bashrc'
+)
+
+source=('omarchy-installer::git+file:///home/ryan/Work/omarchy/omarchy-installer')
 sha256sums=('SKIP')
 
 package() {
@@ -51,7 +175,7 @@ package() {
   cp -r themes "$pkgdir/usr/share/omarchy/"
   cp icon.png "$pkgdir/usr/share/omarchy/"
   cp icon.txt "$pkgdir/usr/share/omarchy/"
-  cp logo.png "$pkgdir/usr/share/omarchy/"
+  cp logo.svg "$pkgdir/usr/share/omarchy/"
   cp logo.txt "$pkgdir/usr/share/omarchy/"
   cp version "$pkgdir/usr/share/omarchy/"
 

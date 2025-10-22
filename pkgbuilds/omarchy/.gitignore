@@ -1,0 +1,13 @@
+# Build artifacts
+*.pkg.tar.zst
+*.pkg.tar.zst.sig
+*.pkg.tar.xz
+*.pkg.tar.xz.sig
+
+# Build directories
+src/
+pkg/
+omarchy-installer/
+
+# Logs
+*.log
