@@ -1,0 +1,62 @@
+pkgname='omarchy'
+pkgver=3.2.0
+pkgrel=1
+pkgdesc='Beautiful, Modern & Opinionated Linux by DHH'
+arch=('any')
+url='https://github.com/basecamp/omarchy'
+license=('MIT')
+provides=('omarchy')
+
+depends=(
+  'hyprland'
+  'waybar'
+  'walker'
+  'ghostty'
+  'neovim'
+)
+
+source=('omarchy-installer::git+file://../../omarchy-installer')
+sha256sums=('SKIP')
+
+package() {
+  cd "omarchy-installer"
+
+  # Applications to skel: .desktop files and icons → /etc/skel/.local/share/
+  install -d "$pkgdir/etc/skel/.local/share/applications/icons"
+  cp applications/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
+  cp applications/hidden/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
+  cp applications/icons/*.png "$pkgdir/etc/skel/.local/share/applications/icons/"
+
+  # Binaries: bin/ → /usr/bin/
+  for bin in bin/*; do
+    install -Dm755 "$bin" "$pkgdir/usr/bin/$(basename $bin)"
+  done
+  
+  # User skeleton: config/ → /etc/skel/.config/
+  install -d "$pkgdir/etc/skel/.config"
+  cp -r config/* "$pkgdir/etc/skel/.config/"
+
+  # Bashrc
+  install -Dm644 default/bashrc "$pkgdir/etc/skel/.bashrc"
+
+  # Etc: etc/ → /etc/
+  install -d "$pkgdir/etc"
+  cp -r etc/* "$pkgdir/etc/"
+
+  # Shared files: themes/, default/ → /usr/share/omarchy/
+  install -d "$pkgdir/usr/share/omarchy"
+  cp -r default "$pkgdir/usr/share/omarchy/"
+  cp -r install "$pkgdir/usr/share/omarchy/"
+  cp -r migrations "$pkgdir/usr/share/omarchy/"
+  cp -r themes "$pkgdir/usr/share/omarchy/"
+  cp icon.png "$pkgdir/usr/share/omarchy/"
+  cp icon.txt "$pkgdir/usr/share/omarchy/"
+  cp logo.png "$pkgdir/usr/share/omarchy/"
+  cp logo.txt "$pkgdir/usr/share/omarchy/"
+  cp version "$pkgdir/usr/share/omarchy/"
+
+  # Fix permissions for sudoers files (if they exist)
+  if [ -d "$pkgdir/etc/sudoers.d" ]; then
+    chmod 440 "$pkgdir/etc/sudoers.d/"* 2>/dev/null || true
+  fi
+}
