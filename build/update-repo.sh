@@ -21,9 +21,25 @@ if ! ls *.pkg.tar.* 1>/dev/null 2>&1; then
   exit 1
 fi
 
-# Add all packages to the database (excluding signature files)
+# Add all packages to the database (only latest version of each)
 echo "==> Adding packages to database..."
-find . -maxdepth 1 -name "*.pkg.tar.*" ! -name "*.sig" -exec basename {} \; | xargs -n 5 repo-add "$DB_FILE" || {
+ls -t *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | awk '
+{
+  # Extract package name without version-rel-arch.pkg.tar.ext
+  pkgfile = $0
+  gsub(/\.pkg\.tar\.(zst|xz|gz)$/, "", pkgfile)
+  split(pkgfile, parts, "-")
+  # Rebuild name without last 3 parts (version-rel-arch)
+  pkgname = parts[1]
+  for (i = 2; i <= length(parts) - 3; i++) {
+    pkgname = pkgname "-" parts[i]
+  }
+  
+  if (!seen[pkgname]++) {
+    print $0
+  }
+}
+' | xargs repo-add "$DB_FILE" || {
   echo "==> Failed to update repository database"
   exit 1
 }
