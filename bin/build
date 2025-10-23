@@ -123,9 +123,15 @@ else
   print_success "GPG signing key and passphrase loaded"
 fi
 
-# Build/update the Docker image
+# Build/update the Docker image with host user's UID/GID for proper permissions
 print_info "Building Docker image..."
-docker build -t omarchy-aur-builder:latest -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
+HOST_UID=$(id -u)
+HOST_GID=$(id -g)
+docker build \
+  --build-arg BUILD_UID="$HOST_UID" \
+  --build-arg BUILD_GID="$HOST_GID" \
+  -t omarchy-aur-builder:latest \
+  -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
 
 print_info "Running AUR package build..."
 # Build Docker arguments
@@ -137,7 +143,6 @@ DOCKER_ARGS=(
   -e GPG_PASSPHRASE
   -e SINGLE_PACKAGE="$SINGLE_PACKAGE"
   -v "$BUILD_ROOT/output:/output"
-  -v "$SRC_DIR:/src"
   -v "$BUILD_DIR:/build:ro"
   -v "$BUILD_ROOT/pkgbuilds:/pkgbuilds:ro"
 )
