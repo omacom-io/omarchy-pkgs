@@ -62,12 +62,12 @@ print_info "Syncing packages..."
 rclone sync "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)" \
   --exclude "omarchy.db*" \
   --exclude "omarchy.files*" \
-  --checksum --progress --copy-links --delete-after -v
+  --checksum --copy-links --delete-after -v
 
 # Then sync database files last to ensure repository integrity
 print_info "Updating repository database..."
 rclone copy "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)/" \
   --include "omarchy.*" \
-  --checksum --progress --copy-links -v
+  --checksum --copy-links -v
 
 print_success "Sync complete!"
