@@ -8,124 +8,53 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/lib/message-helpers.sh"
 
-# Repository configuration
-ARCH_DIR="$BUILD_ROOT/output/x86_64"
-REPO_NAME="omarchy"
-DB_FILE="$ARCH_DIR/${REPO_NAME}.db.tar.zst"
-FILES_FILE="$ARCH_DIR/${REPO_NAME}.files.tar.zst"
+ARCH=${ARCH:-x86_64}
+BUILD_DIR="$BUILD_ROOT/build"
+ARCH_DIR="$BUILD_ROOT/output/$ARCH"
 
-# Function to update repository database
+# Function to update repository database using Docker
 update_database() {
-  print_info "Updating repository database..."
+  print_info "Updating repository database in Docker container..."
 
-  # Change to architecture directory
-  cd "$ARCH_DIR"
-
-  # If clean build requested, remove ALL database files first
-  if [[ "$CLEAN_BUILD" == true ]]; then
-    print_warning "Clean build requested - removing all database files..."
-    rm -f "${REPO_NAME}.db"* "${REPO_NAME}.files"*
-  else
-    # Remove old database files and symlinks
-    rm -f "${REPO_NAME}.db" "${REPO_NAME}.db.tar.zst"
-    rm -f "${REPO_NAME}.files" "${REPO_NAME}.files.tar.zst"
-    rm -f "${REPO_NAME}.db.tar.zst.old" "${REPO_NAME}.files.tar.zst.old"
-  fi
-
-  # Check if there are any packages
-  if ! ls *.pkg.tar.* 1>/dev/null 2>&1; then
-    print_warning "No packages found in $ARCH_DIR"
-    print_warning "Run ./bin/build first to build packages"
+  # Check for Docker
+  if ! command -v docker &>/dev/null; then
+    print_error "Docker is not installed"
     exit 1
   fi
 
-  # Add all packages to the database (excluding signature files)
-  print_success "Adding packages to database..."
-  # Process packages in smaller batches to avoid command line limits
-  # Use -n 5 to process 5 packages at a time
-  find . -maxdepth 1 -name "*.pkg.tar.*" ! -name "*.sig" -exec basename {} \; | xargs -n 5 repo-add "$DB_FILE" || {
-    print_error "Failed to update repository database"
-    exit 1
-  }
-
-  # Create symlinks for compatibility
-  ln -sf "${REPO_NAME}.db.tar.zst" "${REPO_NAME}.db"
-  ln -sf "${REPO_NAME}.files.tar.zst" "${REPO_NAME}.files"
-
-  # Count packages
-  PACKAGE_COUNT=$(ls -1 *.pkg.tar.* 2>/dev/null | wc -l)
-
-  print_success "Database updated successfully!"
-  print_info "Total packages in repository: $PACKAGE_COUNT"
-}
-
-# Function to verify database
-verify_database() {
-  print_info "Verifying repository database..."
-
-  if [[ -f "$DB_FILE" ]]; then
-    # List packages in database
-    print_success "Packages in database:"
-    tar -tf "$DB_FILE" 2>/dev/null | grep -E "^[^/]+/$" | sed 's|/$||' | sort -u | while read -r pkg; do
-      echo "      - $pkg"
-    done
-
-    print_success "Database verification complete!"
-  else
-    print_error "Database file not found!"
+  # Check if Docker daemon is running
+  if ! docker info &>/dev/null; then
+    print_error "Docker daemon is not running"
     exit 1
   fi
-}
 
-# Function to sign database (optional)
-sign_database() {
-  print_info "Signing repository database..."
-
-  # Check if GPG key is available
-  local KEY_ID=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep "sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
-  if [[ -z "$KEY_ID" ]]; then
-    print_warning "No GPG key found, skipping signing"
-    print_warning "To enable signing, create a GPG key and configure it"
-    return
+  # Ensure output directory exists
+  if [[ ! -d "$ARCH_DIR" ]]; then
+    print_error "Output directory not found: $ARCH_DIR"
+    print_warning "Run bin/repo build first"
+    exit 1
   fi
 
-  # Sign the database using the same method as package signing
-  if [[ -n "$GPG_PASSPHRASE" ]]; then
-    # Use passphrase if available (same as build script)
-    gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
-      --detach-sign --local-user "$KEY_ID" "$DB_FILE" 2>/dev/null && {
-      print_success "Database signed successfully!"
-    } || {
-      print_warning "Database signing failed (optional)"
-    }
+  # Make output directory writable for container
+  if [ "$(id -u)" -eq 0 ]; then
+    chmod -R 777 "$ARCH_DIR"
   else
-    # Fall back to agent-based signing
-    gpg --detach-sign --use-agent --local-user "$KEY_ID" "$DB_FILE" 2>/dev/null && {
-      print_success "Database signed successfully!"
-    } || {
-      print_warning "Database signing failed (optional)"
-    }
+    sudo chown -R $(id -u):$(id -g) "$ARCH_DIR" 2>/dev/null || chmod -R 777 "$ARCH_DIR"
   fi
-}
 
-# Function to generate repository statistics
-generate_stats() {
-  print_info "Repository Statistics:"
-
-  cd "$ARCH_DIR"
-
-  # Count packages by type
-  local total_packages=$(ls -1 *.pkg.tar.* 2>/dev/null | wc -l)
-  local total_size=$(du -sh . 2>/dev/null | cut -f1)
-
-  print_success "Total packages: $total_packages"
-  print_success "Repository size: $total_size"
-
-  # List largest packages
-  if [[ $total_packages -gt 0 ]]; then
-    print_success "Largest packages:"
-    ls -lhS *.pkg.tar.* 2>/dev/null | head -5 | awk '{print "      " $9 " (" $5 ")"}'
+  # Build Docker image if needed (reuse the same image as build)
+  if ! docker image inspect omarchy-aur-builder:latest &>/dev/null; then
+    print_info "Building Docker image..."
+    docker build -t omarchy-aur-builder:latest -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
   fi
+
+  # Run repo-add in Docker container
+  docker run --rm \
+    -e ARCH="$ARCH" \
+    -e CLEAN_BUILD="$CLEAN_BUILD" \
+    -v "$BUILD_ROOT/output:/output" \
+    -v "$BUILD_DIR:/build:ro" \
+    omarchy-aur-builder:latest /build/update-repo.sh
 }
 
 # Main execution
@@ -133,38 +62,25 @@ main() {
   print_header "Omarchy Repository Database Manager"
 
   # Parse command line arguments
-  VERIFY_ONLY=false
-  SIGN_DB=false
-  STATS_ONLY=false
   CLEAN_BUILD=false
 
   while [[ $# -gt 0 ]]; do
     case $1 in
-    --verify)
-      VERIFY_ONLY=true
-      shift
-      ;;
-    --sign)
-      SIGN_DB=true
-      shift
-      ;;
-    --stats)
-      STATS_ONLY=true
-      shift
-      ;;
     --clean)
       CLEAN_BUILD=true
       shift
+      ;;
+    --arch)
+      ARCH="$2"
+      shift 2
       ;;
     -h | --help)
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --clean    Remove existing database and rebuild from scratch. Does not remove package files."
-      echo "  --verify   Only verify the database"
-      echo "  --sign     Sign the database with GPG"
-      echo "  --stats    Show repository statistics only"
-      echo "  -h, --help Show this help message"
+      echo "  --arch <arch>  Target architecture (x86_64 or aarch64, default: x86_64)"
+      echo "  --clean        Remove existing database and rebuild from scratch"
+      echo "  -h, --help     Show this help message"
       exit 0
       ;;
     *)
@@ -174,21 +90,10 @@ main() {
     esac
   done
 
-  # Execute based on options
-  if [[ "$STATS_ONLY" == true ]]; then
-    generate_stats
-  elif [[ "$VERIFY_ONLY" == true ]]; then
-    verify_database
-  else
-    update_database
+  print_info "Target architecture: $ARCH"
+  print_info "Output directory: $ARCH_DIR"
 
-    if [[ "$SIGN_DB" == true ]]; then
-      sign_database
-    fi
-
-    verify_database
-    generate_stats
-  fi
+  update_database
 
   echo ""
   print_success "Repository update complete!"

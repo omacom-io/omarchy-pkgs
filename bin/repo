@@ -11,6 +11,11 @@ BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 # Source common functions
 source "$BUILD_ROOT/lib/message-helpers.sh"
 
+# Setup logging
+LOG_DIR="$BUILD_ROOT/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/repo.log"
+
 # Show usage
 show_usage() {
   echo "Usage: $0 <command> [options]"
@@ -45,25 +50,31 @@ fi
 COMMAND="$1"
 shift
 
-# Route to appropriate script
+# Route to appropriate script with logging
 case $COMMAND in
 build)
-  exec "$SCRIPT_DIR/build" "$@"
+  "$SCRIPT_DIR/build" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
   ;;
 update)
-  exec "$SCRIPT_DIR/update-repo" "$@"
+  "$SCRIPT_DIR/update-repo" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
   ;;
 clean)
-  exec "$SCRIPT_DIR/clean-repo" "$@"
+  "$SCRIPT_DIR/clean-repo" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
   ;;
 list)
-  exec "$SCRIPT_DIR/list-packages" "$@"
+  "$SCRIPT_DIR/list-packages" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
   ;;
 remove)
-  exec "$SCRIPT_DIR/remove-package" "$@"
+  "$SCRIPT_DIR/remove-package" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
   ;;
 sync)
-  exec "$SCRIPT_DIR/sync-repo" "$@"
+  "$SCRIPT_DIR/sync-repo" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
   ;;
 -h | --help | help)
   show_usage
