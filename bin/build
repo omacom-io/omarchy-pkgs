@@ -123,17 +123,20 @@ else
   print_success "GPG signing key and passphrase loaded"
 fi
 
-# Build/update the Docker image with host user's UID/GID for proper permissions
+# Build/update the Docker image
 print_info "Building Docker image..."
-HOST_UID=$(id -u)
-HOST_GID=$(id -g)
-docker build \
-  --build-arg BUILD_UID="$HOST_UID" \
-  --build-arg BUILD_GID="$HOST_GID" \
-  -t omarchy-aur-builder:latest \
-  -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
+docker build -t omarchy-aur-builder:latest -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
 
 print_info "Running AUR package build..."
+
+# Ensure output directory is writable by container user
+# The container runs as 'builder' user, so we need to make output writable
+if [ "$(id -u)" -eq 0 ]; then
+  chmod -R 777 "$ARCH_DIR"
+else
+  sudo chown -R $(id -u):$(id -g) "$ARCH_DIR" 2>/dev/null || chmod -R 777 "$ARCH_DIR"
+fi
+
 # Build Docker arguments
 DOCKER_ARGS=(
   --rm
