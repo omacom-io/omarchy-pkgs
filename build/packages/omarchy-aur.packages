@@ -44,6 +44,7 @@ elephant-websearch
 gpu-screen-recorder
 limine-mkinitcpio-hook
 limine-snapper-sync
+localsend
 localsend-bin
 macbook12-spi-driver-dkms
 omarchy-chromium-bin
