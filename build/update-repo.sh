@@ -10,16 +10,9 @@ DB_FILE="$OUTPUT_DIR/${REPO_NAME}.db.tar.zst"
 
 cd "$OUTPUT_DIR"
 
-# If clean build requested, remove ALL database files first
-if [[ "$CLEAN_BUILD" == true ]]; then
-  echo "==> Clean build requested - removing all database files..."
-  rm -f "${REPO_NAME}.db"* "${REPO_NAME}.files"*
-else
-  # Remove old database files and symlinks
-  rm -f "${REPO_NAME}.db" "${REPO_NAME}.db.tar.zst"
-  rm -f "${REPO_NAME}.files" "${REPO_NAME}.files.tar.zst"
-  rm -f "${REPO_NAME}.db.tar.zst.old" "${REPO_NAME}.files.tar.zst.old"
-fi
+# Remove old database files (repo-add will create new ones)
+rm -f "${REPO_NAME}.db" "${REPO_NAME}.db.tar.zst"
+rm -f "${REPO_NAME}.files" "${REPO_NAME}.files.tar.zst"
 
 # Check if there are any packages
 if ! ls *.pkg.tar.* 1>/dev/null 2>&1; then

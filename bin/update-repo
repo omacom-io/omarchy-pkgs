@@ -51,7 +51,6 @@ update_database() {
   # Run repo-add in Docker container
   docker run --rm \
     -e ARCH="$ARCH" \
-    -e CLEAN_BUILD="$CLEAN_BUILD" \
     -v "$BUILD_ROOT/output:/output" \
     -v "$BUILD_DIR:/build:ro" \
     omarchy-aur-builder:latest /build/update-repo.sh
@@ -62,14 +61,8 @@ main() {
   print_header "Omarchy Repository Database Manager"
 
   # Parse command line arguments
-  CLEAN_BUILD=false
-
   while [[ $# -gt 0 ]]; do
     case $1 in
-    --clean)
-      CLEAN_BUILD=true
-      shift
-      ;;
     --arch)
       ARCH="$2"
       shift 2
@@ -79,7 +72,6 @@ main() {
       echo ""
       echo "Options:"
       echo "  --arch <arch>  Target architecture (x86_64 or aarch64, default: x86_64)"
-      echo "  --clean        Remove existing database and rebuild from scratch"
       echo "  -h, --help     Show this help message"
       exit 0
       ;;
