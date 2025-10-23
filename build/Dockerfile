@@ -9,14 +9,18 @@ RUN pacman -Syu --noconfirm && \
 ARG BUILD_UID=1000
 ARG BUILD_GID=1000
 
-RUN groupadd -g ${BUILD_GID} builder && \
-    useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -G wheel builder && \
-    echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+# Only create builder user if not using root (UID 0)
+RUN if [ ${BUILD_UID} -ne 0 ]; then \
+      groupadd -g ${BUILD_GID} builder && \
+      useradd -m -u ${BUILD_UID} -g ${BUILD_GID} -G wheel builder && \
+      echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers; \
+    fi
 
-USER builder
+# Switch to builder user if not root, otherwise stay as root
+USER ${BUILD_UID}
 WORKDIR /src
 
-# Setup GPG directory
+# Setup GPG directory for whichever user we're using
 RUN mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
 
 # Default command
