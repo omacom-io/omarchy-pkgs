@@ -33,27 +33,30 @@ build() {
   cp -r "$startdir/plugin" "$XDG_CONFIG_HOME/nvim/"
   cp "$startdir/lazyvim.json" "$XDG_CONFIG_HOME/nvim/"
 
-  # Add custom option to disable relative numbers
   echo "vim.opt.relativenumber = false" >>"$XDG_CONFIG_HOME/nvim/lua/config/options.lua"
 
-  # Prime LazyVim - download all plugins and TreeSitter parsers in one session
-  # Run for minimum 60 seconds to ensure everything completes
-  echo ":: Installing LazyVim plugins and TreeSitter parsers (minimum 60 seconds)..."
+  echo "Installing LazyVim plugins..."
   nvim --headless \
     "+Lazy! sync" \
+    "+qa!" || true
+
+  echo "Ensuring critical TreeSitter parsers are compiled..."
+  nvim --headless \
+    "+TSInstall bash c diff dtd html javascript jsdoc lua luadoc markdown markdown_inline python regex toml tsx typescript vim vimdoc xml yaml" \
     "+qa!" || true
 }
 
 package() {
   cd "$srcdir"
 
-  # Install everything to /usr/share/omarchy-nvim
   install -dm755 "$pkgdir/usr/share/$pkgname"
 
-  # Copy all the built artifacts
   cp -a "$XDG_CONFIG_HOME/nvim" "$pkgdir/usr/share/$pkgname/config"
   cp -a "$XDG_DATA_HOME/nvim" "$pkgdir/usr/share/$pkgname/data"
-  cp -a "$XDG_CACHE_HOME/nvim" "$pkgdir/usr/share/$pkgname/cache"
+
+  # Remove broken symlinks from queries directory
+  # These will be recreated at runtime by the setup script
+  find "$pkgdir/usr/share/$pkgname/data/site/queries" -type l -delete
 
   # Fix permissions to be readable by all users
   chmod -R 755 "$pkgdir/usr/share/$pkgname"

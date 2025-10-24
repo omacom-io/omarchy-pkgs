@@ -37,25 +37,28 @@ rm -rf $DATA_DIR $CACHE_DIR $STATE_DIR
 # Create directories if needed
 mkdir -p "$(dirname "$CONFIG_DIR")"
 mkdir -p "$(dirname "$DATA_DIR")"
-mkdir -p "$(dirname "$CACHE_DIR")"
 
-# Copy files
+# Copy files (cache will be regenerated on first use)
 cp -r "$PACKAGE_DIR/config" "$CONFIG_DIR"
 cp -r "$PACKAGE_DIR/data" "$DATA_DIR"
-cp -r "$PACKAGE_DIR/cache" "$CACHE_DIR"
 
 # Ensure proper ownership of all nvim directories
 chown -R "${USER}:${USER}" "$CONFIG_DIR"
 chown -R "${USER}:${USER}" "$DATA_DIR"
-chown -R "${USER}:${USER}" "$CACHE_DIR"
 
 # Create link for current theme
 ln -snf "${HOME}/.config/omarchy/current/theme/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
 
+# Restore git working trees
 for dir in $DATA_DIR/lazy/*/; do
   if [ -d "$dir/.git" ]; then
     git --git-dir="$dir/.git" --work-tree="$dir" restore .
   fi
+done
+
+# Recreate TreeSitter query symlinks
+for query_lang in "$DATA_DIR/lazy/nvim-treesitter/runtime/queries"/*; do
+  ln -sf "$query_lang" "$DATA_DIR/site/queries/$(basename "$query_lang")"
 done
 
 echo "Neovim setup complete!"
