@@ -39,11 +39,6 @@ build() {
   nvim --headless \
     "+Lazy! sync" \
     "+qa!" || true
-
-  echo "Ensuring critical TreeSitter parsers are compiled..."
-  nvim --headless \
-    "+TSInstall bash c diff dtd html javascript jsdoc lua luadoc markdown markdown_inline python regex toml tsx typescript vim vimdoc xml yaml" \
-    "+qa!" || true
 }
 
 package() {
@@ -54,9 +49,9 @@ package() {
   cp -a "$XDG_CONFIG_HOME/nvim" "$pkgdir/usr/share/$pkgname/config"
   cp -a "$XDG_DATA_HOME/nvim" "$pkgdir/usr/share/$pkgname/data"
 
-  # Remove broken symlinks from queries directory
-  # These will be recreated at runtime by the setup script
-  find "$pkgdir/usr/share/$pkgname/data/site/queries" -type l -delete
+  # Remove everything from site/ directory but keep the directory to prevent error
+  rm -rf "$pkgdir/usr/share/$pkgname/data/site"/*
+  mkdir -p "$pkgdir/usr/share/$pkgname/data/site"
 
   # Fix permissions to be readable by all users
   chmod -R 755 "$pkgdir/usr/share/$pkgname"

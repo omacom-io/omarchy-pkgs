@@ -56,9 +56,4 @@ for dir in $DATA_DIR/lazy/*/; do
   fi
 done
 
-# Recreate TreeSitter query symlinks
-for query_lang in "$DATA_DIR/lazy/nvim-treesitter/runtime/queries"/*; do
-  ln -sf "$query_lang" "$DATA_DIR/site/queries/$(basename "$query_lang")"
-done
-
 echo "Neovim setup complete!"
