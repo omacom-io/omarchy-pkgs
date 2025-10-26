@@ -24,11 +24,11 @@
 
 #Core Install
 hyprshade install # aether dependency
-aether
+# aether
 
 1password-beta
 1password-cli
-asdcontrol
+# asdcontrol
 elephant install
 elephant-archlinuxpkgs
 elephant-bluetooth
@@ -50,7 +50,7 @@ localsend
 localsend-bin
 macbook12-spi-driver-dkms
 omarchy-chromium-bin
-omarchy-nvim always-build
+# omarchy-nvim always-build
 pinta
 python-terminaltexteffects
 spotify
@@ -59,7 +59,7 @@ typora
 tzupdate
 ufw-docker
 walker
-wayfreeze
+# wayfreeze
 yaru-icon-theme
 yay
 
