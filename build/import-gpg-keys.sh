@@ -39,6 +39,12 @@ else
       exit 1
     fi
     echo "  -> GPG signing test successful"
+
+    # Import public signing key into pacman's keyring for local package verification
+    echo "  -> Adding signing key to pacman keyring..."
+    sudo pacman-key --init 2>/dev/null || exit 1
+    sudo pacman-key --add <(gpg --armor --export "$KEY_ID") 2>/dev/null || exit 1
+    sudo pacman-key --lsign-key "$KEY_ID" 2>/dev/null || exit 1
   else
     echo "  -> ERROR: Could not extract key ID"
     exit 1
