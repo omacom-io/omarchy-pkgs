@@ -1,0 +1,82 @@
+#!/bin/bash
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/lib/message-helpers.sh"
+
+PKGBUILDS_DIR="$BUILD_ROOT/pkgbuilds"
+PACKAGES_FILE="$BUILD_ROOT/build/packages/omarchy-aur.packages"
+TEMP_DIR=$(mktemp -d)
+
+trap "rm -rf $TEMP_DIR" EXIT
+
+# Parse arguments
+SPECIFIC_PACKAGES=()
+if [[ $# -gt 0 ]]; then
+  SPECIFIC_PACKAGES=("$@")
+fi
+
+print_header "AUR Package Sync"
+
+mkdir -p "$PKGBUILDS_DIR"
+
+if [[ ! -f "$PACKAGES_FILE" ]]; then
+  print_error "Package list not found: $PACKAGES_FILE"
+  exit 1
+fi
+
+SYNCED=0
+FAILED=0
+
+# Function to sync a package from AUR
+sync_package() {
+  local package="$1"
+  
+  print_info "Syncing $package from AUR..."
+  
+  cd "$TEMP_DIR"
+  rm -rf "$package"
+  
+  if git clone "https://aur.archlinux.org/${package}.git" 2>/dev/null; then
+    # Create target directory if it doesn't exist
+    mkdir -p "$PKGBUILDS_DIR/$package"
+    
+    # Copy files (not .git directory)
+    cp -r "$package"/* "$PKGBUILDS_DIR/$package/" 2>/dev/null || true
+    cp -r "$package"/.* "$PKGBUILDS_DIR/$package/" 2>/dev/null || true
+    
+    # Remove .git from destination
+    rm -rf "$PKGBUILDS_DIR/$package/.git"
+    
+    ((SYNCED++))
+  else
+    print_warning "Failed to clone $package (may not exist in AUR)"
+    ((FAILED++))
+  fi
+}
+
+# If specific packages provided, sync only those
+if [[ ${#SPECIFIC_PACKAGES[@]} -gt 0 ]]; then
+  for package in "${SPECIFIC_PACKAGES[@]}"; do
+    sync_package "$package"
+  done
+else
+  # Sync all packages from list
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ "$line" =~ ^#.*$ ]] && continue
+    [[ -z "$line" ]] && continue
+
+    package=$(echo "$line" | awk '{print $1}')
+    
+    # Skip GitHub repos (contain /)
+    if [[ "$package" == *"/"* ]]; then
+      continue
+    fi
+    
+    sync_package "$package"
+  done < <(grep -v "^#" "$PACKAGES_FILE" | grep -v "^$")
+fi
+
+echo ""
+print_success "Sync complete!"
+echo "  Synced: $SYNCED"
+echo "  Failed: $FAILED"
