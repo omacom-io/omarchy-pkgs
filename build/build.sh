@@ -132,6 +132,16 @@ build_package() {
     return 0
   fi
 
+  # Import package-specific PGP keys if they exist
+  if [[ -d "keys/pgp" ]]; then
+    echo "    Importing package-specific PGP keys..."
+    for keyfile in keys/pgp/*.asc; do
+      if [[ -f "$keyfile" ]]; then
+        gpg --import "$keyfile" 2>/dev/null && echo "      ✓ Imported $(basename "$keyfile")" || echo "      ⚠ Failed to import $(basename "$keyfile")"
+      fi
+    done
+  fi
+
   # Build package with signing
   MAKEPKG_FLAGS="-scf --noconfirm"
 
