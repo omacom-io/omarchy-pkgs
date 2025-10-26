@@ -23,9 +23,11 @@
 #   yay                                          # Fetches from AUR
 
 #Core Install
+hyprshade install # aether dependency
+aether
+
 1password-beta
 1password-cli
-aether
 asdcontrol
 elephant install
 elephant-archlinuxpkgs
@@ -42,7 +44,6 @@ elephant-todo
 elephant-unicode
 elephant-websearch
 gpu-screen-recorder
-hyprshade # aether dependency
 limine-mkinitcpio-hook
 limine-snapper-sync
 localsend
