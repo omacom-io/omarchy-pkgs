@@ -42,6 +42,7 @@ elephant-todo
 elephant-unicode
 elephant-websearch
 gpu-screen-recorder
+hyprshade # aether dependency
 limine-mkinitcpio-hook
 limine-snapper-sync
 localsend
