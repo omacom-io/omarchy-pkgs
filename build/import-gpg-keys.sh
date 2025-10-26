@@ -42,9 +42,11 @@ else
 
     # Import public signing key into pacman's keyring for local package verification
     echo "  -> Adding signing key to pacman keyring..."
-    sudo pacman-key --init 2>/dev/null || exit 1
-    sudo pacman-key --add <(gpg --armor --export "$KEY_ID") 2>/dev/null || exit 1
-    sudo pacman-key --lsign-key "$KEY_ID" 2>/dev/null || exit 1
+    sudo pacman-key --init || exit 1
+    gpg --armor --export "$KEY_ID" > /tmp/signing-key.asc || exit 1
+    sudo pacman-key --add /tmp/signing-key.asc || exit 1
+    rm -f /tmp/signing-key.asc
+    sudo pacman-key --lsign-key "$KEY_ID" || exit 1
   else
     echo "  -> ERROR: Could not extract key ID"
     exit 1
