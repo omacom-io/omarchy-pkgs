@@ -1,0 +1,21 @@
+pkgbase = nautilus-dropbox
+	pkgdesc = Dropbox Nautilus Extension
+	pkgver = 2022.12.05
+	pkgrel = 1
+	url = https://www.dropbox.com/
+	arch = x86_64
+	license = custom:CC-BY-ND-3
+	license = GPL
+	makedepends = python
+	makedepends = python-docutils
+	makedepends = python-gobject
+	makedepends = gnome-common
+	depends = nautilus
+	depends = libnautilus-extension
+	options = !libtool
+	options = !emptydirs
+	source = https://github.com/dropbox/nautilus-dropbox.git
+	sha256sums = SKIP
+
+pkgname = nautilus-dropbox
+

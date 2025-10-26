@@ -1,0 +1,15 @@
+pkgbase = elephant
+	pkgdesc = general purpose datasource and executor
+	pkgver = 2.7.2
+	pkgrel = 1
+	url = https://github.com/abenz1267/elephant
+	arch = x86_64
+	arch = aarch64
+	license = GPL
+	makedepends = go
+	provides = elephant
+	conflicts = elephant
+	source = https://github.com/abenz1267/elephant/archive/refs/tags/v2.7.2.tar.gz
+	sha256sums = 54ed8a3043e26c671c34e9bb312d6b91835571845a4c47a76d083c4f5c9d5edc
+
+pkgname = elephant
