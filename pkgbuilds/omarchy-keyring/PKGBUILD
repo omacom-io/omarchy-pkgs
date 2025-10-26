@@ -1,0 +1,23 @@
+# Maintainer: Omarchy <pkgs@omarchy.org>
+
+pkgname=omarchy-keyring
+pkgver=20251026
+pkgrel=1
+pkgdesc="Omarchy keyring"
+arch=(any)
+url="https://omarchy.org"
+license=('GPL-3.0-or-later')
+install=$pkgname.install
+source=("omarchy.gpg"
+        "omarchy-revoked"
+        "omarchy-trusted"
+        "$install")
+
+sha512sums=('f9455c60f30984d73ddebecf55a1b6dcb3afba84638c5d78130494bb828f53cfa19d393c27e43514d5847b37dcd0a5601ba39b213c2185ff153001b7221c9c8c'
+            'be688838ca8686e5c90689bf2ab585cef1137c999b48c70b92f67a5c34dc15697b5d11c982ed6d71be1e1e7f7b4e0733884aa97c3f7a339a8ed03577cf74be09'
+            '39767d13b783903d97f68e23100982c645356c7f7dbd9625ae41f4fa217c937f09e0f5dd8e0741f0950f2d9418a160dbce7563e1f4a4599d545e38f986fd8fb9'
+            'b684c496b6866dfea05595965727709ef63b9abe6a89276b89f0dba0271112a0184a934884a6d53d1c5f4d6a01ac36c6d296ce475f5c7d10a11ee397e2926194')
+
+package() {
+    install -D -m0644 -t "${pkgdir}"/usr/share/pacman/keyrings/ 'omarchy'{.gpg,-trusted,-revoked}
+}
