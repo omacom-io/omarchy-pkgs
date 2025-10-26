@@ -1,0 +1,3 @@
+[fcitx5]
+source = "git"
+git = "https://github.com/fcitx/fcitx5.git"
