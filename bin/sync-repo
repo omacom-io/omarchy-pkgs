@@ -58,11 +58,13 @@ fi
 print_info "Syncing to: $REMOTE"
 
 # First sync packages (excluding database files to ensure packages are uploaded first)
+# Use --ignore-existing to not overwrite different versions already on remote
 print_info "Syncing packages..."
 rclone sync "$DIRECTORY" "$REMOTE/$(basename $DIRECTORY)" \
   --exclude "omarchy.db*" \
   --exclude "omarchy.files*" \
-  --checksum --copy-links --delete-after -v
+  --ignore-existing \
+  --copy-links --delete-after -v
 
 # Then sync database files last to ensure repository integrity
 print_info "Updating repository database..."
