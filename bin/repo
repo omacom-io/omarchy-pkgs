@@ -9,7 +9,7 @@ SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
 BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 
 # Source common functions
-source "$BUILD_ROOT/lib/message-helpers.sh"
+source "$BUILD_ROOT/helpers/message-helpers.sh"
 
 # Setup logging with timestamps
 LOG_DIR="$BUILD_ROOT/logs"

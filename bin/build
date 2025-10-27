@@ -5,7 +5,8 @@ set -e
 
 # Source common functions
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
-source "$BUILD_ROOT/lib/message-helpers.sh"
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/docker-helpers.sh"
 
 ARCH=${ARCH:-x86_64}
 
@@ -89,12 +90,8 @@ build_docker_image "$BUILD_DIR"
 print_info "Running AUR package build..."
 
 # Ensure output directories are writable by container user
-# The container runs as 'builder' user, so we need to make output writable
-if [ "$(id -u)" -eq 0 ]; then
-  chmod -R 777 "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR"
-else
-  sudo chown -R $(id -u):$(id -g) "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR" 2>/dev/null || chmod -R 777 "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR"
-fi
+make_dir_writable "$BUILD_OUTPUT_DIR"
+make_dir_writable "$FINAL_OUTPUT_DIR"
 
 # Build Docker arguments
 DOCKER_ARGS=(

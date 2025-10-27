@@ -2,7 +2,8 @@
 set -e
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
-source "$BUILD_ROOT/lib/message-helpers.sh"
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/docker-helpers.sh"
 
 ARCH=${ARCH:-x86_64}
 REPO_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
@@ -60,11 +61,7 @@ build_docker_image "$BUILD_DIR"
 print_info "Removing package..."
 
 # Ensure directory is writable by container user
-if [ "$(id -u)" -eq 0 ]; then
-  chmod -R 777 "$REPO_DIR"
-else
-  sudo chown -R $(id -u):$(id -g) "$REPO_DIR" 2>/dev/null || chmod -R 777 "$REPO_DIR"
-fi
+make_dir_writable "$REPO_DIR"
 
 # Run the removal script in Docker
 docker run --rm \

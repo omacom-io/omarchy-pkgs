@@ -4,7 +4,8 @@
 set -e
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
-source "$BUILD_ROOT/lib/message-helpers.sh"
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/docker-helpers.sh"
 
 ARCH=${ARCH:-x86_64}
 BUILD_OUTPUT_DIR="$BUILD_ROOT/build-output/$ARCH"
@@ -66,11 +67,7 @@ build_docker_image "$BUILD_DIR"
 print_info "Running package signing..."
 
 # Ensure output directory is writable by container user
-if [ "$(id -u)" -eq 0 ]; then
-  chmod -R 777 "$BUILD_OUTPUT_DIR"
-else
-  sudo chown -R $(id -u):$(id -g) "$BUILD_OUTPUT_DIR" 2>/dev/null || chmod -R 777 "$BUILD_OUTPUT_DIR"
-fi
+make_dir_writable "$BUILD_OUTPUT_DIR"
 
 # Run the signing script in Docker
 docker run --rm \

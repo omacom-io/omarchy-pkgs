@@ -6,7 +6,7 @@ set -e
 
 # Source common functions
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
-source "$BUILD_ROOT/lib/message-helpers.sh"
+source "$BUILD_ROOT/helpers/message-helpers.sh"
 
 # Repository configuration
 ARCH=${ARCH:-x86_64}

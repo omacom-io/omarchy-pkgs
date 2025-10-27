@@ -36,24 +36,3 @@ print_header() {
   echo -e "${BOLD}$1${NC}"
   echo -e "${BOLD}================================${NC}"
 }
-
-# Check Docker is available and running
-check_docker() {
-  if ! command -v docker &>/dev/null; then
-    print_error "Docker is not installed"
-    exit 1
-  fi
-
-  if ! docker info &>/dev/null; then
-    print_error "Docker daemon is not running"
-    print_warning "Start Docker with: sudo systemctl start docker"
-    exit 1
-  fi
-}
-
-# Build the Docker image if needed
-build_docker_image() {
-  local build_dir="$1"
-  print_info "Building Docker image..."
-  docker build -t omarchy-aur-builder:latest -f "$build_dir/Dockerfile" "$build_dir"
-}
