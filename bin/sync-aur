@@ -76,6 +76,14 @@ else
   done < <(grep -v "^#" "$PACKAGES_FILE" | grep -v "^$")
 fi
 
+# Apply patches for packages that have them
+cd "$PKGBUILDS_DIR"
+for dir in */; do
+  if [[ -d "$dir/patches" ]]; then
+    (cd "$dir" && git apply patches/*.patch 2>/dev/null || true)
+  fi
+done
+
 echo ""
 print_success "Sync complete!"
 echo "  Synced: $SYNCED"
