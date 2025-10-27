@@ -203,6 +203,26 @@ bin/repo update
    bin/repo release --package package-name
    ```
 
+#### Maintaining Local Patches for AUR Packages
+
+If you need to maintain local modifications to AUR packages that persist through `aur-sync` updates:
+
+1. Create a `patches/` directory inside the package directory:
+   ```bash
+   mkdir pkgbuilds/package-name/patches
+   ```
+
+2. Create patch files for your modifications:
+   ```bash
+   cd pkgbuilds/package-name
+   # Make your changes to PKGBUILD or other files
+   git diff > patches/my-fix.patch
+   ```
+
+3. When `bin/sync-aur` runs, it will automatically apply all `.patch` files found in the `patches/` directory after syncing from AUR.
+
+**Example:** The `opencode` package has `patches/fix-parcel-watcher.patch` which adds platform-specific `@parcel/watcher` installation to the build process.
+
 ### Custom Package
 
 1. Create directory in `pkgbuilds/`:
