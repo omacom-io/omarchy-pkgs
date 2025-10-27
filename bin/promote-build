@@ -1,0 +1,97 @@
+#!/bin/bash
+# Promote packages from build-output to pkgs.omarchy.org
+
+set -e
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/lib/message-helpers.sh"
+
+ARCH=${ARCH:-x86_64}
+BUILD_OUTPUT_DIR="$BUILD_ROOT/build-output/$ARCH"
+FINAL_OUTPUT_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
+
+print_header "Promote Build to Production"
+
+# Parse arguments
+DRY_RUN=false
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --arch)
+    ARCH="$2"
+    shift 2
+    ;;
+  --dry-run)
+    DRY_RUN=true
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --arch <arch>  Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --dry-run      Show what would be copied without copying"
+    echo "  -h, --help     Show this help message"
+    echo ""
+    echo "This script promotes packages from build-output/ to pkgs.omarchy.org/"
+    exit 0
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
+
+print_info "Build output: $BUILD_OUTPUT_DIR"
+print_info "Final output: $FINAL_OUTPUT_DIR"
+
+# Check if build output exists
+if [[ ! -d "$BUILD_OUTPUT_DIR" ]]; then
+  print_error "Build output directory not found: $BUILD_OUTPUT_DIR"
+  print_warning "Run bin/repo build first"
+  exit 1
+fi
+
+# Count packages in build output
+cd "$BUILD_OUTPUT_DIR"
+PACKAGE_COUNT=$(ls -1 *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | wc -l)
+
+if [[ $PACKAGE_COUNT -eq 0 ]]; then
+  print_warning "No packages found in build output"
+  exit 0
+fi
+
+print_info "Found $PACKAGE_COUNT package(s) to promote"
+
+if [[ "$DRY_RUN" == true ]]; then
+  print_warning "DRY RUN MODE - No files will be copied"
+  echo ""
+  print_info "Packages that would be promoted:"
+  ls -1 *.pkg.tar.* 2>/dev/null | grep -v 'omarchy-build\.db' | while read -r pkg; do
+    echo "  - $pkg"
+  done
+else
+  echo ""
+  mkdir -p "$FINAL_OUTPUT_DIR"
+  
+  # Copy all package files (excluding build database)
+  COPIED=0
+  for pkg_file in *.pkg.tar.*; do
+    # Skip build database files
+    [[ "$pkg_file" == omarchy-build.db* ]] && continue
+    
+    if [[ -f "$pkg_file" ]]; then
+      cp -v "$pkg_file" "$FINAL_OUTPUT_DIR/"
+      COPIED=$((COPIED + 1))
+    fi
+  done
+  
+  echo ""
+  print_success "Promoted $COPIED file(s) to pkgs.omarchy.org"
+  
+  # Cleanup build directory after successful promotion
+  print_info "Cleaning up build directory..."
+  cd "$BUILD_OUTPUT_DIR"
+  rm -f *.pkg.tar.* omarchy-build.db* omarchy-build.files*
+  print_success "Build directory cleaned"
+fi

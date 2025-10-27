@@ -9,7 +9,8 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/lib/message-helpers.sh"
 
 # Repository configuration
-ARCH_DIR="$BUILD_ROOT/output/x86_64"
+ARCH=${ARCH:-x86_64}
+ARCH_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
 KEEP_VERSIONS=2
 
 # Function to clean old packages
@@ -55,7 +56,7 @@ clean_packages() {
     local count=${#sorted_files[@]}
 
     if [[ $count -gt $keep ]]; then
-      print_success "  -> Processing $pkgname ($count versions found)"
+      echo "  -> Processing $pkgname ($count versions found)"
 
       # Remove old versions
       for ((i = $keep; i < $count; i++)); do
@@ -64,9 +65,9 @@ clean_packages() {
         space_freed=$((space_freed + size))
 
         if [[ "$dry_run" == true ]]; then
-          print_warning "      Would remove: $file ($(numfmt --to=iec-i --suffix=B $size))"
+          echo "      Would remove: $file ($(numfmt --to=iec-i --suffix=B $size))"
         else
-          print_error "      Removing: $file ($(numfmt --to=iec-i --suffix=B $size))"
+          echo "      Removing: $file ($(numfmt --to=iec-i --suffix=B $size))"
           rm -f "$file"
           rm -f "${file}.sig" 2>/dev/null || true
         fi
@@ -79,14 +80,14 @@ clean_packages() {
   # Summary
   if [[ $total_removed -gt 0 ]]; then
     if [[ "$dry_run" == true ]]; then
-      print_info "  -> Would remove $total_removed old package(s)"
-      print_info "  -> Would free $(numfmt --to=iec-i --suffix=B $space_freed)"
+      echo "  -> Would remove $total_removed old package(s)"
+      echo "  -> Would free $(numfmt --to=iec-i --suffix=B $space_freed)"
     else
-      print_success "  -> Removed $total_removed old package(s)"
-      print_success "  -> Freed $(numfmt --to=iec-i --suffix=B $space_freed)"
+      echo "  -> Removed $total_removed old package(s)"
+      echo "  -> Freed $(numfmt --to=iec-i --suffix=B $space_freed)"
     fi
   else
-    print_warning "  -> No old packages to remove"
+    echo "  -> No old packages to remove"
   fi
 }
 
@@ -121,7 +122,7 @@ remove_all_packages() {
   else
     rm -f *.pkg.tar.*
     rm -f *.db* *.files*
-    print_success "Removed $count package(s) and database files"
+    echo "Removed $count package(s) and database files"
   fi
 }
 
@@ -134,11 +135,12 @@ show_disk_usage() {
   local total_size=$(du -sh . 2>/dev/null | cut -f1)
   local package_count=$(ls -1 *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | wc -l)
 
-  print_success "  -> Total size: $total_size"
-  print_success "  -> Package count: $package_count"
+  echo "  -> Total size: $total_size"
+  echo "  -> Package count: $package_count"
 
   if [[ $package_count -gt 0 ]]; then
-    print_success "  -> Average package size: $(du -b *.pkg.tar.* 2>/dev/null | awk '{sum+=$1; count++} END {print sum/count}' | numfmt --to=iec-i --suffix=B)"
+    local avg_size=$(du -b *.pkg.tar.* 2>/dev/null | awk '{sum+=$1; count++} END {printf "%.0f", sum/count}')
+    echo "  -> Average package size: $(numfmt --to=iec-i --suffix=B $avg_size 2>/dev/null || echo "N/A")"
   fi
 }
 
@@ -216,7 +218,7 @@ main() {
     if [[ "$DRY_RUN" != true ]]; then
       print_info "Updating repository database..."
       "$BUILD_ROOT/bin/update-repo" >/dev/null 2>&1 && {
-        print_success "  -> Database updated successfully!"
+        echo "  -> Database updated successfully!"
       } || {
         print_warning "  -> Database update failed (may need manual update)"
       }
@@ -224,9 +226,6 @@ main() {
 
     show_disk_usage
   fi
-
-  echo ""
-  print_success "Cleanup complete!"
 }
 
 # Run main function

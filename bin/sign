@@ -1,0 +1,129 @@
+#!/bin/bash
+# Sign all packages in build-output
+
+set -e
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/lib/message-helpers.sh"
+
+ARCH=${ARCH:-x86_64}
+BUILD_OUTPUT_DIR="$BUILD_ROOT/build-output/$ARCH"
+
+print_header "Sign Packages"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --arch)
+    ARCH="$2"
+    shift 2
+    ;;
+  -h | --help)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --arch <arch>  Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  -h, --help     Show this help message"
+    echo ""
+    echo "This script signs all packages in build-output/"
+    exit 0
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
+
+print_info "Build output: $BUILD_OUTPUT_DIR"
+
+# Check if build output exists
+if [[ ! -d "$BUILD_OUTPUT_DIR" ]]; then
+  print_error "Build output directory not found: $BUILD_OUTPUT_DIR"
+  print_warning "Run bin/repo build first"
+  exit 1
+fi
+
+# Get GPG key from 1Password or environment
+if [[ -z "$GPG_PRIVATE_KEY" ]]; then
+  print_info "Fetching GPG signing key from 1Password..."
+  GPG_PRIVATE_KEY=$(op document get "Omarchy GPG Private Key" --account=omarchy.1password.com) || {
+    print_error "Failed to fetch GPG key from 1Password"
+    exit 1
+  }
+fi
+
+# Get passphrase from 1Password or environment
+if [[ -z "$GPG_PASSPHRASE" ]]; then
+  print_info "Fetching GPG key passphrase from 1Password..."
+  GPG_PASSPHRASE=$(op item get "Omarchy GPG Private Key" --account=omarchy.1password.com --fields password --reveal) || {
+    print_error "Failed to fetch GPG passphrase from 1Password"
+    exit 1
+  }
+fi
+
+# Import GPG key temporarily
+print_info "Importing GPG signing key..."
+echo "$GPG_PRIVATE_KEY" | gpg --batch --import 2>/dev/null || {
+  print_error "Failed to import signing key"
+  exit 1
+}
+
+# Get key ID
+KEY_ID=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep "sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+
+if [[ -z "$KEY_ID" ]]; then
+  print_error "Could not extract key ID"
+  exit 1
+fi
+
+print_success "GPG signing key loaded: $KEY_ID"
+
+# Find all package files
+cd "$BUILD_OUTPUT_DIR"
+PACKAGE_FILES=$(ls -1 *.pkg.tar.zst 2>/dev/null || true)
+
+if [[ -z "$PACKAGE_FILES" ]]; then
+  print_warning "No packages found in build output"
+  exit 0
+fi
+
+PACKAGE_COUNT=$(echo "$PACKAGE_FILES" | wc -l)
+print_info "Found $PACKAGE_COUNT package(s) to sign"
+
+echo ""
+
+# Sign all packages
+SIGNED_COUNT=0
+FAILED_COUNT=0
+
+for pkg_file in $PACKAGE_FILES; do
+  echo -n "Signing: $pkg_file ... "
+  
+  # Remove existing signature if present
+  rm -f "$pkg_file.sig"
+  
+  # Sign the package
+  if gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+    --detach-sign --use-agent --no-armor --local-user "$KEY_ID" "$pkg_file" 2>/dev/null; then
+    echo "✓"
+    SIGNED_COUNT=$((SIGNED_COUNT + 1))
+  else
+    echo "✗"
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+  fi
+done
+
+echo ""
+
+# Summary
+if [[ $FAILED_COUNT -eq 0 ]]; then
+  print_success "Successfully signed all $SIGNED_COUNT package(s)"
+else
+  print_warning "Signed $SIGNED_COUNT package(s), failed $FAILED_COUNT"
+  exit 1
+fi
+
+# Clear GPG data
+unset GPG_PRIVATE_KEY
+unset GPG_PASSPHRASE

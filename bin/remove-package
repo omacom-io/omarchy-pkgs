@@ -4,8 +4,10 @@ set -e
 # Get the directory of this script
 SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
 BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
+source "$BUILD_ROOT/lib/message-helpers.sh"
 
-ARCH_DIR="$BUILD_ROOT/x86_64"
+ARCH=${ARCH:-x86_64}
+ARCH_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
 cd "$ARCH_DIR"
 
 if [[ -z "$1" ]]; then
@@ -21,8 +23,18 @@ if [[ -z "$FILES" ]]; then
   exit 1
 fi
 
-# Confirm with gum
-gum confirm "Remove package '$FILES'?"
+# Confirm removal
+echo "Package files to remove:"
+for file in $FILES; do
+  echo "  - $file"
+done
+echo ""
+read -p "Remove package '$1'? (y/N) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  print_info "Removal cancelled"
+  exit 0
+fi
 
 # Remove from database
 repo-remove omarchy.db.tar.zst "$1"

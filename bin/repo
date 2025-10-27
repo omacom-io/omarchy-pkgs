@@ -11,30 +11,45 @@ BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 # Source common functions
 source "$BUILD_ROOT/lib/message-helpers.sh"
 
-# Setup logging
+# Setup logging with timestamps
 LOG_DIR="$BUILD_ROOT/logs"
 mkdir -p "$LOG_DIR"
-LOG_FILE="$LOG_DIR/repo.log"
+
+# Rotate logs first - keep only the 10 most recent
+if [[ -d "$LOG_DIR" ]]; then
+  cd "$LOG_DIR"
+  # List logs by modification time (newest first), skip first 9, delete the rest
+  # This way after we create the new log, we'll have exactly 10
+  ls -t repo_*.log 2>/dev/null | tail -n +10 | xargs -r rm -f
+  cd "$BUILD_ROOT"
+fi
+
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+LOG_FILE="$LOG_DIR/repo_${TIMESTAMP}.log"
 
 # Show usage
 show_usage() {
   echo "Usage: $0 <command> [options]"
   echo ""
   echo "Commands:"
-  echo "  build       Build AUR packages"
+  echo "  release     Run complete workflow: build → sign → promote → clean → sync"
+  echo "  build       Build AUR packages (unsigned)"
+  echo "  sign        Sign all packages in build-output"
+  echo "  promote     Promote build to production (build-output → pkgs.omarchy.org)"
   echo "  update      Update repository database"
   echo "  clean       Clean old package versions"
   echo "  list        List packages in repository"
   echo "  remove      Remove a specific package"
   echo "  sync        Sync repository to remote"
   echo ""
-  echo "Examples:"
-  echo "  $0 build                    # Build all packages"
-  echo "  $0 update --clean           # Update database (clean rebuild)"
-  echo "  $0 clean --dry-run          # Preview cleanup"
-  echo "  $0 list                     # List all packages"
-  echo "  $0 remove package-name      # Remove a package"
-  echo "  $0 sync x86_64              # Sync to remote"
+  echo "Typical workflows:"
+  echo "  $0 release                  # Complete release workflow"
+  echo ""
+  echo "  $0 build                    # Manual step-by-step:"
+  echo "  $0 sign"
+  echo "  $0 promote"
+  echo "  $0 clean"
+  echo "  $0 sync pkgs.omarchy.org/x86_64"
   echo ""
   echo "For command-specific help, use:"
   echo "  $0 <command> --help"
@@ -52,8 +67,20 @@ shift
 
 # Route to appropriate script with logging
 case $COMMAND in
+release)
+  "$SCRIPT_DIR/release" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
+  ;;
 build)
   "$SCRIPT_DIR/build" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
+  ;;
+sign)
+  "$SCRIPT_DIR/sign" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
+  ;;
+promote)
+  "$SCRIPT_DIR/promote-build" "$@" 2>&1 | tee "$LOG_FILE"
   exit ${PIPESTATUS[0]}
   ;;
 update)

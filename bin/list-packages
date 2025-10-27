@@ -4,7 +4,8 @@
 SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
 BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 
-ARCH_DIR="$BUILD_ROOT/output/x86_64"
+ARCH=${ARCH:-x86_64}
+ARCH_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
 DB_FILE="$ARCH_DIR/omarchy.db.tar.zst"
 
 if [[ ! -f "$DB_FILE" ]]; then
