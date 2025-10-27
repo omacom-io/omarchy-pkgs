@@ -1,35 +1,78 @@
 #!/bin/bash
 set -e
 
-# Get the directory of this script
-SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
-BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/docker-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 
-ARCH_DIR="$BUILD_ROOT/x86_64"
-cd "$ARCH_DIR"
+print_header "Remove Package"
 
 if [[ -z "$1" ]]; then
+  print_error "Package name required"
+  echo ""
   echo "Usage: $0 <package-name>"
   exit 1
 fi
 
-# Find exact package files (not subpackages like yay-debug)
-FILES=$(ls ${1}-[0-9]*.pkg.tar.* 2>/dev/null || true)
+PACKAGE_NAME="$1"
 
-if [[ -z "$FILES" ]]; then
-  echo "Package '$1' not found"
+print_info "Target architecture: $ARCH"
+print_info "Repository: $REPO_DIR"
+
+# Check if repository exists
+if [[ ! -d "$REPO_DIR" ]]; then
+  print_error "Repository directory not found: $REPO_DIR"
   exit 1
 fi
 
-# Confirm with gum
-gum confirm "Remove package '$FILES'?"
+# Check Docker is available
+check_docker
 
-# Remove from database
-repo-remove omarchy.db.tar.zst "$1"
+# Find package files to confirm before running Docker
+cd "$REPO_DIR"
+FILES=$(ls ${PACKAGE_NAME}-[0-9]*.pkg.tar.* 2>/dev/null || true)
 
-# Remove files (only the exact package, not subpackages)
+if [[ -z "$FILES" ]]; then
+  print_error "Package '$PACKAGE_NAME' not found"
+  exit 1
+fi
+
+# Confirm removal
+echo ""
+echo "Package files to remove:"
 for file in $FILES; do
-  rm -f "$file"
+  echo "  - $file"
 done
+echo ""
+read -p "Remove package '$PACKAGE_NAME'? (y/N) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  print_info "Removal cancelled"
+  exit 0
+fi
 
-echo "Package '$1' removed"
+# Build/update the Docker image
+build_docker_image "$BUILD_DIR"
+
+print_info "Removing package..."
+
+# Ensure directory is writable by container user
+make_dir_writable "$REPO_DIR"
+
+# Run the removal script in Docker
+docker run --rm \
+  -e ARCH="$ARCH" \
+  -v "$BUILD_ROOT/pkgs.omarchy.org:/pkgs.omarchy.org" \
+  -v "$BUILD_DIR:/build:ro" \
+  omarchy-aur-builder:latest /build/remove-package.sh "$PACKAGE_NAME"
+
+RESULT=$?
+
+echo ""
+if [[ $RESULT -eq 0 ]]; then
+  print_success "Package removal completed successfully!"
+else
+  print_error "Package removal failed"
+  exit $RESULT
+fi

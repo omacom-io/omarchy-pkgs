@@ -1,56 +1,31 @@
-# Omarchy Package List (AUR, GitHub, and Local)
-# Supports AUR packages, GitHub repositories, and local PKGBUILDs
-#
-# Build source priority:
-#   1. Local: Checks /pkgbuilds/<packagename>/ first
-#   2. GitHub: If contains "/", fetches from GitHub
-#   3. AUR: Otherwise, fetches from AUR
-#
-# Formats:
-#   - Local: packagename [options] (if exists in /pkgbuilds/)
-#   - GitHub: owner/repo [options]
-#   - AUR: packagename [options]
-#
-# Options:
-#   - skip-pgp: Skip PGP signature verification
-#   - install: Install package in container (for dependencies)
-#   - always-build: Always build package with timestamp version (unique filename)
-#   - source:owner/repo: For -git packages, specify the actual source repo to check for updates
-#
-# Examples:
-#   asdcontrol-git source:nikosdion/asdcontrol  # Uses local PKGBUILD, checks nikosdion/asdcontrol for updates
-#   omacom-io/some-package                      # Fetches from GitHub
-#   yay                                          # Fetches from AUR
+# AUR Sync List - Packages to sync from AUR with bin/aur-sync
 
 #Core Install
-hyprshade install # aether dependency
-aether
-
 1password-beta
 1password-cli
-asdcontrol
+aether
 elephant install
 elephant-archlinuxpkgs
 elephant-bluetooth
 elephant-calc
 elephant-clipboard
-elephant-desktopapplications install
+elephant-desktopapplications
 elephant-files
 elephant-menus
-elephant-providerlist install
+elephant-providerlist
 elephant-runner
 elephant-symbols
 elephant-todo
 elephant-unicode
 elephant-websearch
 gpu-screen-recorder
+hyprshade # aether dependency
 limine-mkinitcpio-hook
 limine-snapper-sync
 localsend
 localsend-bin
 macbook12-spi-driver-dkms
 omarchy-chromium-bin
-omarchy-nvim always-build
 pinta
 python-terminaltexteffects
 spotify
@@ -59,7 +34,6 @@ typora
 tzupdate
 ufw-docker
 walker
-wayfreeze
 yaru-icon-theme
 yay
 
@@ -69,10 +43,10 @@ cursor-bin
 claude-code
 lmstudio
 crush-bin
-bun-bin install # for opencode
+bun-bin # for opencode
 opencode
 symfony-cli
-dropbox install
+dropbox
 dropbox-cli
 nautilus-dropbox
 openai-codex-bin

@@ -1,137 +1,114 @@
 #!/bin/bash
-# Build script that handles both AUR and GitHub packages inside Docker container
+# Simplified build script - builds all packages in /pkgbuilds/
 
 # Import GPG keys
 /build/import-gpg-keys.sh || exit 1
 
-# Add Omarchy repository to pacman.conf if database exists
+# Setup directories
 ARCH=${ARCH:-x86_64}
-OUTPUT_DIR="/output/$ARCH"
+BUILD_OUTPUT_DIR="/build-output/$ARCH"
+FINAL_OUTPUT_DIR="/pkgs.omarchy.org/$ARCH"
 
-if [[ -f "$OUTPUT_DIR/omarchy.db.tar.zst" ]]; then
-  echo "==> Configuring Omarchy repository for dependency resolution..."
+mkdir -p "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR"
+
+# Configure Omarchy repositories for dependency resolution
+echo "==> Configuring Omarchy repositories for dependency resolution..."
+
+# Always add omarchy-build repo (for incremental builds)
+# Packages in build-output are unsigned, so use SigLevel = Never
+# Use the build-output dir as additional cache to avoid file copying issues
+sudo tee -a /etc/pacman.conf > /dev/null <<EOF
+
+[options]
+CacheDir = /var/cache/pacman/pkg
+CacheDir = $BUILD_OUTPUT_DIR
+
+[omarchy-build]
+SigLevel = Never
+Server = file://$BUILD_OUTPUT_DIR
+EOF
+echo "  -> omarchy-build (priority 1): $BUILD_OUTPUT_DIR"
+
+# Initialize empty build database if it doesn't exist
+cd "$BUILD_OUTPUT_DIR"
+if [[ ! -f "omarchy-build.db.tar.zst" ]]; then
+  # Create an empty database
+  repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
+  ln -sf omarchy-build.db.tar.zst omarchy-build.db
+else
+  # Database exists, check if we need to rebuild it from packages
+  if ls *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | grep -q .; then
+    echo "==> Rebuilding build database from existing packages..."
+    ls *.pkg.tar.* | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | xargs -r repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
+    ln -sf omarchy-build.db.tar.zst omarchy-build.db
+  fi
+fi
+
+# Add omarchy repo if it has a database (stable packages)
+if [[ -f "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" ]] || [[ -f "$FINAL_OUTPUT_DIR/omarchy.db" ]]; then
   sudo tee -a /etc/pacman.conf > /dev/null <<EOF
 
 [omarchy]
 SigLevel = Optional TrustAll
-Server = file://$OUTPUT_DIR
+Server = file://$FINAL_OUTPUT_DIR
 EOF
-  echo "  -> Omarchy repository added to pacman.conf"
-else
-  echo "==> No Omarchy repository database found (this is normal for first build)"
+  echo "  -> omarchy (priority 2): $FINAL_OUTPUT_DIR"
 fi
 
 # Sync pacman database
 sudo pacman -Sy
 
-echo "==> Package Builder (AUR & GitHub)"
+echo "==> Package Builder"
 echo "==> Target architecture: $ARCH"
-echo "==> Output directory: $OUTPUT_DIR"
-echo "==> Processing omarchy-aur.packages"
-
-mkdir -p "$OUTPUT_DIR"
+echo "==> Build workspace: $BUILD_OUTPUT_DIR"
+echo "==> Final output: $FINAL_OUTPUT_DIR"
 
 FAILED_PACKAGES=""
 SUCCESSFUL_PACKAGES=""
 SKIPPED_PACKAGES=""
 
-# Get version from local repo database
+# Get version from final output (production packages)
 get_local_version() {
   local pkg="$1"
-  if [[ -f "$OUTPUT_DIR/omarchy.db.tar.zst" ]]; then
-    # Find the exact desc file for this package
-    # For VCS packages, version might start with 'r' instead of a digit
-    local desc_file=$(tar -tf "$OUTPUT_DIR/omarchy.db.tar.zst" | grep "^${pkg}-[0-9r].*/desc$" | head -1)
-
+  if [[ -f "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" ]]; then
+    local desc_file=$(tar -tf "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" | grep "^${pkg}-[0-9r].*/desc$" | head -1)
     if [[ -n "$desc_file" ]]; then
-      # Extract that specific file and get the version
-      tar -xOf "$OUTPUT_DIR/omarchy.db.tar.zst" "$desc_file" 2>/dev/null |
+      tar -xOf "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" "$desc_file" 2>/dev/null |
         awk '/%VERSION%/{getline; print; exit}'
     fi
   fi
 }
 
-# Common build logic for all package types
-# Expects to be called with pkg directory already prepared in /src/$pkg
+# Build a package from /pkgbuilds/
 build_package() {
   local pkg="$1"
-  local opts="$2"
-  local check_repo="$3"  # Optional: repository to check for updates (for -git packages)
-
+  
+  echo ""
+  echo "  -> Processing: $pkg"
+  
+  # Copy to build directory
+  cd /src
+  rm -rf "$pkg"
+  cp -r "/pkgbuilds/$pkg" "$pkg"
   cd "/src/$pkg" || return 1
-
-  # Handle version checking
-  local should_build=true
-
-  # Check for always-build option
-  if [[ "$opts" == *"always-build"* ]]; then
-    echo "    Note: Package flagged as always-build, will use timestamp version"
-
-    # Inject timestamp into pkgver to ensure unique filename
-    local timestamp=$(date +%Y%m%d.%H%M%S)
-    echo "    Injecting timestamp: $timestamp"
-
-    if grep -q '^pkgver=' PKGBUILD; then
-      local current_pkgver=$(grep '^pkgver=' PKGBUILD | cut -d'=' -f2 | tr -d "'\"")
-      sed -i "s/^pkgver=.*/pkgver=${current_pkgver}.${timestamp}/" PKGBUILD
-      echo "    Modified pkgver to: ${current_pkgver}.${timestamp}"
-    fi
-  elif [[ "$pkg" == *-git ]] && [[ -n "$check_repo" ]]; then
-    # For -git packages, check if we need to rebuild based on commit
-    local latest_commit=$(git ls-remote "https://github.com/${check_repo}.git" HEAD 2>/dev/null | cut -f1 | head -c 7)
-
-    if [[ -n "$latest_commit" ]]; then
-      local local_version=$(get_local_version "$pkg")
-
-      if [[ -n "$local_version" ]]; then
-        # Extract commit hash from version (format: r<rev>.<commit>-<pkgrel>)
-        local local_commit=$(echo "$local_version" | grep -oE '\.[a-f0-9]{7}' | cut -d'.' -f2)
-
-        if [[ "$local_commit" == "$latest_commit" ]]; then
-          echo "    ✓ Up to date: commit $latest_commit - Skipping"
-          SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
-          should_build=false
-        else
-          echo "    Update available: $local_commit -> $latest_commit"
-        fi
-      else
-        echo "    New package (commit: $latest_commit)"
-      fi
-    fi
-  elif [[ ! "$pkg" == *-git ]]; then
-    # For non-git packages, check PKGBUILD version
-    local pkgbuild_version=$(bash -c 'source PKGBUILD; echo "${pkgver}-${pkgrel}"' 2>/dev/null)
-
-    if [[ -n "$pkgbuild_version" ]]; then
-      local local_version=$(get_local_version "$pkg")
-
-      if [[ "$local_version" == "$pkgbuild_version" ]]; then
-        echo "    ✓ Up to date: $local_version - Skipping"
-        SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
-        should_build=false
-      elif [[ -n "$local_version" ]]; then
-        echo "    Update available: $local_version -> $pkgbuild_version"
-      else
-        echo "    New package (version: $pkgbuild_version)"
-      fi
-    fi
+  
+  # Get PKGBUILD version (including epoch if present)
+  local pkgbuild_version=$(bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
+  
+  if [[ -z "$pkgbuild_version" ]]; then
+    echo "    ❌ Failed to read PKGBUILD version"
+    FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+    return 1
   fi
-
-  # If package is up to date but has install flag, install it for dependencies
-  if [[ "$should_build" == false ]] && [[ "$opts" == *"install"* ]]; then
-    echo "    Installing existing package for dependencies..."
-    local latest_pkg=$(ls -t $OUTPUT_DIR/${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
-    if [[ -f "$latest_pkg" ]]; then
-      sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
-    fi
-    return 0
+  
+  # Show version info (version check already done in first pass)
+  local local_version=$(get_local_version "$pkg")
+  if [[ -n "$local_version" ]]; then
+    echo "    Update available: $local_version -> $pkgbuild_version"
+  else
+    echo "    New package (version: $pkgbuild_version)"
   fi
-
-  # Skip building if not needed
-  if [[ "$should_build" == false ]]; then
-    return 0
-  fi
-
+  
   # Import package-specific PGP keys if they exist
   if [[ -d "keys/pgp" ]]; then
     echo "    Importing package-specific PGP keys..."
@@ -141,286 +118,278 @@ build_package() {
       fi
     done
   fi
-
-  # Build package with signing
+  
+  # Build package without signing (signing is done separately)
   MAKEPKG_FLAGS="-scf --noconfirm"
-
-  # Only add sign flag if we have a GPG key configured
-  if grep -q "^GPGKEY=" ~/.makepkg.conf 2>/dev/null; then
-    GPG_KEY=$(grep "^GPGKEY=" ~/.makepkg.conf | cut -d'"' -f2)
-    echo "    Using GPG key: $GPG_KEY"
-    MAKEPKG_FLAGS="$MAKEPKG_FLAGS --sign --key $GPG_KEY"
-  else
-    echo "    No GPG key configured in makepkg.conf"
-  fi
-
-  # Check for skip-pgp in options
-  if [[ "$opts" == *"skip-pgp"* ]]; then
-    MAKEPKG_FLAGS="$MAKEPKG_FLAGS --skippgpcheck"
-    echo "    (skipping PGP verification)"
-  fi
-
+  
   if makepkg $MAKEPKG_FLAGS; then
-    # Copy to output (including signature files)
+    # Copy to build workspace
     for pkg_file in *.pkg.tar.*; do
       if [[ -f "$pkg_file" ]]; then
-        cp "$pkg_file" $OUTPUT_DIR/
-        # Check for install option to make package available for dependencies
-        if [[ "$opts" == *"install"* ]] && [[ "$pkg_file" =~ ^${pkg}-[0-9].*\.pkg\.tar\..* ]] && [[ "$pkg_file" != *.sig ]]; then
-          echo "    Installing locally for dependencies..."
-          sudo pacman -U --noconfirm --needed "$pkg_file" 2>/dev/null || true
-        fi
+        cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
       fi
     done
+    
+    # If this package is a dependency of another package being built,
+    # update the build database so it's available via pacman
+    if [[ "${INSTALL_PACKAGES[$pkg]}" == "1" ]]; then
+      echo "    Updating omarchy-build database (needed as dependency)..."
+      cd "$BUILD_OUTPUT_DIR"
+      
+      # Find the package file we just built (not .sig)
+      local new_pkg=$(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+      
+      if [[ -n "$new_pkg" ]]; then
+        echo "    Adding $new_pkg to database..."
+        
+        # Add to omarchy-build database
+        repo-add omarchy-build.db.tar.zst "$new_pkg" 2>&1 | grep -E "==>|error" || true
+        ln -sf omarchy-build.db.tar.zst omarchy-build.db
+        
+        # Sync filesystem to ensure package file is fully written
+        sync
+        
+        # Refresh pacman databases so it sees the new package
+        echo "    Refreshing pacman database..."
+        sudo pacman -Sy 2>&1 | grep -E "omarchy-build|error" || true
+        
+        # Verify the package is in the database
+        if pacman -Sl omarchy-build 2>/dev/null | grep -q "^omarchy-build $pkg "; then
+          echo "    ✓ Package available in omarchy-build repo"
+        else
+          echo "    ⚠ Warning: Package not found in omarchy-build repo"
+        fi
+      fi
+      
+      cd /src/$pkg
+    fi
+    
     echo "    ✓ Successfully built $pkg"
     SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $pkg"
     return 0
   else
-    echo "    ❌ Failed to build $pkg"
+    echo "    ❌ Makepkg failed for $pkg"
+    echo "    DEBUG: Files in build directory:"
+    ls -lah *.pkg.tar.* 2>&1 | head -20 || echo "    No package files found"
     FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
     return 1
   fi
 }
 
-# Prepare and build a local PKGBUILD package
-build_local_package() {
+# Get package dependencies from PKGBUILD
+get_package_deps() {
   local pkg="$1"
-  local opts="$2"
-
-  # Check if package exists locally
-  if [[ ! -d "/pkgbuilds/$pkg" ]] || [[ ! -f "/pkgbuilds/$pkg/PKGBUILD" ]]; then
-    return 1  # Not a local package
+  local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
+  
+  if [[ ! -f "$pkgbuild" ]]; then
+    return
   fi
-
-  echo ""
-  echo "  -> Processing local: $pkg..."
-  echo "    Source: /pkgbuilds/$pkg"
-
-  # Check for source repo override for -git packages
-  local check_repo=""
-  if [[ "$opts" =~ source:([^ ]+) ]]; then
-    check_repo="${BASH_REMATCH[1]}"
-    echo "    Update check repository: $check_repo"
-  fi
-
-  # Copy to build directory
-  cd /src
-  rm -rf "$pkg"
-  cp -r "/pkgbuilds/$pkg" "$pkg"
-
-  # Build the package
-  build_package "$pkg" "$opts" "$check_repo"
-  local result=$?
-
-  cd /src
-  return $result
-}
-
-# Build a GitHub package
-build_github_package() {
-  local github_repo="$1"
-  local opts="$2"
-
-  echo ""
-  echo "  -> Processing GitHub: $github_repo..."
-
-  # Extract owner and repo name
-  local owner=$(echo "$github_repo" | cut -d'/' -f1)
-  local repo=$(echo "$github_repo" | cut -d'/' -f2)
-
-  if [[ -z "$owner" ]] || [[ -z "$repo" ]]; then
-    echo "    ❌ Invalid GitHub format. Use: owner/repo"
-    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
-    return 1
-  fi
-
-  # Use repo name as package name for local tracking
-  local pkg="$repo"
-
-  echo "    GitHub repository: https://github.com/$github_repo"
-
-  # Check for source repo override for -git packages
-  local check_repo=""
-  if [[ "$opts" =~ source:([^ ]+) ]]; then
-    check_repo="${BASH_REMATCH[1]}"
-    echo "    Update check repository: $check_repo"
-  elif [[ "$pkg" == *-git ]]; then
-    # Default to the GitHub repo for checking updates
-    check_repo="$github_repo"
-  fi
-
-  # Fresh clone for building
-  cd /src
-  rm -rf "$pkg"
-
-  git clone "https://github.com/${github_repo}.git" "$pkg" || {
-    echo "    ❌ Failed to clone $github_repo"
-    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
-    return 1
-  }
-
-  cd "$pkg"
-
-  # Check if PKGBUILD exists
-  if [[ ! -f "PKGBUILD" ]]; then
-    echo "    ❌ No PKGBUILD found in repository"
-    FAILED_PACKAGES="$FAILED_PACKAGES $github_repo"
-    cd /src
-    return 1
-  fi
-
-  # Build the package using common logic
-  build_package "$pkg" "$opts" "$check_repo"
-  local result=$?
-
-  cd /src
-  return $result
-}
-
-# Build an AUR package
-build_aur_package() {
-  local pkg="$1"
-  local opts="$2"
-
-  echo ""
-  echo "  -> Processing AUR: $pkg..."
-
-  # Get version from AUR API (also gets package base)
-  local aur_info=$(curl -s "https://aur.archlinux.org/rpc/?v=5&type=info&arg[]=$pkg")
-  local aur_version=$(echo "$aur_info" | jq -r '.results[0].Version // empty')
-  local pkg_base=$(echo "$aur_info" | jq -r '.results[0].PackageBase // empty')
-
-  if [[ -z "$aur_version" ]]; then
-    echo "    ❌ Package not found in AUR"
-    FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
-    return 1
-  fi
-
-  # Use package name as base if not specified
-  if [[ -z "$pkg_base" ]]; then
-    pkg_base="$pkg"
-  elif [[ "$pkg_base" != "$pkg" ]]; then
-    echo "    Using package base: $pkg_base"
-  fi
-
-  # Check if we need to build (quick check before cloning)
-  local local_version=$(get_local_version "$pkg")
-
-  if [[ "$local_version" == "$aur_version" ]]; then
-    echo "    ✓ Up to date: $local_version - Skipping"
-    SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
-
-    # If install option is set, install the existing package for dependencies
-    if [[ "$opts" == *"install"* ]]; then
-      echo "    Installing existing package for dependencies..."
-      local latest_pkg=$(ls -t $OUTPUT_DIR/${pkg}-[0-9]*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
-      if [[ -f "$latest_pkg" ]]; then
-        sudo pacman -U --noconfirm --needed "$latest_pkg" 2>/dev/null || true
-      fi
+  
+  # Extract depends and makedepends, filter for packages in our pkgbuilds/
+  (
+    source "$pkgbuild" 2>/dev/null
+    echo "${depends[@]} ${makedepends[@]}"
+  ) | tr ' ' '\n' | while read -r dep; do
+    # Strip version constraints (e.g., 'hyprshade>=1.0' -> 'hyprshade')
+    dep=$(echo "$dep" | sed 's/[<>=].*$//')
+    # Check if this dependency exists in our pkgbuilds
+    if [[ -d "/pkgbuilds/$dep" ]]; then
+      echo "$dep"
     fi
-    return 0
-  elif [[ -n "$local_version" ]]; then
-    echo "    Update available: $local_version -> $aur_version"
+  done
+}
+
+# Simple dependency-aware build order
+# Build packages with no internal deps first, then those that depend on them
+build_order() {
+  local -a all_packages=()
+  local -a result=()
+  local -A package_deps_count=()
+  
+  # Collect all packages
+  for pkgdir in /pkgbuilds/*/; do
+    [[ ! -d "$pkgdir" ]] && continue
+    local pkg=$(basename "$pkgdir")
+    [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
+    all_packages+=("$pkg")
+    
+    # Count internal dependencies
+    local dep_count=0
+    while read -r dep; do
+      ((dep_count++))
+    done < <(get_package_deps "$pkg")
+    package_deps_count[$pkg]=$dep_count
+  done
+  
+  # Sort: packages with fewer deps first
+  while IFS= read -r pkg; do
+    result+=("$pkg")
+  done < <(
+    for pkg in "${all_packages[@]}"; do
+      echo "${package_deps_count[$pkg]} $pkg"
+    done | sort -n | cut -d' ' -f2-
+  )
+  
+  # Output in build order
+  printf '%s\n' "${result[@]}"
+}
+
+# Check which packages need building (version check only)
+check_needs_build() {
+  local pkg="$1"
+  local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
+  
+  [[ ! -f "$pkgbuild" ]] && return 1
+  
+  # Get PKGBUILD version (including epoch if present)
+  local pkgbuild_version=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
+  [[ -z "$pkgbuild_version" ]] && return 1
+  
+  # Check if already built
+  local local_version=$(get_local_version "$pkg")
+  
+  if [[ "$local_version" == "$pkgbuild_version" ]]; then
+    return 1  # Already up to date
   else
-    echo "    New package (AUR: $aur_version)"
+    return 0  # Needs building
   fi
-
-  # Clone from AUR
-  cd /src
-  rm -rf "$pkg"
-
-  git clone "https://aur.archlinux.org/${pkg_base}.git" "$pkg" || {
-    echo "    ❌ Failed to clone $pkg_base"
-    FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
-    return 1
-  }
-
-  # Build the package using common logic
-  # No check_repo for AUR packages - version checking is done above
-  build_package "$pkg" "$opts" ""
-  local result=$?
-
-  cd /src
-  return $result
 }
 
 # Main execution
 cd /src
 
-# Determine input source: single package or package file
-if [[ -n "$SINGLE_PACKAGE" ]]; then
-  echo "==> Single Package Build Mode: $SINGLE_PACKAGE"
-  PACKAGE_INPUT=$(echo "$SINGLE_PACKAGE")
+TOTAL_COUNT=0
+
+echo "==> Checking which packages need building..."
+
+# First pass: determine which packages need building
+PACKAGES_TO_BUILD=()
+for pkgdir in /pkgbuilds/*/; do
+  [[ ! -d "$pkgdir" ]] && continue
+  pkg=$(basename "$pkgdir")
+  [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
+  
+  if check_needs_build "$pkg"; then
+    PACKAGES_TO_BUILD+=("$pkg")
+  else
+    echo "  ✓ $pkg - already up to date"
+    SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
+  fi
+done
+
+if [[ ${#PACKAGES_TO_BUILD[@]} -eq 0 ]]; then
+  echo "==> All packages are up to date!"
 else
-  echo "==> Processing omarchy-aur.packages"
-  PACKAGE_INPUT=$(cat /build/packages/omarchy-aur.packages)
+  echo "==> ${#PACKAGES_TO_BUILD[@]} package(s) need building: ${PACKAGES_TO_BUILD[@]}"
+  echo "==> Determining build order based on dependencies..."
+  
+  # Second pass: order only the packages that need building
+  # Strategy: build packages with no unmet dependencies first
+  declare -A unmet_deps_count  # How many dependencies does this package still need?
+  declare -A blocks_packages    # Which packages are waiting for this one?
+  
+  # Count unmet dependencies for each package
+  for pkg in "${PACKAGES_TO_BUILD[@]}"; do
+    unmet_deps_count[$pkg]=0
+  done
+  
+  # Build the dependency relationships
+  for pkg in "${PACKAGES_TO_BUILD[@]}"; do
+    while IFS= read -r dep; do
+      # Only care about deps that are being built in this run
+      for build_pkg in "${PACKAGES_TO_BUILD[@]}"; do
+        if [[ "$dep" == "$build_pkg" ]]; then
+          # pkg needs dep, so increment pkg's unmet count
+          ((unmet_deps_count[$pkg]++))
+          # Track that dep blocks pkg from building
+          blocks_packages[$dep]="${blocks_packages[$dep]} $pkg"
+        fi
+      done
+    done < <(get_package_deps "$pkg")
+  done
+  
+  # Start with packages that have all dependencies met (count = 0)
+  ready_to_build=()
+  for pkg in "${PACKAGES_TO_BUILD[@]}"; do
+    if [[ ${unmet_deps_count[$pkg]} -eq 0 ]]; then
+      ready_to_build+=("$pkg")
+    fi
+  done
+  
+  # Build packages as dependencies become available
+  ORDERED_PACKAGES=()
+  while [[ ${#ready_to_build[@]} -gt 0 ]]; do
+    # Take the first ready package
+    current="${ready_to_build[0]}"
+    ready_to_build=("${ready_to_build[@]:1}")
+    ORDERED_PACKAGES+=("$current")
+    
+    # This package is now built, so packages waiting for it can proceed
+    for blocked_pkg in ${blocks_packages[$current]}; do
+      ((unmet_deps_count[$blocked_pkg]--))
+      if [[ ${unmet_deps_count[$blocked_pkg]} -eq 0 ]]; then
+        ready_to_build+=("$blocked_pkg")
+      fi
+    done
+  done
+  
+  # Check for circular dependencies
+  if [[ ${#ORDERED_PACKAGES[@]} -ne ${#PACKAGES_TO_BUILD[@]} ]]; then
+    echo "ERROR: Circular dependency detected!"
+    exit 1
+  fi
+  
+  echo "==> Build order: ${ORDERED_PACKAGES[@]}"
+  
+  # Determine which packages need to be installed for other packages being built
+  declare -A INSTALL_PACKAGES
+  for pkg in "${ORDERED_PACKAGES[@]}"; do
+    while IFS= read -r dep; do
+      [[ -z "$dep" ]] && continue
+      # Only install if it's being built in this run
+      for build_pkg in "${ORDERED_PACKAGES[@]}"; do
+        [[ "$dep" == "$build_pkg" ]] && INSTALL_PACKAGES["$dep"]=1
+      done
+    done < <(get_package_deps "$pkg")
+  done
+  
+  if [[ ${#INSTALL_PACKAGES[@]} -gt 0 ]]; then
+    echo "==> Packages needed as dependencies: ${!INSTALL_PACKAGES[@]}"
+  fi
+  
+  # Build packages in dependency order
+  for pkg in "${ORDERED_PACKAGES[@]}"; do
+    ((TOTAL_COUNT++))
+    build_package "$pkg"
+  done
 fi
 
-# Read and process packages
-if [[ -n "$PACKAGE_INPUT" ]]; then
-  TOTAL_COUNT=0
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "==> Build Summary"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  while IFS= read -r line || [ -n "$line" ]; do
-    [[ "$line" =~ ^#.*$ ]] && continue
-    [[ -z "$line" ]] && continue
+# Count results
+SUCCESS_COUNT=$(echo $SUCCESSFUL_PACKAGES | wc -w)
+SKIPPED_COUNT=$(echo $SKIPPED_PACKAGES | wc -w)
+FAILED_COUNT=$(echo $FAILED_PACKAGES | wc -w)
 
-    ((TOTAL_COUNT++))
+echo "  Total packages: $TOTAL_COUNT"
+echo "  ✓ Built:        $SUCCESS_COUNT"
+echo "  ⏭  Skipped:      $SKIPPED_COUNT (already up-to-date)"
+echo "  ❌ Failed:       $FAILED_COUNT"
 
-    # Parse package name and options
-    package=$(echo "$line" | awk '{print $1}')
-    options=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
-
-    # Check build source in priority order:
-    # 1. Local PKGBUILD in /pkgbuilds/
-    # 2. GitHub repository (contains /)
-    # 3. AUR package
-
-    # Try local package first
-    if build_local_package "$package" "$options"; then
-      # Package was handled locally (either built, skipped, or failed)
-      continue
-    fi
-
-    # Check if this is a GitHub package (contains /)
-    if [[ "$package" == *"/"* ]]; then
-      # GitHub package format: owner/repo
-      build_github_package "$package" "$options"
-    else
-      # Regular AUR package
-      build_aur_package "$package" "$options"
-    fi
-  done <<< "$PACKAGE_INPUT"
-
+# List failures if any
+if [[ -n "$FAILED_PACKAGES" ]]; then
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "==> Build Summary"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-  # Count results
-  SUCCESS_COUNT=$(echo $SUCCESSFUL_PACKAGES | wc -w)
-  SKIPPED_COUNT=$(echo $SKIPPED_PACKAGES | wc -w)
-  FAILED_COUNT=$(echo $FAILED_PACKAGES | wc -w)
-
-  echo "  Total packages: $TOTAL_COUNT"
-  echo "  ✓ Built:        $SUCCESS_COUNT"
-  echo "  ⏭  Skipped:      $SKIPPED_COUNT (already up-to-date)"
-  echo "  ❌ Failed:       $FAILED_COUNT"
-
-  # List failures if any
-  if [[ -n "$FAILED_PACKAGES" ]]; then
-    echo ""
-    echo "Failed packages:"
-    for pkg in $FAILED_PACKAGES; do
-      echo "  - $pkg"
-    done
-    echo ""
-    echo "==> Some packages failed to build"
-    exit 1
-  else
-    echo ""
-    echo "==> All packages processed successfully!"
-  fi
-else
-  echo "Error: No packages to build"
+  echo "Failed packages:"
+  for pkg in $FAILED_PACKAGES; do
+    echo "  - $pkg"
+  done
+  echo ""
+  echo "==> Some packages failed to build"
   exit 1
 fi
+
+echo ""
+echo "==> All packages processed successfully!"

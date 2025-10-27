@@ -6,52 +6,34 @@ set -e
 
 # Source common functions
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
-source "$BUILD_ROOT/lib/message-helpers.sh"
-
-ARCH=${ARCH:-x86_64}
-BUILD_DIR="$BUILD_ROOT/build"
-ARCH_DIR="$BUILD_ROOT/output/$ARCH"
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/docker-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 
 # Function to update repository database using Docker
 update_database() {
   print_info "Updating repository database in Docker container..."
 
-  # Check for Docker
-  if ! command -v docker &>/dev/null; then
-    print_error "Docker is not installed"
-    exit 1
-  fi
-
-  # Check if Docker daemon is running
-  if ! docker info &>/dev/null; then
-    print_error "Docker daemon is not running"
-    exit 1
-  fi
+  # Check Docker is available
+  check_docker
 
   # Ensure output directory exists
-  if [[ ! -d "$ARCH_DIR" ]]; then
-    print_error "Output directory not found: $ARCH_DIR"
+  if [[ ! -d "$REPO_DIR" ]]; then
+    print_error "Output directory not found: $REPO_DIR"
     print_warning "Run bin/repo build first"
     exit 1
   fi
 
   # Make output directory writable for container
-  if [ "$(id -u)" -eq 0 ]; then
-    chmod -R 777 "$ARCH_DIR"
-  else
-    sudo chown -R $(id -u):$(id -g) "$ARCH_DIR" 2>/dev/null || chmod -R 777 "$ARCH_DIR"
-  fi
+  make_dir_writable "$REPO_DIR"
 
-  # Build Docker image if needed (reuse the same image as build)
-  if ! docker image inspect omarchy-aur-builder:latest &>/dev/null; then
-    print_info "Building Docker image..."
-    docker build -t omarchy-aur-builder:latest -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
-  fi
+  # Build Docker image
+  build_docker_image "$BUILD_DIR"
 
   # Run repo-add in Docker container
   docker run --rm \
     -e ARCH="$ARCH" \
-    -v "$BUILD_ROOT/output:/output" \
+    -v "$BUILD_ROOT/pkgs.omarchy.org:/output" \
     -v "$BUILD_DIR:/build:ro" \
     omarchy-aur-builder:latest /build/update-repo.sh
 }
@@ -65,6 +47,7 @@ main() {
     case $1 in
     --arch)
       ARCH="$2"
+      update_arch_paths
       shift 2
       ;;
     -h | --help)
@@ -83,7 +66,7 @@ main() {
   done
 
   print_info "Target architecture: $ARCH"
-  print_info "Output directory: $ARCH_DIR"
+  print_info "Output directory: $REPO_DIR"
 
   update_database
 

@@ -1,6 +1,6 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=omarchy-nvim
-pkgver=2025.10.14
+pkgver=2025.10.26
 pkgrel=1
 pkgdesc="Pre-built LazyVim configuration with cached plugins"
 arch=('any')
@@ -9,8 +9,9 @@ license=('MIT')
 depends=('neovim>=0.9.0' 'git')
 makedepends=('git' 'nodejs' 'npm' 'tree-sitter-cli')
 conflicts=('omarchy-lazyvim')
-source=("git+https://github.com/LazyVim/starter.git")
-sha256sums=('SKIP')
+options=('!debug')
+source=("https://github.com/LazyVim/starter/archive/refs/heads/main.tar.gz")
+sha256sums=('d865d50211358358d3c3c1e356773c1e3de1e8964215d85eb1b4c77521e17488')
 
 build() {
   cd "$srcdir"
@@ -25,7 +26,7 @@ build() {
   mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
 
   # Setup LazyVim starter
-  cp -r "$srcdir/starter" "$XDG_CONFIG_HOME/nvim"
+  cp -r "$srcdir/starter-main" "$XDG_CONFIG_HOME/nvim"
   rm -rf "$XDG_CONFIG_HOME/nvim/.git"
 
   # Copy our custom configs

@@ -1,0 +1,23 @@
+pkgbase = hyprshade
+	pkgdesc = Hyprland shade configuration tool
+	pkgver = 4.0.0
+	pkgrel = 1
+	url = https://github.com/loqusion/hyprshade
+	arch = any
+	license = MIT
+	makedepends = git
+	makedepends = python-build
+	makedepends = python-hatchling
+	makedepends = python-installer
+	depends = hyprland
+	depends = python-click
+	depends = python-more-itertools
+	depends = util-linux
+	optdepends = systemd: activate shader on schedule
+	provides = hyprshade
+	source = https://files.pythonhosted.org/packages/source/h/hyprshade/hyprshade-4.0.0.tar.gz
+	source = https://raw.githubusercontent.com/loqusion/hyprshade/4.0.0/examples/config.toml
+	sha256sums = a0acb5569def4e8444081fbb8701e3f8bed5b5a26415b96c0ee2152d362bd5d9
+	sha256sums = 411517f06dc484fb8aad729d73d66cb5b91982ac0c5908184ec9343974392f0a
+
+pkgname = hyprshade

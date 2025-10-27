@@ -1,0 +1,88 @@
+#!/bin/bash
+# Sign all packages in build-output
+
+set -e
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/docker-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
+
+print_header "Sign Packages"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --arch)
+    ARCH="$2"
+    update_arch_paths
+    shift 2
+    ;;
+  -h | --help)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --arch <arch>  Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  -h, --help     Show this help message"
+    echo ""
+    echo "This script signs all packages in build-output/"
+    exit 0
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
+
+print_info "Target architecture: $ARCH"
+print_info "Build output: $BUILD_OUTPUT_DIR"
+
+# Check if build output exists
+if [[ ! -d "$BUILD_OUTPUT_DIR" ]]; then
+  print_error "Build output directory not found: $BUILD_OUTPUT_DIR"
+  print_warning "Run bin/repo build first"
+  exit 1
+fi
+
+# Check Docker is available
+check_docker
+
+# Check GPG credentials are in environment
+if [[ -z "$GPG_PRIVATE_KEY" ]]; then
+  print_error "GPG_PRIVATE_KEY environment variable not set"
+  exit 1
+fi
+
+if [[ -z "$GPG_PASSPHRASE" ]]; then
+  print_error "GPG_PASSPHRASE environment variable not set"
+  exit 1
+fi
+
+# Build/update the Docker image (reuse same image as build)
+build_docker_image "$BUILD_DIR"
+
+print_info "Running package signing..."
+
+# Ensure output directory is writable by container user
+make_dir_writable "$BUILD_OUTPUT_DIR"
+
+# Run the signing script in Docker
+docker run --rm \
+  -e ARCH="$ARCH" \
+  -e GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY" \
+  -e GPG_PASSPHRASE="$GPG_PASSPHRASE" \
+  -v "$BUILD_ROOT/build-output:/build-output" \
+  -v "$BUILD_DIR:/build:ro" \
+  omarchy-aur-builder:latest /build/sign.sh
+
+SIGN_RESULT=$?
+
+# Summary
+echo ""
+if [[ $SIGN_RESULT -eq 0 ]]; then
+  print_success "Package signing completed successfully!"
+else
+  print_error "Package signing failed"
+  exit $SIGN_RESULT
+fi

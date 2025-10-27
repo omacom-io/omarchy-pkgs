@@ -2,7 +2,7 @@
 
 # Source common functions
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
-source "$BUILD_ROOT/lib/message-helpers.sh"
+source "$BUILD_ROOT/helpers/message-helpers.sh"
 
 # Default remote (production)
 DEFAULT_REMOTE="pkgs.omarchy.org:omarchy-pkgs"
@@ -10,18 +10,18 @@ REMOTE="$DEFAULT_REMOTE"
 SKIP_PROD_CHECK=false
 
 # Parse arguments
-if [ $# -eq 0 ]; then
+if [ $# -eq 0 ] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
   echo "Usage: $0 <directory> [options]"
   echo ""
   echo "Options:"
-  echo "  --remote <remote>      Specify rclone remote (default: $DEFAULT_REMOTE)"
+  echo "  --remote <remote>      Rclone remote destination (default: $DEFAULT_REMOTE)"
   echo "  --skip-prod-check      Skip production sync confirmation"
   echo ""
   echo "Examples:"
-  echo "  $0 x86_64                                  # Sync to production (with confirmation)"
-  echo "  $0 x86_64 --remote test:bucket             # Sync to test remote"
-  echo "  $0 x86_64 --skip-prod-check                # Sync to production without confirmation"
-  exit 1
+  echo "  $0 pkgs.omarchy.org/x86_64                      # Sync to production (with confirmation)"
+  echo "  $0 pkgs.omarchy.org/x86_64 --remote dev-pkgs:/  # Sync to dev remote"
+  echo "  $0 pkgs.omarchy.org/x86_64 --skip-prod-check    # Sync without confirmation"
+  exit 0
 fi
 
 DIRECTORY="$1"
@@ -49,13 +49,15 @@ done
 if [[ "$REMOTE" == "$DEFAULT_REMOTE" ]] && [[ "$SKIP_PROD_CHECK" != true ]]; then
   print_warning "You are about to sync to PRODUCTION ($REMOTE)"
   echo ""
-  gum confirm "Are you sure you want to sync to production?" || {
+  read -p "Are you sure you want to sync to production? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     print_info "Sync cancelled"
     exit 0
-  }
+  fi
 fi
 
-print_info "Syncing to: $REMOTE"
+print_info "Syncing to: $REMOTE/$(basename $DIRECTORY)"
 
 # First sync packages (excluding database files to ensure packages are uploaded first)
 # Use --ignore-existing to not overwrite different versions already on remote
