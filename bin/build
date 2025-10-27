@@ -39,10 +39,6 @@ while [[ $# -gt 0 ]]; do
     ARCH="$2"
     shift 2
     ;;
-  --skip-signing)
-    SKIP_SIGNING=true
-    shift
-    ;;
   --package)
     SINGLE_PACKAGE="$2"
     shift 2
@@ -52,7 +48,6 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "Options:"
     echo "  --arch <arch>        Target architecture (x86_64 or aarch64, default: x86_64)"
-    echo "  --skip-signing       Build packages without GPG signing"
     echo "  --package <name>     Build only the specified package (with optional options)"
     echo "  -h, --help           Show this help message"
     echo ""
@@ -64,7 +59,6 @@ while [[ $# -gt 0 ]]; do
     echo "  Options can be appended after package name (skip-pgp, install, always-build, etc.)"
     echo ""
     echo "Examples:"
-    echo "  $0 --skip-signing"
     echo "  $0 --arch aarch64"
     echo "  $0 --package yay"
     echo "  $0 --package \"elephant install\""
@@ -99,10 +93,6 @@ else
   print_info "Building single package: $SINGLE_PACKAGE"
 fi
 
-# GPG is no longer used during build - signing happens in separate step
-# But we still need to import verification keys for package validation
-export SKIP_SIGNING=true
-
 # Build/update the Docker image
 print_info "Building Docker image..."
 docker build -t omarchy-aur-builder:latest -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
@@ -121,7 +111,6 @@ fi
 DOCKER_ARGS=(
   --rm
   -e ARCH="$ARCH"
-  -e SKIP_SIGNING
   -e SINGLE_PACKAGE="$SINGLE_PACKAGE"
   -v "$BUILD_ROOT/build-output:/build-output"
   -v "$BUILD_ROOT/pkgs.omarchy.org:/pkgs.omarchy.org"
