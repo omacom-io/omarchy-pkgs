@@ -8,6 +8,7 @@ source "$BUILD_ROOT/lib/message-helpers.sh"
 
 ARCH=${ARCH:-x86_64}
 BUILD_OUTPUT_DIR="$BUILD_ROOT/build-output/$ARCH"
+BUILD_DIR="$BUILD_ROOT/build"
 
 print_header "Sign Packages"
 
@@ -35,6 +36,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+print_info "Target architecture: $ARCH"
 print_info "Build output: $BUILD_OUTPUT_DIR"
 
 # Check if build output exists
@@ -44,86 +46,59 @@ if [[ ! -d "$BUILD_OUTPUT_DIR" ]]; then
   exit 1
 fi
 
-# Get GPG key from 1Password or environment
+# Check for Docker
+if ! command -v docker &>/dev/null; then
+  print_error "Docker is not installed"
+  exit 1
+fi
+
+# Check if Docker daemon is running
+if ! docker info &>/dev/null; then
+  print_error "Docker daemon is not running"
+  print_warning "Start Docker with: sudo systemctl start docker"
+  exit 1
+fi
+
+# Check GPG credentials are in environment
 if [[ -z "$GPG_PRIVATE_KEY" ]]; then
-  print_info "Fetching GPG signing key from 1Password..."
-  GPG_PRIVATE_KEY=$(op document get "Omarchy GPG Private Key" --account=omarchy.1password.com) || {
-    print_error "Failed to fetch GPG key from 1Password"
-    exit 1
-  }
+  print_error "GPG_PRIVATE_KEY environment variable not set"
+  exit 1
 fi
 
-# Get passphrase from 1Password or environment
 if [[ -z "$GPG_PASSPHRASE" ]]; then
-  print_info "Fetching GPG key passphrase from 1Password..."
-  GPG_PASSPHRASE=$(op item get "Omarchy GPG Private Key" --account=omarchy.1password.com --fields password --reveal) || {
-    print_error "Failed to fetch GPG passphrase from 1Password"
-    exit 1
-  }
-fi
-
-# Import GPG key temporarily
-print_info "Importing GPG signing key..."
-echo "$GPG_PRIVATE_KEY" | gpg --batch --import 2>/dev/null || {
-  print_error "Failed to import signing key"
-  exit 1
-}
-
-# Get key ID
-KEY_ID=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep "sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
-
-if [[ -z "$KEY_ID" ]]; then
-  print_error "Could not extract key ID"
+  print_error "GPG_PASSPHRASE environment variable not set"
   exit 1
 fi
 
-print_success "GPG signing key loaded: $KEY_ID"
+# Build/update the Docker image (reuse same image as build)
+print_info "Building Docker image..."
+docker build -t omarchy-aur-builder:latest -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
 
-# Find all package files
-cd "$BUILD_OUTPUT_DIR"
-PACKAGE_FILES=$(ls -1 *.pkg.tar.zst 2>/dev/null || true)
+print_info "Running package signing..."
 
-if [[ -z "$PACKAGE_FILES" ]]; then
-  print_warning "No packages found in build output"
-  exit 0
+# Ensure output directory is writable by container user
+if [ "$(id -u)" -eq 0 ]; then
+  chmod -R 777 "$BUILD_OUTPUT_DIR"
+else
+  sudo chown -R $(id -u):$(id -g) "$BUILD_OUTPUT_DIR" 2>/dev/null || chmod -R 777 "$BUILD_OUTPUT_DIR"
 fi
 
-PACKAGE_COUNT=$(echo "$PACKAGE_FILES" | wc -l)
-print_info "Found $PACKAGE_COUNT package(s) to sign"
+# Run the signing script in Docker
+docker run --rm \
+  -e ARCH="$ARCH" \
+  -e GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY" \
+  -e GPG_PASSPHRASE="$GPG_PASSPHRASE" \
+  -v "$BUILD_ROOT/build-output:/build-output" \
+  -v "$BUILD_DIR:/build:ro" \
+  omarchy-aur-builder:latest /build/sign.sh
 
-echo ""
-
-# Sign all packages
-SIGNED_COUNT=0
-FAILED_COUNT=0
-
-for pkg_file in $PACKAGE_FILES; do
-  echo -n "Signing: $pkg_file ... "
-  
-  # Remove existing signature if present
-  rm -f "$pkg_file.sig"
-  
-  # Sign the package
-  if gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
-    --detach-sign --use-agent --no-armor --local-user "$KEY_ID" "$pkg_file" 2>/dev/null; then
-    echo "✓"
-    SIGNED_COUNT=$((SIGNED_COUNT + 1))
-  else
-    echo "✗"
-    FAILED_COUNT=$((FAILED_COUNT + 1))
-  fi
-done
-
-echo ""
+SIGN_RESULT=$?
 
 # Summary
-if [[ $FAILED_COUNT -eq 0 ]]; then
-  print_success "Successfully signed all $SIGNED_COUNT package(s)"
+echo ""
+if [[ $SIGN_RESULT -eq 0 ]]; then
+  print_success "Package signing completed successfully!"
 else
-  print_warning "Signed $SIGNED_COUNT package(s), failed $FAILED_COUNT"
-  exit 1
+  print_error "Package signing failed"
+  exit $SIGN_RESULT
 fi
-
-# Clear GPG data
-unset GPG_PRIVATE_KEY
-unset GPG_PASSPHRASE
