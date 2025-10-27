@@ -1,4 +1,3 @@
-#!/bin/bash
 # Docker helper functions for Omarchy package build system
 
 # Check Docker is available and running

@@ -7,16 +7,10 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/docker-helpers.sh"
-
-ARCH=${ARCH:-x86_64}
-
-BUILD_OUTPUT_DIR="$BUILD_ROOT/build-output/$ARCH"
-FINAL_OUTPUT_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
-SRC_DIR="$BUILD_ROOT/src"
-BUILD_DIR="$BUILD_ROOT/build"
+source "$BUILD_ROOT/helpers/paths.sh"
 
 # Create directories if they don't exist
-mkdir -p "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR" "$SRC_DIR"
+mkdir -p "$BUILD_OUTPUT_DIR" "$REPO_DIR" "$SRC_DIR"
 
 print_header "Omarchy AUR Package Builder"
 
@@ -28,6 +22,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
   --arch)
     ARCH="$2"
+    update_arch_paths
     shift 2
     ;;
   --package)
@@ -67,7 +62,7 @@ done
 # Show target architecture after parsing args
 print_info "Target architecture: $ARCH"
 print_info "Build workspace: $BUILD_OUTPUT_DIR"
-print_info "Final output: $FINAL_OUTPUT_DIR"
+print_info "Final output: $REPO_DIR"
 
 # Clean build-output directory to start fresh
 print_info "Cleaning build workspace..."
@@ -91,7 +86,7 @@ print_info "Running AUR package build..."
 
 # Ensure output directories are writable by container user
 make_dir_writable "$BUILD_OUTPUT_DIR"
-make_dir_writable "$FINAL_OUTPUT_DIR"
+make_dir_writable "$REPO_DIR"
 
 # Build Docker arguments
 DOCKER_ARGS=(

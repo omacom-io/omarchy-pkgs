@@ -4,10 +4,7 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/docker-helpers.sh"
-
-ARCH=${ARCH:-x86_64}
-REPO_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
-BUILD_DIR="$BUILD_ROOT/build"
+source "$BUILD_ROOT/helpers/paths.sh"
 
 print_header "Remove Package"
 

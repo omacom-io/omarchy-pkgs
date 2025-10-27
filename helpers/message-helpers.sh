@@ -1,4 +1,3 @@
-#!/bin/bash
 # Common printing functions for Omarchy scripts
 
 # Colors

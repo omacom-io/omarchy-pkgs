@@ -7,10 +7,9 @@ set -e
 # Source common functions
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 
 # Repository configuration
-ARCH=${ARCH:-x86_64}
-ARCH_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
 KEEP_VERSIONS=2
 
 # Function to clean old packages
@@ -20,7 +19,7 @@ clean_packages() {
 
   print_info "Cleaning old packages (keeping $keep versions)..."
 
-  cd "$ARCH_DIR"
+  cd "$REPO_DIR"
 
   # Group packages by name
   declare -A packages
@@ -105,7 +104,7 @@ remove_all_packages() {
     fi
   fi
 
-  cd "$ARCH_DIR"
+  cd "$REPO_DIR"
 
   local count=$(ls -1 *.pkg.tar.* 2>/dev/null | wc -l)
 
@@ -130,7 +129,7 @@ remove_all_packages() {
 show_disk_usage() {
   print_info "Repository Disk Usage:"
 
-  cd "$ARCH_DIR"
+  cd "$REPO_DIR"
 
   local total_size=$(du -sh . 2>/dev/null | cut -f1)
   local package_count=$(ls -1 *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | wc -l)

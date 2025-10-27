@@ -10,9 +10,9 @@ BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 
 # Source common functions
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 
 # Setup logging with timestamps
-LOG_DIR="$BUILD_ROOT/logs"
 mkdir -p "$LOG_DIR"
 
 # Rotate logs first - keep only the 10 most recent

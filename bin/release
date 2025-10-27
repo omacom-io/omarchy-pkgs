@@ -5,8 +5,8 @@ set -e
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 
-ARCH=${ARCH:-x86_64}
 SYNC_REMOTE=""
 SKIP_PROD_CHECK=false
 

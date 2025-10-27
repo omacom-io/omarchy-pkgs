@@ -8,10 +8,7 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/docker-helpers.sh"
-
-ARCH=${ARCH:-x86_64}
-BUILD_DIR="$BUILD_ROOT/build"
-ARCH_DIR="$BUILD_ROOT/pkgs.omarchy.org/$ARCH"
+source "$BUILD_ROOT/helpers/paths.sh"
 
 # Function to update repository database using Docker
 update_database() {
@@ -21,14 +18,14 @@ update_database() {
   check_docker
 
   # Ensure output directory exists
-  if [[ ! -d "$ARCH_DIR" ]]; then
-    print_error "Output directory not found: $ARCH_DIR"
+  if [[ ! -d "$REPO_DIR" ]]; then
+    print_error "Output directory not found: $REPO_DIR"
     print_warning "Run bin/repo build first"
     exit 1
   fi
 
   # Make output directory writable for container
-  make_dir_writable "$ARCH_DIR"
+  make_dir_writable "$REPO_DIR"
 
   # Build Docker image
   build_docker_image "$BUILD_DIR"
@@ -50,6 +47,7 @@ main() {
     case $1 in
     --arch)
       ARCH="$2"
+      update_arch_paths
       shift 2
       ;;
     -h | --help)
@@ -68,7 +66,7 @@ main() {
   done
 
   print_info "Target architecture: $ARCH"
-  print_info "Output directory: $ARCH_DIR"
+  print_info "Output directory: $REPO_DIR"
 
   update_database
 

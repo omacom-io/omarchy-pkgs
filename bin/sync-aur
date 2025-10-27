@@ -2,8 +2,8 @@
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 
-PKGBUILDS_DIR="$BUILD_ROOT/pkgbuilds"
 PACKAGES_FILE="$BUILD_ROOT/build/packages/omarchy-aur.packages"
 TEMP_DIR=$(mktemp -d)
 
