@@ -1,6 +1,6 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=omarchy-nvim
-pkgver=2025.10.26
+pkgver=2025.10.27
 pkgrel=1
 pkgdesc="Pre-built LazyVim configuration with cached plugins"
 arch=('any')
