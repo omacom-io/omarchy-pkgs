@@ -46,18 +46,8 @@ if [[ ! -d "$BUILD_OUTPUT_DIR" ]]; then
   exit 1
 fi
 
-# Check for Docker
-if ! command -v docker &>/dev/null; then
-  print_error "Docker is not installed"
-  exit 1
-fi
-
-# Check if Docker daemon is running
-if ! docker info &>/dev/null; then
-  print_error "Docker daemon is not running"
-  print_warning "Start Docker with: sudo systemctl start docker"
-  exit 1
-fi
+# Check Docker is available
+check_docker
 
 # Check GPG credentials are in environment
 if [[ -z "$GPG_PRIVATE_KEY" ]]; then
@@ -71,8 +61,7 @@ if [[ -z "$GPG_PASSPHRASE" ]]; then
 fi
 
 # Build/update the Docker image (reuse same image as build)
-print_info "Building Docker image..."
-docker build -t omarchy-aur-builder:latest -f "$BUILD_DIR/Dockerfile" "$BUILD_DIR"
+build_docker_image "$BUILD_DIR"
 
 print_info "Running package signing..."
 
