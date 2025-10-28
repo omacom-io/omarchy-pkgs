@@ -91,7 +91,7 @@ build_package() {
   rm -rf "$pkg"
   cp -r "/pkgbuilds/$pkg" "$pkg"
   cd "/src/$pkg" || return 1
-  
+
   # Get PKGBUILD version (including epoch if present)
   local pkgbuild_version=$(bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
   
@@ -129,40 +129,34 @@ build_package() {
         cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
       fi
     done
-    
-    # If this package is a dependency of another package being built,
-    # update the build database so it's available via pacman
-    if [[ "${INSTALL_PACKAGES[$pkg]}" == "1" ]]; then
-      echo "    Updating omarchy-build database (needed as dependency)..."
-      cd "$BUILD_OUTPUT_DIR"
-      
-      # Find the package file we just built (not .sig)
-      local new_pkg=$(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
-      
-      if [[ -n "$new_pkg" ]]; then
-        echo "    Adding $new_pkg to database..."
-        
-        # Add to omarchy-build database
-        repo-add omarchy-build.db.tar.zst "$new_pkg" 2>&1 | grep -E "==>|error" || true
-        ln -sf omarchy-build.db.tar.zst omarchy-build.db
-        
-        # Sync filesystem to ensure package file is fully written
-        sync
-        
-        # Refresh pacman databases so it sees the new package
-        echo "    Refreshing pacman database..."
-        sudo pacman -Sy 2>&1 | grep -E "omarchy-build|error" || true
-        
-        # Verify the package is in the database
-        if pacman -Sl omarchy-build 2>/dev/null | grep -q "^omarchy-build $pkg "; then
-          echo "    ✓ Package available in omarchy-build repo"
-        else
-          echo "    ⚠ Warning: Package not found in omarchy-build repo"
-        fi
+
+    # Update the build database so it's available via pacman
+    echo "    Updating omarchy-build database..."
+    cd "$BUILD_OUTPUT_DIR"
+
+    # Find the package file we just built (not .sig)
+    local new_pkg=$(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+
+    if [[ -n "$new_pkg" ]]; then
+      echo "    Adding $new_pkg to database..."
+
+      # Add to omarchy-build database
+      repo-add omarchy-build.db.tar.zst "$new_pkg" 2>&1 | grep -E "==>|error" || true
+      ln -sf omarchy-build.db.tar.zst omarchy-build.db
+
+      # Refresh pacman databases so it sees the new package
+      echo "    Refreshing pacman database..."
+      sudo pacman -Sy 2>&1 | grep -E "omarchy-build|error" || true
+
+      # Verify the package is in the database
+      if pacman -Sl omarchy-build 2>/dev/null | grep -q "^omarchy-build $pkg "; then
+        echo "    ✓ Package available in omarchy-build repo"
+      else
+        echo "    ⚠ Warning: Package not found in omarchy-build repo"
       fi
-      
-      cd /src/$pkg
     fi
+    
+    cd /src/$pkg
     
     echo "    ✓ Successfully built $pkg"
     SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $pkg"
