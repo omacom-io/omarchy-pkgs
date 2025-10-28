@@ -1,0 +1,56 @@
+--- PKGBUILD.orig	2025-10-27 16:49:24.211786922 -0400
++++ PKGBUILD	2025-10-27 16:53:01.902479709 -0400
+@@ -1,27 +1,37 @@
+ pkgname=1password-beta
+ 
+ _tarver=8.11.16-30.BETA
+-_tar="1password-${_tarver}.x64.tar.gz"
+ pkgver=${_tarver//-/_}
+ pkgrel=30
+ conflicts=('1password' '1password-beta-bin')
+ pkgdesc="Password manager and secure wallet"
+-arch=('x86_64')
++arch=('x86_64' 'aarch64')
+ url='https://1password.com'
+ license=('LicenseRef-1Password-Proprietary')
+ options=(!strip)
+ install="1password.install"
+-source=(https://downloads.1password.com/linux/tar/beta/${CARCH}/${_tar}{,.sig})
+-sha256sums=('21f127aa3b879ec353df20e0b0eec1572f17d44e529ac19870a21586670bc0d1'
+-            'c04d8bf6b7059eec4279436199324547689a7cc4453e6c57a5637384d6210ba6'
+-)
++
++# Architecture-specific variables
++if [ "$CARCH" = "x86_64" ]; then
++    _archdir="x64"
++elif [ "$CARCH" = "aarch64" ]; then
++    _archdir="arm64"
++fi
++
++source_x86_64=(https://downloads.1password.com/linux/tar/beta/x86_64/1password-${_tarver}.x64.tar.gz{,.sig})
++source_aarch64=(https://downloads.1password.com/linux/tar/beta/aarch64/1password-${_tarver}.arm64.tar.gz{,.sig})
++
++sha256sums_x86_64=('21f127aa3b879ec353df20e0b0eec1572f17d44e529ac19870a21586670bc0d1'
++                   'c04d8bf6b7059eec4279436199324547689a7cc4453e6c57a5637384d6210ba6')
++sha256sums_aarch64=('661a45bb57f8b6e184d7b7603221cf938774aec674a357672d6cc1d4387fab40'
++                    '5cec37c65607760df4cc1734a51154b70ff660b5147160323905178aee23b7e2')
+ validpgpkeys=('3FEF9748469ADBE15DA7CA80AC2D62742012EA22')
+ 
+ package() {
+     depends=('hicolor-icon-theme' 'libgtk-3.so=0' 'nss' 'xdg-utils')
+ 
+     # Go to source directory
+-    cd "1password-${_tarver}.x64"
++    cd "1password-${_tarver}.${_archdir}"
+ 
+     # Install icons
+     resolutions=(32x32 64x64 256x256 512x512)
+@@ -49,7 +59,7 @@
+     # Move package contents to /opt/1Password
+     cd "${srcdir}"
+     install -dm0755 "${pkgdir}"/opt
+-    mv "1password-${_tarver}.x64" "${pkgdir}/opt/1Password"
++    mv "1password-${_tarver}.${_archdir}" "${pkgdir}/opt/1Password"
+ 
+     # Cleanup un-needed files
+     rm "${pkgdir}"/opt/1Password/com.1password.1Password.policy "${pkgdir}"/opt/1Password/com.1password.1Password.policy.tpl "${pkgdir}"/opt/1Password/install_biometrics_policy.sh
