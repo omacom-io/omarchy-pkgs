@@ -17,8 +17,20 @@ check_docker() {
 # Build the Docker image if needed
 build_docker_image() {
   local build_dir="$1"
-  print_info "Building Docker image..."
-  docker build -t omarchy-aur-builder:latest -f "$build_dir/Dockerfile" "$build_dir"
+  local arch="${2:-x86_64}"
+  local dockerfile="$build_dir/Dockerfile.$arch"
+  local platform=""
+  local image_tag="omarchy-pkg-builder:latest-$arch"
+  
+  # Set platform for Docker build
+  if [[ "$arch" == "aarch64" ]]; then
+    platform="--platform linux/arm64"
+  elif [[ "$arch" == "x86_64" ]]; then
+    platform="--platform linux/amd64"
+  fi
+  
+  print_info "Building Docker image for $arch..."
+  docker build $platform -t "$image_tag" -f "$dockerfile" "$build_dir"
 }
 
 # Make directory writable by Docker container user
@@ -34,8 +46,18 @@ make_dir_writable() {
 # Run a Docker container with standard setup
 run_docker() {
   local script="$1"
-  shift
+  local arch="${2:-x86_64}"
+  shift 2
   local -a args=("$@")
+  local image_tag="omarchy-pkg-builder:latest-$arch"
+  local platform=""
   
-  docker run --rm "${args[@]}" omarchy-aur-builder:latest "$script"
+  # Set platform for Docker run
+  if [[ "$arch" == "aarch64" ]]; then
+    platform="--platform linux/arm64"
+  elif [[ "$arch" == "x86_64" ]]; then
+    platform="--platform linux/amd64"
+  fi
+  
+  docker run --rm $platform "${args[@]}" "$image_tag" "$script"
 }

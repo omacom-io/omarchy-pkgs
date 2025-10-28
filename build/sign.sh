@@ -72,10 +72,10 @@ for pkg_file in $PACKAGE_FILES; do
   if gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
     --detach-sign --use-agent --no-armor --local-user "$KEY_ID" "$pkg_file" 2>/dev/null; then
     echo "✓"
-    ((SIGNED_COUNT++))
+    SIGNED_COUNT=$((SIGNED_COUNT + 1))
   else
     echo "✗"
-    ((FAILED_COUNT++))
+    FAILED_COUNT=$((FAILED_COUNT + 1))
   fi
 done
 

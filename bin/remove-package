@@ -52,20 +52,20 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-# Build/update the Docker image
-build_docker_image "$BUILD_DIR"
+# Build/update the Docker image (always use x86_64 for removal - it's architecture independent)
+build_docker_image "$BUILD_DIR" "x86_64"
 
 print_info "Removing package..."
 
 # Ensure directory is writable by container user
 make_dir_writable "$REPO_DIR"
 
-# Run the removal script in Docker
-docker run --rm \
+# Run the removal script in Docker (always use x86_64 image)
+docker run --rm --platform linux/amd64 \
   -e ARCH="$ARCH" \
   -v "$BUILD_ROOT/pkgs.omarchy.org:/pkgs.omarchy.org" \
   -v "$BUILD_DIR:/build:ro" \
-  omarchy-aur-builder:latest /build/remove-package.sh "$PACKAGE_NAME"
+  omarchy-pkg-builder:latest-x86_64 /build/remove-package.sh "$PACKAGE_NAME"
 
 RESULT=$?
 

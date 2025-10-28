@@ -72,20 +72,21 @@ else
   echo ""
   mkdir -p "$REPO_DIR"
   
-  # Copy all package files (excluding build database)
-  COPIED=0
+  # Move all package files (excluding build database)
+  # Using mv instead of cp avoids filesystem sync issues and is atomic
+  MOVED=0
   for pkg_file in *.pkg.tar.*; do
     # Skip build database files
     [[ "$pkg_file" == omarchy-build.db* ]] && continue
     
     if [[ -f "$pkg_file" ]]; then
-      cp -v "$pkg_file" "$REPO_DIR/"
-      COPIED=$((COPIED + 1))
+      mv -v "$pkg_file" "$REPO_DIR/"
+      MOVED=$((MOVED + 1))
     fi
   done
   
   echo ""
-  print_success "Promoted $COPIED file(s) to pkgs.omarchy.org"
+  print_success "Promoted $MOVED file(s) to pkgs.omarchy.org"
   
   # Cleanup build directory after successful promotion
   print_info "Cleaning up build directory..."

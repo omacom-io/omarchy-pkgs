@@ -26,15 +26,20 @@ while [[ $# -gt 0 ]]; do
     shift 2
     ;;
   --package)
-    SINGLE_PACKAGE="$2"
-    shift 2
+    shift
+    PACKAGES=""
+    while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+      PACKAGES="$PACKAGES $1"
+      shift
+    done
+    PACKAGES="${PACKAGES# }"
     ;;
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
     echo "  --arch <arch>        Target architecture (x86_64 or aarch64, default: x86_64)"
-    echo "  --package <name>     Build only the specified package (with optional options)"
+    echo "  --package <names>    Build only the specified package(s) (space-separated)"
     echo "  -h, --help           Show this help message"
     echo ""
     echo "This script builds AUR packages from:"
@@ -47,8 +52,7 @@ while [[ $# -gt 0 ]]; do
     echo "Examples:"
     echo "  $0 --arch aarch64"
     echo "  $0 --package yay"
-    echo "  $0 --package \"elephant install\""
-    echo "  $0 --package \"owner/repo skip-pgp\""
+    echo "  $0 --package yay elephant cursor-bin"
     echo ""
     exit 0
     ;;
@@ -69,18 +73,18 @@ print_info "Cleaning build workspace..."
 rm -rf "$BUILD_OUTPUT_DIR"/*
 mkdir -p "$BUILD_OUTPUT_DIR"
 
-# Check if AUR package list exists (only required if not building single package)
-if [[ -z "$SINGLE_PACKAGE" ]]; then
+# Check if AUR package list exists (only required if not building specific packages)
+if [[ -z "$PACKAGES" ]]; then
   if [[ ! -f "$BUILD_DIR/packages/omarchy-aur.packages" ]]; then
     print_error "omarchy-aur.packages not found at $BUILD_DIR/packages/"
     exit 1
   fi
 else
-  print_info "Building single package: $SINGLE_PACKAGE"
+  print_info "Building packages: $PACKAGES"
 fi
 
 # Build/update the Docker image
-build_docker_image "$BUILD_DIR"
+build_docker_image "$BUILD_DIR" "$ARCH"
 
 print_info "Running AUR package build..."
 
@@ -92,7 +96,7 @@ make_dir_writable "$REPO_DIR"
 DOCKER_ARGS=(
   --rm
   -e ARCH="$ARCH"
-  -e SINGLE_PACKAGE="$SINGLE_PACKAGE"
+  -e PACKAGES="$PACKAGES"
   -v "$BUILD_ROOT/build-output:/build-output"
   -v "$BUILD_ROOT/pkgs.omarchy.org:/pkgs.omarchy.org"
   -v "$BUILD_DIR:/build:ro"
@@ -105,7 +109,15 @@ if [ -d "/var/cache/pacman/pkg" ]; then
 fi
 
 # Run the builder with assembled args
-docker run "${DOCKER_ARGS[@]}" omarchy-aur-builder:latest /build/build.sh
+IMAGE_TAG="omarchy-pkg-builder:latest-$ARCH"
+PLATFORM_ARG=""
+if [[ "$ARCH" == "aarch64" ]]; then
+  PLATFORM_ARG="--platform linux/arm64"
+elif [[ "$ARCH" == "x86_64" ]]; then
+  PLATFORM_ARG="--platform linux/amd64"
+fi
+
+docker run $PLATFORM_ARG "${DOCKER_ARGS[@]}" "$IMAGE_TAG" /build/build.sh
 
 BUILD_RESULT=$?
 

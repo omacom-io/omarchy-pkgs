@@ -6,6 +6,8 @@ This repository manages the Omarchy Package Repository, building a host of PKGBU
 
 The build system uses Docker to create a clean, reproducible build environment. Packages are built unsigned, then signed in a separate step, promoted to production, and synced to a remote server.
 
+**Multi-Architecture Support**: The build system supports both **x86_64** and **aarch64** (ARM64) architectures. See [docs/AARCH64_BUILDS.md](docs/AARCH64_BUILDS.md) for aarch64 setup and usage.
+
 ### Directory Structure
 
 ```
@@ -30,9 +32,10 @@ bin/repo release
 
 With options:
 ```bash
-bin/repo release --skip-prod-check              # Skip production confirmation
-bin/repo release --sync-remote dev-pkgs:/       # Sync to dev remote instead
-bin/repo release --package omarchy-nvim         # Build only one package
+bin/repo release --skip-prod-check                    # Skip production confirmation
+bin/repo release --sync-remote dev-pkgs:/             # Sync to dev remote instead
+bin/repo release --package omarchy-nvim               # Build only one package
+bin/repo release --package yay cursor-bin omarchy-nvim # Build multiple packages
 ```
 
 ### Step-by-Step Workflow
@@ -72,8 +75,10 @@ Builds packages from `pkgbuilds/` directory in a Docker container.
 
 **Examples:**
 ```bash
-bin/repo build                         # Build all packages
-bin/repo build --package omarchy-nvim  # Build only yay
+bin/repo build                                   # Build all packages (x86_64)
+bin/repo build --package omarchy-nvim            # Build only one package
+bin/repo build --package yay omarchy-nvim cursor-bin  # Build multiple packages
+bin/repo build --arch aarch64                    # Build for ARM64/aarch64
 ```
 
 ### `bin/repo sign`
@@ -152,7 +157,7 @@ bin/repo sync pkgs.omarchy.org/x86_64 --remote dev-pkgs:/# Sync to dev
 Runs the complete release workflow in sequence.
 
 **Options:**
-- `--package <name>` - Build only a specific package
+- `--package <names>` - Build only specific package(s) (space-separated)
 - `--arch <arch>` - Target architecture (default: x86_64)
 - `--sync-remote <path>` - Rclone remote for sync (default: production)
 - `--skip-prod-check` - Skip production confirmation
@@ -166,10 +171,11 @@ Runs the complete release workflow in sequence.
 
 **Examples:**
 ```bash
-bin/repo release                                    # Full workflow
-bin/repo release --skip-prod-check                  # Skip prod confirmation
-bin/repo release --sync-remote dev-pkgs:/           # Sync to dev
-bin/repo release --package omarchy-nvim             # Single package
+bin/repo release                                          # Full workflow
+bin/repo release --skip-prod-check                        # Skip prod confirmation
+bin/repo release --sync-remote dev-pkgs:/                 # Sync to dev
+bin/repo release --package omarchy-nvim                   # Single package
+bin/repo release --package yay cursor-bin omarchy-nvim    # Multiple packages
 ```
 
 ### Other Commands

@@ -59,22 +59,22 @@ if [[ -z "$GPG_PASSPHRASE" ]]; then
   exit 1
 fi
 
-# Build/update the Docker image (reuse same image as build)
-build_docker_image "$BUILD_DIR"
+# Build/update the Docker image (always use x86_64 for signing - it's architecture independent)
+build_docker_image "$BUILD_DIR" "x86_64"
 
 print_info "Running package signing..."
 
 # Ensure output directory is writable by container user
 make_dir_writable "$BUILD_OUTPUT_DIR"
 
-# Run the signing script in Docker
-docker run --rm \
+# Run the signing script in Docker (always use x86_64 image)
+docker run --rm --platform linux/amd64 \
   -e ARCH="$ARCH" \
   -e GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY" \
   -e GPG_PASSPHRASE="$GPG_PASSPHRASE" \
   -v "$BUILD_ROOT/build-output:/build-output" \
   -v "$BUILD_DIR:/build:ro" \
-  omarchy-aur-builder:latest /build/sign.sh
+  omarchy-pkg-builder:latest-x86_64 /build/sign.sh
 
 SIGN_RESULT=$?
 

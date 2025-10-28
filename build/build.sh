@@ -264,18 +264,38 @@ echo "==> Checking which packages need building..."
 
 # First pass: determine which packages need building
 PACKAGES_TO_BUILD=()
-for pkgdir in /pkgbuilds/*/; do
-  [[ ! -d "$pkgdir" ]] && continue
-  pkg=$(basename "$pkgdir")
-  [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
-  
-  if check_needs_build "$pkg"; then
-    PACKAGES_TO_BUILD+=("$pkg")
-  else
-    echo "  ✓ $pkg - already up to date"
-    SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
-  fi
-done
+
+# If PACKAGES is specified, only check those packages
+if [[ -n "$PACKAGES" ]]; then
+  echo "==> Checking specified packages: $PACKAGES"
+  for pkg_name in $PACKAGES; do
+    if [[ ! -f "/pkgbuilds/$pkg_name/PKGBUILD" ]]; then
+      echo "==> ERROR: Package '$pkg_name' not found in /pkgbuilds/"
+      exit 1
+    fi
+    
+    if check_needs_build "$pkg_name"; then
+      PACKAGES_TO_BUILD+=("$pkg_name")
+    else
+      echo "  ✓ $pkg_name - already up to date"
+      SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg_name"
+    fi
+  done
+else
+  # Build all packages that need updates
+  for pkgdir in /pkgbuilds/*/; do
+    [[ ! -d "$pkgdir" ]] && continue
+    pkg=$(basename "$pkgdir")
+    [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
+    
+    if check_needs_build "$pkg"; then
+      PACKAGES_TO_BUILD+=("$pkg")
+    else
+      echo "  ✓ $pkg - already up to date"
+      SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
+    fi
+  done
+fi
 
 if [[ ${#PACKAGES_TO_BUILD[@]} -eq 0 ]]; then
   echo "==> All packages are up to date!"
