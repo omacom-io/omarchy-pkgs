@@ -27,15 +27,15 @@ update_database() {
   # Make output directory writable for container
   make_dir_writable "$REPO_DIR"
 
-  # Build Docker image
-  build_docker_image "$BUILD_DIR"
+  # Build Docker image (always use x86_64 for repo update - it's architecture independent)
+  build_docker_image "$BUILD_DIR" "x86_64"
 
-  # Run repo-add in Docker container
-  docker run --rm \
+  # Run repo-add in Docker container (always use x86_64 image)
+  docker run --rm --platform linux/amd64 \
     -e ARCH="$ARCH" \
     -v "$BUILD_ROOT/pkgs.omarchy.org:/output" \
     -v "$BUILD_DIR:/build:ro" \
-    omarchy-aur-builder:latest /build/update-repo.sh
+    omarchy-pkg-builder:latest-x86_64 /build/update-repo.sh
 }
 
 # Main execution
