@@ -11,9 +11,27 @@ trap "rm -rf $TEMP_DIR" EXIT
 
 # Parse arguments
 SPECIFIC_PACKAGES=()
-if [[ $# -gt 0 ]]; then
-  SPECIFIC_PACKAGES=("$@")
-fi
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      echo "Usage: $0 [PACKAGE...]"
+      echo ""
+      echo "Sync AUR packages to pkgbuilds/ directory"
+      echo ""
+      echo "Arguments:"
+      echo "  PACKAGE    One or more package names to sync (optional)"
+      echo ""
+      echo "Examples:"
+      echo "  $0              # Sync all packages from omarchy-aur.packages"
+      echo "  $0 yay          # Sync only the yay package"
+      echo "  $0 yay paru     # Sync yay and paru packages"
+      exit 0
+      ;;
+    *)
+      SPECIFIC_PACKAGES+=("$arg")
+      ;;
+  esac
+done
 
 print_header "AUR Package Sync"
 

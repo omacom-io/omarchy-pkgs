@@ -1,261 +1,195 @@
 # Omarchy Package Repository
 
-This repository manages the Omarchy Package Repository, building a host of PKGBUILDs and facilitating syncing from AUR where necessary.
+Build system for the Omarchy Package Repository. Builds PKGBUILDs from local sources and AUR, signs them, and syncs to production.
 
-## Overview
+**Multi-Architecture**: Supports both x86_64 and aarch64 (ARM64).
 
-The build system uses Docker to create a clean, reproducible build environment. Packages are built unsigned, then signed in a separate step, promoted to production, and synced to a remote server.
+## Prerequisites
+### aarch64 Builds (Optional)
 
-**Multi-Architecture Support**: The build system supports both **x86_64** and **aarch64** (ARM64) architectures. See [docs/AARCH64_BUILDS.md](docs/AARCH64_BUILDS.md) for aarch64 setup and usage.
+To build ARM64 packages on x86_64, enable QEMU emulation:
 
-### Directory Structure
+```bash
+# Run after each reboot
+docker run --privileged --rm tonistiigi/binfmt --install arm64
 
+# Verify
+docker run --rm --platform linux/arm64 alpine:latest uname -m
+# Should output: aarch64
 ```
-omarchy-pkgs/
-├── pkgbuilds/              # Source PKGBUILDs (one directory per package)
-├── build-output/           # Temporary build workspace
-├── pkgs.omarchy.org/       # Final signed packages
-├── build/                  # Build scripts that run inside of the Docker container
-├── bin/                    # Command-line tools
-└── logs/                   # Build and operation logs
-```
+
+**Note**: aarch64 builds use QEMU and slower than native x86_64 builds.
 
 ## Quick Start
 
-### Complete Release Workflow
-
-Build, sign, promote, clean, and sync in one command:
+### Complete Workflow
 
 ```bash
+# Build, sign, promote, clean, and sync
 bin/repo release
+
+# Single package
+bin/repo release --package omarchy-nvim
+
+# ARM64
+bin/repo release --arch aarch64 --package omarchy-nvim
 ```
 
-With options:
-```bash
-bin/repo release --skip-prod-check                    # Skip production confirmation
-bin/repo release --sync-remote dev-pkgs:/             # Sync to dev remote instead
-bin/repo release --package omarchy-nvim               # Build only one package
-bin/repo release --package yay cursor-bin omarchy-nvim # Build multiple packages
-```
-
-### Step-by-Step Workflow
+### Step-by-Step
 
 ```bash
-# 1. Build packages (unsigned)
-bin/repo build
-
-# 2. Sign all built packages (sitting in `build-output`)
-bin/repo sign
-
-# 3. Promote to production directory (copy from `build-output` -> `pkgs.omarchy.org`)
-bin/repo promote
-
-# 4. Clean old versions and update database
-bin/repo clean
-
-# 5. Sync to remote server
-bin/repo sync pkgs.omarchy.org/x86_64
+bin/repo build                          # Build (unsigned)
+bin/repo sign                           # Sign packages
+bin/repo promote                        # Copy to production
+bin/repo clean                          # Remove old versions
+bin/repo sync pkgs.omarchy.org/x86_64   # Sync to remote
 ```
 
 ## Commands
 
-### `bin/repo build`
+### Build
 
-Builds packages from `pkgbuilds/` directory in a Docker container.
-
-**Options:**
-- `--package <name>` - Build only a specific package
-- `--arch <arch>` - Target architecture (default: x86_64)
-
-**What it does:**
-- Clears `build-output/` directory
-- Builds packages in dependency order
-- Creates unsigned `.pkg.tar.zst` files in `build-output/x86_64/`
-- Skips packages that are already up-to-date in `pkgs.omarchy.org/`
-
-**Examples:**
 ```bash
-bin/repo build                                   # Build all packages (x86_64)
-bin/repo build --package omarchy-nvim            # Build only one package
-bin/repo build --package yay omarchy-nvim cursor-bin  # Build multiple packages
-bin/repo build --arch aarch64                    # Build for ARM64/aarch64
+bin/repo build                                   # All packages (x86_64)
+bin/repo build --package yay cursor-bin          # Specific packages
+bin/repo build --arch aarch64                    # ARM64
 ```
 
-### `bin/repo sign`
+**Output**: Unsigned `.pkg.tar.zst` in `build-output/`
 
-Signs all unsigned packages in `build-output/`.
+### Sign
 
-**What it does:**
-- Fetches GPG key and passphrase from env or 1Password
-- Signs all `.pkg.tar.zst` files
-
-### `bin/repo promote`
-
-Copies signed packages from `build-output/` to `pkgs.omarchy.org/`.
-
-**Options:**
-- `--arch <arch>` - Target architecture (default: x86_64)
-- `--dry-run` - Preview what would be copied
-
-**What it does:**
-- Copies all packages and signatures to production directory
-- Cleans up `build-output/` after successful promotion
-
-**Examples:**
 ```bash
-bin/repo promote
-bin/repo promote --dry-run
+bin/repo sign
 ```
 
-### `bin/repo clean`
+Fetches GPG key from 1Password or environment, signs all packages in `build-output/`.
 
-Removes old package versions and updates the repository database.
+### Promote
 
-**Options:**
-- `--keep N` - Keep N versions of each package (default: 2)
-- `--dry-run` - Preview what would be removed
-- `--usage` - Show disk usage statistics
+```bash
+bin/repo promote                    # Copy to production
+bin/repo promote --arch aarch64     # ARM64
+bin/repo promote --dry-run          # Preview
+```
 
-**What it does:**
-- Removes old package versions (keeps latest 2 by default)
-- Updates `omarchy.db.tar.zst` repository database
-- Shows disk usage and statistics
+Copies signed packages from `build-output/` → `pkgs.omarchy.org/`.
 
-**Examples:**
+### Clean
+
 ```bash
 bin/repo clean                      # Keep 2 versions
 bin/repo clean --keep 3             # Keep 3 versions
-bin/repo clean --dry-run            # Preview cleanup
-bin/repo clean --usage              # Show disk usage
+bin/repo clean --dry-run            # Preview
 ```
 
-### `bin/repo sync`
+Removes old versions, updates database.
 
-Syncs the repository to a remote server using rclone.
+### Sync
 
-**Arguments:**
-- `<directory>` - Local directory to sync (e.g., `pkgs.omarchy.org/x86_64`)
-
-**Options:**
-- `--remote <remote>` - Rclone remote destination (default: `pkgs.omarchy.org:omarchy-pkgs`)
-- `--skip-prod-check` - Skip production confirmation
-
-**What it does:**
-- Syncs packages to remote (uses `--ignore-existing` to preserve versions)
-- Syncs database files with checksums
-- Prompts for confirmation when syncing to production
-
-**Examples:**
 ```bash
-bin/repo sync pkgs.omarchy.org/x86_64                    # Sync to production
-bin/repo sync pkgs.omarchy.org/x86_64 --skip-prod-check  # Skip confirmation
-bin/repo sync pkgs.omarchy.org/x86_64 --remote dev-pkgs:/# Sync to dev
+bin/repo sync pkgs.omarchy.org/x86_64                    # Production
+bin/repo sync pkgs.omarchy.org/aarch64                   # ARM64
+bin/repo sync pkgs.omarchy.org/x86_64 --skip-prod-check # No confirmation
 ```
 
-### `bin/repo release`
+Syncs to remote server using rclone.
 
-Runs the complete release workflow in sequence.
+### Other
 
-**Options:**
-- `--package <names>` - Build only specific package(s) (space-separated)
-- `--arch <arch>` - Target architecture (default: x86_64)
-- `--sync-remote <path>` - Rclone remote for sync (default: production)
-- `--skip-prod-check` - Skip production confirmation
-
-**What it does:**
-1. Builds packages
-2. Signs packages
-3. Promotes to production
-4. Cleans old versions
-5. Syncs to remote
-
-**Examples:**
 ```bash
-bin/repo release                                          # Full workflow
-bin/repo release --skip-prod-check                        # Skip prod confirmation
-bin/repo release --sync-remote dev-pkgs:/                 # Sync to dev
-bin/repo release --package omarchy-nvim                   # Single package
-bin/repo release --package yay cursor-bin omarchy-nvim    # Multiple packages
+bin/repo list                       # List packages
+bin/repo remove <package>           # Remove package
+bin/repo update                     # Update database
 ```
 
-### Other Commands
+## Directory Structure
 
-**`bin/repo list`** - List all packages in the repository
-```bash
-bin/repo list
+```
+omarchy-pkgs/
+├── pkgbuilds/              # Source PKGBUILDs
+├── build-output/           # Unsigned packages (temporary)
+│   ├── x86_64/
+│   └── aarch64/
+├── pkgs.omarchy.org/       # Signed packages (production)
+│   ├── x86_64/
+│   └── aarch64/
+├── build/                  # Build scripts (in container)
+└── bin/                    # CLI tools (on host)
 ```
 
-**`bin/repo remove <package>`** - Remove a package from the repository
-```bash
-bin/repo remove yay
-```
-
-**`bin/repo update`** - Update the repository database (usually done automatically by `clean`)
-```bash
-bin/repo update
-```
-
-## Adding New Packages
+## Adding Packages
 
 ### From AUR
 
-1. Add package name to `build/packages/omarchy-aur.packages` (for future syncing)
-2. Sync PKGBUILD to local directory:
-   ```bash
-   bin/sync-aur package-name
-   ```
-3. Build and release:
-   ```bash
-   bin/repo release --package package-name
-   ```
+```bash
+# Add to sync list
+echo "package-name" >> build/packages/omarchy-aur.packages
 
-#### Maintaining Local Patches for AUR Packages
+# Sync PKGBUILD
+bin/sync-aur package-name
 
-If you need to maintain local modifications to AUR packages that persist through `aur-sync` updates:
+# Build and release
+bin/repo release --package package-name
+```
 
-1. Create a `patches/` directory inside the package directory:
-   ```bash
-   mkdir pkgbuilds/package-name/patches
-   ```
+#### Local Patches for AUR Packages
 
-2. Create patch files for your modifications:
-   ```bash
-   cd pkgbuilds/package-name
-   # Make your changes to PKGBUILD or other files
-   git diff > patches/my-fix.patch
-   ```
+Create `pkgbuilds/package-name/patches/*.patch` to maintain modifications across AUR syncs:
 
-3. When `bin/sync-aur` runs, it will automatically apply all `.patch` files found in the `patches/` directory after syncing from AUR.
-
-**Example:** The `opencode` package has `patches/fix-parcel-watcher.patch` which adds platform-specific `@parcel/watcher` installation to the build process.
+```bash
+cd pkgbuilds/package-name
+# Make changes
+git diff > patches/my-fix.patch
+# Next sync will auto-apply patches
+```
 
 ### Custom Package
 
-1. Create directory in `pkgbuilds/`:
-   ```bash
-   mkdir pkgbuilds/my-package
-   ```
-2. Add PKGBUILD and any additional files
-3. Build and release:
-   ```bash
-   bin/repo release --package my-package
-   ```
+```bash
+mkdir pkgbuilds/my-package
+# Add PKGBUILD and files
+bin/repo release --package my-package
+```
 
-## Package Dependencies
+## Architecture-Specific Notes
 
-The build system automatically handles dependencies between packages being built. For example, if `aether` depends on `hyprshade`, the build system will:
+### x86_64
+- Native builds (fast)
+- Mirrors: mirror.omarchy.org, rackspace, pkgbuild.com
 
-1. Detect the dependency relationship
-2. Build `hyprshade` first
-3. Add it to the `omarchy-build` temporary repository
-4. Build `aether` (which can now install `hyprshade` from `omarchy-build`)
+### aarch64
+- QEMU emulation required on x86_64 hosts (slower)
+- Uses Arch Linux ARM repositories
+- Additional repos: `[alarm]`, `[aur]`
+- Same workflow, just add `--arch aarch64`
 
-This works through two internal repositories:
-- **`omarchy-build`** - Temporary repo in `build-output/` (unsigned packages, used during build)
-- **`omarchy`** - Production repo in `pkgs.omarchy.org/` (signed packages)
+### Building for Both Architectures
+
+```bash
+# Build x86_64
+bin/repo release --package myapp
+
+# Build aarch64
+bin/repo release --arch aarch64 --package myapp
+
+# Sync both
+bin/repo sync pkgs.omarchy.org/x86_64
+bin/repo sync pkgs.omarchy.org/aarch64
+```
+
+## Dependency Resolution
+
+The build system automatically handles inter-package dependencies:
+
+1. Parses `depends=()` and `makedepends=()` from PKGBUILDs
+2. Builds in correct order
+3. Makes newly-built packages available via temporary `[omarchy-build]` repo
+
+Example: If `aether` depends on `hyprshade`, `hyprshade` is built first.
 
 ## Version Management
 
 Packages are only rebuilt if:
-- PKGBUILD version is newer than the version in the repository DB
-- Package doesn't exist in production yet
+- PKGBUILD version is newer than repository version
+- Package doesn't exist in production
