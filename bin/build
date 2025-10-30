@@ -110,12 +110,7 @@ fi
 
 # Run the builder with assembled args
 IMAGE_TAG="omarchy-pkg-builder:latest-$ARCH"
-PLATFORM_ARG=""
-if [[ "$ARCH" == "aarch64" ]]; then
-  PLATFORM_ARG="--platform linux/arm64"
-elif [[ "$ARCH" == "x86_64" ]]; then
-  PLATFORM_ARG="--platform linux/amd64"
-fi
+PLATFORM_ARG=$(get_platform_arg "$ARCH")
 
 docker run $PLATFORM_ARG "${DOCKER_ARGS[@]}" "$IMAGE_TAG" /build/build.sh
 
