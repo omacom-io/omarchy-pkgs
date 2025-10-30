@@ -38,6 +38,15 @@ build_docker_image() {
     "$build_dir"
 }
 
+get_platform_arg() {
+  local arch="$1"
+  case "$arch" in
+    x86_64)  echo "--platform linux/amd64" ;;
+    aarch64) echo "--platform linux/arm64" ;;
+    *)       echo "" ;;
+  esac
+}
+
 make_dir_writable() {
   local dir="$1"
   if [ "$(id -u)" -eq 0 ]; then
