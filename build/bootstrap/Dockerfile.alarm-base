@@ -1,0 +1,7 @@
+FROM scratch
+
+ADD ArchLinuxARM-aarch64-latest.tar.gz /
+
+ENV LANG=en_US.UTF-8
+
+CMD ["/usr/bin/bash"]

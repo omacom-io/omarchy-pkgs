@@ -103,19 +103,9 @@ DOCKER_ARGS=(
   -v "$BUILD_ROOT/pkgbuilds:/pkgbuilds:ro"
 )
 
-# Use local pacman cache if you already have one on host to speed up repeat runs
-if [ -d "/var/cache/pacman/pkg" ]; then
-  DOCKER_ARGS+=(-v "/var/cache/pacman/pkg:/var/cache/pacman/pkg")
-fi
-
 # Run the builder with assembled args
 IMAGE_TAG="omarchy-pkg-builder:latest-$ARCH"
-PLATFORM_ARG=""
-if [[ "$ARCH" == "aarch64" ]]; then
-  PLATFORM_ARG="--platform linux/arm64"
-elif [[ "$ARCH" == "x86_64" ]]; then
-  PLATFORM_ARG="--platform linux/amd64"
-fi
+PLATFORM_ARG=$(get_platform_arg "$ARCH")
 
 docker run $PLATFORM_ARG "${DOCKER_ARGS[@]}" "$IMAGE_TAG" /build/build.sh
 

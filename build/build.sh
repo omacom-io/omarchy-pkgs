@@ -16,12 +16,7 @@ echo "==> Configuring Omarchy repositories for dependency resolution..."
 
 # Always add omarchy-build repo (for incremental builds)
 # Packages in build-output are unsigned, so use SigLevel = Never
-# Use the build-output dir as additional cache to avoid file copying issues
 sudo tee -a /etc/pacman.conf > /dev/null <<EOF
-
-[options]
-CacheDir = /var/cache/pacman/pkg
-CacheDir = $BUILD_OUTPUT_DIR
 
 [omarchy-build]
 SigLevel = Never
@@ -123,37 +118,19 @@ build_package() {
   MAKEPKG_FLAGS="-scf --noconfirm"
   
   if makepkg $MAKEPKG_FLAGS; then
-    # Copy to build workspace
     for pkg_file in *.pkg.tar.*; do
-      if [[ -f "$pkg_file" ]]; then
-        cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
-      fi
+      [[ -f "$pkg_file" ]] && cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
     done
 
-    # Update the build database so it's available via pacman
-    echo "    Updating omarchy-build database..."
     cd "$BUILD_OUTPUT_DIR"
 
-    # Find the package file we just built (not .sig)
-    local new_pkg=$(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
+    # Find ALL package files (handles split packages)
+    local new_pkgs=($(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db'))
 
-    if [[ -n "$new_pkg" ]]; then
-      echo "    Adding $new_pkg to database..."
-
-      # Add to omarchy-build database
-      repo-add omarchy-build.db.tar.zst "$new_pkg" 2>&1 | grep -E "==>|error" || true
+    if [[ ${#new_pkgs[@]} -gt 0 ]]; then
+      repo-add omarchy-build.db.tar.zst "${new_pkgs[@]}" >/dev/null 2>&1
       ln -sf omarchy-build.db.tar.zst omarchy-build.db
-
-      # Refresh pacman databases so it sees the new package
-      echo "    Refreshing pacman database..."
-      sudo pacman -Sy 2>&1 | grep -E "omarchy-build|error" || true
-
-      # Verify the package is in the database
-      if pacman -Sl omarchy-build 2>/dev/null | grep -q "^omarchy-build $pkg "; then
-        echo "    ✓ Package available in omarchy-build repo"
-      else
-        echo "    ⚠ Warning: Package not found in omarchy-build repo"
-      fi
+      sudo pacman -Sy >/dev/null 2>&1
     fi
     
     cd /src/$pkg
