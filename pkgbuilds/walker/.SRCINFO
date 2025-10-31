@@ -1,7 +1,7 @@
 pkgbase = walker
 	pkgdesc = wayland application runner
-	pkgver = 2.7.3
-	pkgrel = 1
+	pkgver = 2.8.0
+	pkgrel = 2
 	url = https://github.com/abenz1267/walker
 	arch = x86_64
 	arch = aarch64
@@ -13,12 +13,9 @@ pkgbase = walker
 	depends = gtk4-layer-shell
 	depends = poppler-glib
 	depends = cairo
-	depends = elephant
-	depends = elephant-desktopapplications
-	depends = elephant-providerlist
 	provides = walker
 	conflicts = walker
-	source = https://github.com/abenz1267/walker/archive/refs/tags/v2.7.3.tar.gz
-	sha256sums = cca48effc467b73c3fc34dbf6c34cb84c2fb7a3aba8b1838756189619fd2e021
+	source = https://github.com/abenz1267/walker/archive/refs/tags/v2.8.0.tar.gz
+	sha256sums = 75667df7bb05180ff83b3768711f107b7003fa329bb6a5b88cecea1da12dbf1c
 
 pkgname = walker
