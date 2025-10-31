@@ -98,7 +98,13 @@ fi
 cd "$PKGBUILDS_DIR"
 for dir in */; do
   if [[ -d "$dir/patches" ]]; then
-    (cd "$dir" && for patch in patches/*.patch; do patch -p1 --no-backup-if-mismatch < "$patch" 2>/dev/null || true; done)
+    print_info "Applying patches for $dir..."
+    (cd "$dir" && for patch in patches/*.patch; do 
+      if ! patch -p1 --no-backup-if-mismatch < "$patch"; then
+        print_error "Failed to apply patch: $patch"
+        exit 1
+      fi
+    done)
   fi
 done
 
