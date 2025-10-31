@@ -21,6 +21,18 @@ sha256sums=('SKIP')
 build() {
   cd "opencode-${pkgver}"
   bun install
+
+  # Fix for bun compile not finding platform-specific @parcel/watcher
+  # The compile step needs this to be explicitly installed
+  case "${CARCH}" in
+    x86_64)
+      bun add @parcel/watcher-linux-x64-glibc --optional
+      ;;
+    aarch64)
+      bun add @parcel/watcher-linux-arm64-glibc --optional
+      ;;
+  esac
+
   cd packages/tui
   CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${pkgver}" -o tui cmd/opencode/main.go
   cd ../opencode

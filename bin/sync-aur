@@ -98,7 +98,7 @@ fi
 cd "$PKGBUILDS_DIR"
 for dir in */; do
   if [[ -d "$dir/patches" ]]; then
-    (cd "$dir" && git apply patches/*.patch 2>/dev/null || true)
+    (cd "$dir" && for patch in patches/*.patch; do patch -p1 --no-backup-if-mismatch < "$patch" 2>/dev/null || true; done)
   fi
 done
 
