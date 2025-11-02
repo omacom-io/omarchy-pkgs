@@ -1,0 +1,48 @@
+# Maintainer: Omarchy Team
+
+pkgname=obsidian-appimage
+pkgver=1.9.12
+pkgrel=1
+pkgdesc='A powerful knowledge base that works on top of a local folder of plain text Markdown files (AppImage)'
+arch=('x86_64' 'aarch64')
+url='https://obsidian.md'
+license=('custom:Commercial')
+depends=('fuse2' 'zlib')
+optdepends=('libappindicator-gtk3: for systray icon support')
+conflicts=('obsidian')
+provides=('obsidian')
+options=(!strip)
+
+source_x86_64=("https://github.com/obsidianmd/obsidian-releases/releases/download/v${pkgver}/Obsidian-${pkgver}.AppImage"
+               "obsidian.desktop"
+               "obsidian.png")
+source_aarch64=("https://github.com/obsidianmd/obsidian-releases/releases/download/v${pkgver}/Obsidian-${pkgver}-arm64.AppImage"
+                "obsidian.desktop"
+                "obsidian.png")
+
+sha256sums_x86_64=('SKIP' 'SKIP' 'SKIP')
+sha256sums_aarch64=('SKIP' 'SKIP' 'SKIP')
+
+prepare() {
+    # Make AppImage executable
+    chmod +x "${srcdir}/Obsidian-"*.AppImage
+}
+
+package() {
+    # Install AppImage to /opt
+    install -Dm755 "${srcdir}/Obsidian-"*.AppImage "${pkgdir}/opt/obsidian/obsidian.AppImage"
+
+    # Create launcher script in /usr/bin
+    install -dm755 "${pkgdir}/usr/bin"
+    cat > "${pkgdir}/usr/bin/obsidian" << 'EOF'
+#!/bin/bash
+exec /opt/obsidian/obsidian.AppImage "$@"
+EOF
+    chmod 755 "${pkgdir}/usr/bin/obsidian"
+
+    # Install desktop file
+    install -Dm644 "${srcdir}/obsidian.desktop" "${pkgdir}/usr/share/applications/obsidian.desktop"
+
+    # Install icon
+    install -Dm644 "${srcdir}/obsidian.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/obsidian.png"
+}
