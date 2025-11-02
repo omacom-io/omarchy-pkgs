@@ -260,20 +260,48 @@ build_order() {
   printf '%s\n' "${result[@]}"
 }
 
+# Check if package is compatible with target architecture
+check_arch_compatible() {
+  local pkg="$1"
+  local target_arch="$2"
+  local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
+
+  [[ ! -f "$pkgbuild" ]] && return 1
+
+  # Get arch array from PKGBUILD
+  local pkg_archs=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD 2>/dev/null; echo "${arch[@]}"' 2>/dev/null)
+
+  # If arch is empty or extraction failed, skip package
+  [[ -z "$pkg_archs" ]] && return 1
+
+  # Check if 'any' architecture (works on all platforms)
+  if [[ "$pkg_archs" =~ "any" ]]; then
+    return 0
+  fi
+
+  # Check if target arch is in the list
+  if [[ "$pkg_archs" =~ $target_arch ]]; then
+    return 0
+  fi
+
+  # Not compatible
+  return 1
+}
+
 # Check which packages need building (version check only)
 check_needs_build() {
   local pkg="$1"
   local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
-  
+
   [[ ! -f "$pkgbuild" ]] && return 1
-  
+
   # Get PKGBUILD version (including epoch if present)
   local pkgbuild_version=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
   [[ -z "$pkgbuild_version" ]] && return 1
-  
+
   # Check if already built
   local local_version=$(get_local_version "$pkg")
-  
+
   if [[ "$local_version" == "$pkgbuild_version" ]]; then
     return 1  # Already up to date
   else
@@ -313,12 +341,19 @@ if [[ -n "$PACKAGES" ]]; then
     fi
   done
 else
-  # Build all packages that need updates
+  # Build all packages that need updates and are compatible with target arch
   for pkgdir in /pkgbuilds/*/; do
     [[ ! -d "$pkgdir" ]] && continue
     pkg=$(basename "$pkgdir")
     [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
-    
+
+    # Check architecture compatibility first
+    if ! check_arch_compatible "$pkg" "$ARCH"; then
+      echo "  ⏭ $pkg - not available for $ARCH"
+      SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
+      continue
+    fi
+
     if check_needs_build "$pkg"; then
       PACKAGES_TO_BUILD+=("$pkg")
     else
