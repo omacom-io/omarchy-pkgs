@@ -13,7 +13,7 @@ return {
     priority = 1000,
   },
   {
-    "sainnhe/everforest",
+    "neanias/everforest-nvim",
     lazy = true,
     priority = 1000,
   },
