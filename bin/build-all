@@ -1,0 +1,103 @@
+#!/bin/bash
+# Build all packages for the current architecture in one shot
+
+set -e
+
+# Determine architecture
+ARCH=$(uname -m)
+INSTALL_DIR="/Users/jon/Code/Omarchy/install"
+TEMP_PACKAGES="/tmp/omarchy-all-packages-$ARCH.txt"
+
+# Color output
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}=== Building all packages for $ARCH ===${NC}"
+
+# Clear temp file
+> "$TEMP_PACKAGES"
+
+# Combine package files based on architecture
+if [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+    echo -e "${GREEN}Architecture: ARM (aarch64)${NC}"
+    echo -e "${YELLOW}Combining ARM package lists:${NC}"
+
+    # ARM-specific packages (custom builds hosted by omacom.io)
+    echo "  - omarchy-arm-omacom-io.packages (custom ARM builds)"
+    cat "$INSTALL_DIR/omarchy-arm-omacom-io.packages" >> "$TEMP_PACKAGES"
+
+    # Base AUR packages (shared with x86)
+    echo "  - omarchy-base-aur.packages (AUR packages)"
+    cat "$INSTALL_DIR/omarchy-base-aur.packages" >> "$TEMP_PACKAGES"
+
+    # ARM-specific AUR packages
+    echo "  - omarchy-arm-aur.packages (ARM-specific AUR)"
+    cat "$INSTALL_DIR/omarchy-arm-aur.packages" >> "$TEMP_PACKAGES"
+
+    BUILD_ARCH="aarch64"
+elif [[ "$ARCH" == "x86_64" ]]; then
+    echo -e "${GREEN}Architecture: x86_64${NC}"
+    echo -e "${YELLOW}Combining x86 package lists:${NC}"
+
+    # x86-specific packages
+    echo "  - omarchy-x86.packages"
+    cat "$INSTALL_DIR/omarchy-x86.packages" >> "$TEMP_PACKAGES"
+
+    # Base AUR packages (shared with ARM)
+    echo "  - omarchy-base-aur.packages (AUR packages)"
+    cat "$INSTALL_DIR/omarchy-base-aur.packages" >> "$TEMP_PACKAGES"
+
+    BUILD_ARCH="x86_64"
+else
+    echo -e "${YELLOW}Warning: Unknown architecture '$ARCH', defaulting to x86_64${NC}"
+    BUILD_ARCH="x86_64"
+fi
+
+# Filter out comments and blank lines, remove inline comments
+echo -e "\n${BLUE}Processing package list...${NC}"
+grep -v '^#' "$TEMP_PACKAGES" | grep -v '^$' | sed 's/#.*$//' | sed 's/[[:space:]]*$//' > "${TEMP_PACKAGES}.clean"
+mv "${TEMP_PACKAGES}.clean" "$TEMP_PACKAGES"
+
+# Count packages
+PACKAGE_COUNT=$(wc -l < "$TEMP_PACKAGES" | tr -d ' ')
+echo -e "${GREEN}Total packages to build: $PACKAGE_COUNT${NC}"
+
+# Show package list if verbose
+if [[ "${1}" == "-v" || "${1}" == "--verbose" ]]; then
+    echo -e "\n${BLUE}Package list:${NC}"
+    cat "$TEMP_PACKAGES" | nl
+    echo ""
+fi
+
+# Convert file to space-separated list
+PACKAGE_LIST=$(tr '\n' ' ' < "$TEMP_PACKAGES")
+
+# Build all packages
+echo -e "\n${BLUE}Starting build...${NC}"
+echo -e "${YELLOW}Command: bin/repo build --arch $BUILD_ARCH --package <$PACKAGE_COUNT packages>${NC}\n"
+
+# Track build time
+START_TIME=$(date +%s)
+
+# Run the build
+"$(dirname "$0")/repo" build --arch "$BUILD_ARCH" --package $PACKAGE_LIST
+
+# Calculate elapsed time
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+HOURS=$((ELAPSED / 3600))
+MINUTES=$(((ELAPSED % 3600) / 60))
+SECONDS=$((ELAPSED % 60))
+
+# Show result
+echo -e "\n${GREEN}✓ Build complete!${NC}"
+if [ $HOURS -gt 0 ]; then
+    echo -e "${BLUE}Total build time: ${HOURS}h ${MINUTES}m ${SECONDS}s${NC}"
+elif [ $MINUTES -gt 0 ]; then
+    echo -e "${BLUE}Total build time: ${MINUTES}m ${SECONDS}s${NC}"
+else
+    echo -e "${BLUE}Total build time: ${SECONDS}s${NC}"
+fi
+echo -e "${BLUE}Package list saved to: $TEMP_PACKAGES${NC}"

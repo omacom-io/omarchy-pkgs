@@ -1,0 +1,28 @@
+pkgbase = hyprgraphics-git
+	pkgdesc = Hyprland graphics / resource utilities
+	pkgver = 0.1.5.r2.g157cc52
+	pkgrel = 1
+	url = https://github.com/hyprwm/hyprgraphics
+	arch = x86_64
+	arch = aarch64
+	license = BSD-3-Clause
+	makedepends = cmake
+	makedepends = git
+	makedepends = ninja
+	depends = cairo
+	depends = file
+	depends = hyprutils-git
+	depends = libjpeg
+	depends = libjxl
+	depends = libpng
+	depends = librsvg
+	depends = libwebp
+	depends = pango
+	depends = pixman
+	provides = hyprgraphics=0.1.5
+	provides = libhyprgraphics.so
+	conflicts = hyprgraphics
+	source = hyprgraphics::git+https://github.com/hyprwm/hyprgraphics.git
+	sha256sums = SKIP
+
+pkgname = hyprgraphics-git
