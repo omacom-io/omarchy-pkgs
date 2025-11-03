@@ -10,7 +10,7 @@ license=('MIT')
 depends=('zsh' 'eza' 'mise' 'zoxide' 'starship' 'fzf' 'fd' 'bat')
 install=omarchy-zsh.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('b88ebc4e067a42eb01e0740ddab832fec8968efe36577cfd82c2d9d2ff6cd2ad')
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"

@@ -11,7 +11,7 @@ depends=('fish' 'eza' 'mise' 'zoxide' 'starship' 'fzf' 'fd' 'bat')
 install=omarchy-fish.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz"
         "fzf.fish-v10.3.tar.gz::https://github.com/PatrickF1/fzf.fish/archive/refs/tags/v10.3.tar.gz")
-sha256sums=('SKIP'
+sha256sums=('85e417fe0035698c1e0ca472369cb68847ecdf2d19f475f75cc1d0f364607361'
             'a0d56e974b8d5144c3262dcf87630c8886407d28a2f9e626e46bc18199fe6f97')
 
 package() {
