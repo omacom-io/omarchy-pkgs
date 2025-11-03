@@ -46,6 +46,8 @@ lmstudio
 crush-bin
 bun-bin # for opencode
 # opencode
+minecraft-launcher
+sublime-text-4
 symfony-cli
 dropbox
 dropbox-cli
