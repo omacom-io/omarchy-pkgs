@@ -1,0 +1,42 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+
+pkgname=omarchy-zsh
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Omarchy shell configuration for Zsh"
+arch=('any')
+url="https://github.com/omacom-io/omarchy-zsh"
+license=('MIT')
+depends=('zsh' 'eza' 'mise' 'zoxide' 'starship' 'fzf' 'fd' 'bat')
+install=omarchy-zsh.install
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  # Install omarchy-zsh config files to /usr/share/omarchy-zsh
+  install -dm755 "${pkgdir}/usr/share/${pkgname}/conf.d"
+  install -dm755 "${pkgdir}/usr/share/${pkgname}/functions"
+
+  # Install config snippets
+  install -Dm644 conf.d/envs.zsh "${pkgdir}/usr/share/${pkgname}/conf.d/"
+  install -Dm644 conf.d/init.zsh "${pkgdir}/usr/share/${pkgname}/conf.d/"
+  install -Dm644 conf.d/options.zsh "${pkgdir}/usr/share/${pkgname}/conf.d/"
+
+  # Install function definitions
+  install -Dm644 functions/aliases.zsh "${pkgdir}/usr/share/${pkgname}/functions/"
+  install -Dm644 functions/functions.zsh "${pkgdir}/usr/share/${pkgname}/functions/"
+
+  # Install zshrc and bashrc templates
+  cp templates/zshrc "${pkgdir}/usr/share/${pkgname}/zshrc"
+  cp templates/bashrc "${pkgdir}/usr/share/${pkgname}/bashrc"
+
+  # Install documentation
+  install -dm755 "${pkgdir}/usr/share/${pkgname}"
+  cp LICENSE "${pkgdir}/usr/share/${pkgname}/LICENSE"
+  cp README.md "${pkgdir}/usr/share/${pkgname}/README.md"
+
+  # Install setup script
+  install -Dm755 bin/omarchy-setup-zsh "${pkgdir}/usr/bin/omarchy-setup-zsh"
+}
