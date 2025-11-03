@@ -1,10 +1,11 @@
 pkgname=omarchy-walker
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Meta package for walker with Elephant providers for Omarchy'
 arch=('x86_64' 'aarch64')
 url='https://omarchy.org'
 license=('MIT')
+options=('!debug')
 depends=(
     'walker'
     'elephant'
@@ -21,7 +22,3 @@ depends=(
     'elephant-unicode'
     'elephant-websearch'
 )
-
-package() {
-    :
-}
