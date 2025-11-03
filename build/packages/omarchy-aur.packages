@@ -40,11 +40,12 @@ yay
 # Extras
 visual-studio-code-bin
 cursor-bin
+cursor-cli
 claude-code
 lmstudio
 crush-bin
 bun-bin # for opencode
-opencode
+# opencode
 symfony-cli
 dropbox
 dropbox-cli
