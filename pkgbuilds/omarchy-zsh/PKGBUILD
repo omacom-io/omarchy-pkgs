@@ -15,27 +15,9 @@ sha256sums=('b88ebc4e067a42eb01e0740ddab832fec8968efe36577cfd82c2d9d2ff6cd2ad')
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  # Install omarchy-zsh config files to /usr/share/omarchy-zsh
-  install -dm755 "${pkgdir}/usr/share/${pkgname}/conf.d"
-  install -dm755 "${pkgdir}/usr/share/${pkgname}/functions"
-
-  # Install config snippets
-  install -Dm644 conf.d/envs.zsh "${pkgdir}/usr/share/${pkgname}/conf.d/"
-  install -Dm644 conf.d/init.zsh "${pkgdir}/usr/share/${pkgname}/conf.d/"
-  install -Dm644 conf.d/options.zsh "${pkgdir}/usr/share/${pkgname}/conf.d/"
-
-  # Install function definitions
-  install -Dm644 functions/aliases.zsh "${pkgdir}/usr/share/${pkgname}/functions/"
-  install -Dm644 functions/functions.zsh "${pkgdir}/usr/share/${pkgname}/functions/"
-
-  # Install zshrc and bashrc templates
-  cp templates/zshrc "${pkgdir}/usr/share/${pkgname}/zshrc"
-  cp templates/bashrc "${pkgdir}/usr/share/${pkgname}/bashrc"
-
-  # Install documentation
+  # Install config files, functions, templates, and documentation
   install -dm755 "${pkgdir}/usr/share/${pkgname}"
-  cp LICENSE "${pkgdir}/usr/share/${pkgname}/LICENSE"
-  cp README.md "${pkgdir}/usr/share/${pkgname}/README.md"
+  cp -r conf.d functions templates LICENSE README.md "${pkgdir}/usr/share/${pkgname}/"
 
   # Install setup script
   install -Dm755 bin/omarchy-setup-zsh "${pkgdir}/usr/bin/omarchy-setup-zsh"

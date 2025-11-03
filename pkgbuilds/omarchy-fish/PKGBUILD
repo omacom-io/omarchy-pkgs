@@ -17,28 +17,21 @@ sha256sums=('85e417fe0035698c1e0ca472369cb68847ecdf2d19f475f75cc1d0f364607361'
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  # Install omarchy-fish conf.d files to vendor_conf.d
+  # Install fzf.fish to vendor directories
   install -dm755 "${pkgdir}/usr/share/fish/vendor_conf.d"
-  install -Dm644 conf.d/envs.fish "${pkgdir}/usr/share/fish/vendor_conf.d/omarchy-fish-envs.fish"
-  install -Dm644 conf.d/init.fish "${pkgdir}/usr/share/fish/vendor_conf.d/omarchy-fish-init.fish"
-
-  # Install fzf.fish functions first
   install -dm755 "${pkgdir}/usr/share/fish/vendor_functions.d"
-  install -Dm644 "${srcdir}/fzf.fish-10.3/functions/"*.fish "${pkgdir}/usr/share/fish/vendor_functions.d/"
-  install -Dm644 "${srcdir}/fzf.fish-10.3/conf.d/fzf.fish" "${pkgdir}/usr/share/fish/vendor_conf.d/fzf.fish"
-
-  # Install omarchy-fish functions (overrides fzf.fish customizations)
-  # Use find to include hidden files (....fish and .....fish)
-  find functions -name "*.fish" -exec install -Dm644 {} "${pkgdir}/usr/share/fish/vendor_functions.d/" \;
-
   install -dm755 "${pkgdir}/usr/share/fish/vendor_completions.d"
-  install -Dm644 "${srcdir}/fzf.fish-10.3/completions/"*.fish "${pkgdir}/usr/share/fish/vendor_completions.d/"
+  cp "${srcdir}/fzf.fish-10.3/conf.d/"*.fish "${pkgdir}/usr/share/fish/vendor_conf.d/"
+  cp "${srcdir}/fzf.fish-10.3/functions/"*.fish "${pkgdir}/usr/share/fish/vendor_functions.d/"
+  cp "${srcdir}/fzf.fish-10.3/completions/"*.fish "${pkgdir}/usr/share/fish/vendor_completions.d/"
 
-  # Install templates and documentation to /usr/share/omarchy-fish
+  # Install omarchy-fish conf.d and functions
+  cp conf.d/*.fish "${pkgdir}/usr/share/fish/vendor_conf.d/"
+  cp functions/*.fish "${pkgdir}/usr/share/fish/vendor_functions.d/"
+
+  # Install templates and documentation
   install -dm755 "${pkgdir}/usr/share/${pkgname}"
-  cp templates/bashrc "${pkgdir}/usr/share/${pkgname}/bashrc"
-  cp LICENSE "${pkgdir}/usr/share/${pkgname}/LICENSE"
-  cp README.md "${pkgdir}/usr/share/${pkgname}/README.md"
+  cp -r templates LICENSE README.md "${pkgdir}/usr/share/${pkgname}/"
   cp "${srcdir}/fzf.fish-10.3/LICENSE.md" "${pkgdir}/usr/share/${pkgname}/LICENSE.fzf.fish"
   cp "${srcdir}/fzf.fish-10.3/README.md" "${pkgdir}/usr/share/${pkgname}/README.fzf.fish.md"
 
