@@ -2,7 +2,7 @@
 # Maintainer: adam
 
 pkgname='opencode'
-pkgver=1.0.1
+pkgver=1.0.15
 _subver=
 options=('!debug' '!strip')
 pkgrel=1
@@ -13,33 +13,34 @@ license=('MIT')
 provides=('opencode')
 conflicts=('opencode-bin')
 depends=('fzf' 'ripgrep')
-makedepends=('git' 'bun-bin' 'go')
+makedepends=('git' 'bun-bin' 'go' 'npm')
 
 source=("opencode-${pkgver}.tar.gz::https://github.com/sst/opencode/archive/v${pkgver}${_subver}.tar.gz")
 sha256sums=('SKIP')
 
 build() {
   cd "opencode-${pkgver}"
+  
+  # Ensure npm is in PATH for bun's shell
+  export PATH="/usr/bin:$PATH"
+  
   bun install
-
-  # Fix for bun compile not finding platform-specific @parcel/watcher
-  # The compile step needs this to be explicitly installed
-  case "${CARCH}" in
-    x86_64)
-      bun add @parcel/watcher-linux-x64-glibc --optional
-      ;;
-    aarch64)
-      bun add @parcel/watcher-linux-arm64-glibc --optional
-      ;;
-  esac
-
-  cd packages/tui
-  CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${pkgver}" -o tui cmd/opencode/main.go
-  cd ../opencode
-  bun build --define OPENCODE_TUI_PATH="'$(realpath ../tui/tui)'" --define OPENCODE_VERSION="'${pkgver}'" --compile --target=bun-linux-x64 --outfile=opencode ./src/index.ts
+  cd ./packages/opencode
+  OPENCODE_CHANNEL=latest OPENCODE_VERSION=1.0.15 bun run ./script/build.ts --single
 }
 
 package() {
   cd "opencode-${pkgver}/packages/opencode"
-  install -Dm755 ./opencode "${pkgdir}/usr/bin/opencode"
+  
+  # Determine architecture for the binary path
+  case "${CARCH}" in
+    x86_64)
+      _arch="x64"
+      ;;
+    aarch64)
+      _arch="arm64"
+      ;;
+  esac
+  
+  install -Dm755 "./dist/opencode-linux-${_arch}/bin/opencode" "${pkgdir}/usr/bin/opencode"
 }
