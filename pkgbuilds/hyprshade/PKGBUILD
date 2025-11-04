@@ -11,12 +11,14 @@ _py_deps=(
 	more-itertools
 )
 depends=(
-	hyprland
 	"${_py_deps[@]/#/python-}"
 	util-linux
 )
 makedepends=(git python-{build,hatchling,installer})
-optdepends=('systemd: activate shader on schedule')
+optdepends=(
+	'hyprland: required for hyprshade to function'
+	'systemd: activate shader on schedule'
+)
 provides=($pkgname)
 source=("https://files.pythonhosted.org/packages/source/${pkgname::1}/$pkgname/$pkgname-$pkgver.tar.gz"
 		"https://raw.githubusercontent.com/loqusion/$pkgname/$pkgver/examples/config.toml")

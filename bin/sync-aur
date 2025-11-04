@@ -48,26 +48,50 @@ FAILED=0
 # Function to sync a package from AUR
 sync_package() {
   local package="$1"
-  
+
   print_info "Syncing $package from AUR..."
-  
+
+  # Query AUR API to get PackageBase (handles split packages)
+  local api_response=$(curl -s "https://aur.archlinux.org/rpc/v5/info?arg[]=${package}")
+  local pkgbase=$(echo "$api_response" | grep -o '"PackageBase":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  # If API query failed or package not found, try direct clone
+  if [[ -z "$pkgbase" ]]; then
+    pkgbase="$package"
+  fi
+
   cd "$TEMP_DIR"
-  rm -rf "$package"
-  
-  if git clone "https://aur.archlinux.org/${package}.git" 2>/dev/null; then
-    # Create target directory if it doesn't exist
-    mkdir -p "$PKGBUILDS_DIR/$package"
-    
-    # Copy files (not .git directory)
-    cp -r "$package"/* "$PKGBUILDS_DIR/$package/" 2>/dev/null || true
-    cp -r "$package"/.* "$PKGBUILDS_DIR/$package/" 2>/dev/null || true
-    
+  rm -rf "$pkgbase" "$package"
+
+  # Clone the base package
+  local clone_output=$(git clone "https://aur.archlinux.org/${pkgbase}.git" 2>&1)
+  if echo "$clone_output" | grep -q "Cloning into"; then
+    # Verify PKGBUILD exists
+    if [[ ! -f "$pkgbase/PKGBUILD" ]]; then
+      print_warning "Failed: $pkgbase has no PKGBUILD"
+      ((FAILED++))
+      return
+    fi
+
+    # Remove existing directory to avoid nesting issues
+    rm -rf "$PKGBUILDS_DIR/$package"
+
+    # If this is a split package (pkgbase != package), copy with the package name
+    if [[ "$pkgbase" != "$package" ]]; then
+      print_info "  Split package detected: $package from $pkgbase"
+      cp -r "$pkgbase" "$package"
+      mv "$package" "$PKGBUILDS_DIR/"
+    else
+      # Move the cloned directory directly
+      mv "$pkgbase" "$PKGBUILDS_DIR/"
+    fi
+
     # Remove .git from destination
     rm -rf "$PKGBUILDS_DIR/$package/.git"
-    
+
     ((SYNCED++))
   else
-    print_warning "Failed to clone $package (may not exist in AUR)"
+    print_warning "Failed to clone $pkgbase (may not exist in AUR)"
     ((FAILED++))
   fi
 }
@@ -84,12 +108,12 @@ else
     [[ -z "$line" ]] && continue
 
     package=$(echo "$line" | awk '{print $1}')
-    
+
     # Skip GitHub repos (contain /)
     if [[ "$package" == *"/"* ]]; then
       continue
     fi
-    
+
     sync_package "$package"
   done < <(grep -v "^#" "$PACKAGES_FILE" | grep -v "^$")
 fi

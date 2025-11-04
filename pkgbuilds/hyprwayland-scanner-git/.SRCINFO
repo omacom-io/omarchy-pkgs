@@ -1,0 +1,18 @@
+pkgbase = hyprwayland-scanner-git
+	pkgdesc = A Hyprland implementation of wayland-scanner, in and for C++
+	pkgver = 0.4.4.r2.g206367a
+	pkgrel = 1
+	url = https://github.com/hyprwm/hyprwayland-scanner
+	arch = x86_64
+	arch = aarch64
+	license = BSD-3-Clause
+	makedepends = cmake
+	makedepends = git
+	makedepends = ninja
+	depends = pugixml
+	provides = hyprwayland-scanner=0.4.4
+	conflicts = hyprwayland-scanner
+	source = hyprwayland-scanner::git+https://github.com/hyprwm/hyprwayland-scanner.git
+	sha256sums = SKIP
+
+pkgname = hyprwayland-scanner-git

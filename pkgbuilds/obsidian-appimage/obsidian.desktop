@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Obsidian
+Comment=A powerful knowledge base that works on top of a local folder of plain text Markdown files
+Exec=/usr/bin/obsidian
+Icon=obsidian
+Type=Application
+Categories=Office;TextEditor;Development;
+MimeType=text/markdown;text/x-markdown;
+StartupNotify=true
+StartupWMClass=obsidian

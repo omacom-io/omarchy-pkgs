@@ -1,0 +1,19 @@
+pkgbase = ruby-pleaserun
+	pkgdesc = pleaserun
+	pkgver = 0.0.33
+	pkgrel = 2
+	url = https://rubygems.org/gems/pleaserun
+	arch = any
+	license = Apache-2.0
+	makedepends = ruby-bundler
+	depends = ruby
+	depends = ruby-cabin
+	depends = ruby-clamp
+	depends = ruby-dotenv
+	depends = ruby-insist
+	depends = ruby-mustache
+	depends = ruby-stud
+	source = https://rubygems.org/downloads/pleaserun-0.0.33.gem
+	sha256sums = a61ecd4ac6956dc44a7992ccbd9e4c979d7cd3a25af5ec7cc5b1f17424ffb73f
+
+pkgname = ruby-pleaserun

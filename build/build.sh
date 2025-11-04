@@ -116,21 +116,38 @@ build_package() {
   
   # Build package without signing (signing is done separately)
   MAKEPKG_FLAGS="-scf --noconfirm"
-  
+
   if makepkg $MAKEPKG_FLAGS; then
+    # Collect all newly built package files before copying
+    local built_pkgs=()
     for pkg_file in *.pkg.tar.*; do
-      [[ -f "$pkg_file" ]] && cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
+      if [[ -f "$pkg_file" ]]; then
+        built_pkgs+=("$pkg_file")
+        cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
+      fi
     done
 
-    cd "$BUILD_OUTPUT_DIR"
+    if [[ ${#built_pkgs[@]} -gt 0 ]]; then
+      cd "$BUILD_OUTPUT_DIR"
 
-    # Find ALL package files (handles split packages)
-    local new_pkgs=($(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db'))
+      # Add all newly built packages to repository (handles split packages)
+      local repo_pkgs=()
+      for pkg_file in "${built_pkgs[@]}"; do
+        # Skip .sig files and database files
+        if [[ ! "$pkg_file" =~ \.sig$ ]] && [[ ! "$pkg_file" =~ omarchy-build\.db ]]; then
+          repo_pkgs+=("$pkg_file")
+        fi
+      done
 
-    if [[ ${#new_pkgs[@]} -gt 0 ]]; then
-      repo-add omarchy-build.db.tar.zst "${new_pkgs[@]}" >/dev/null 2>&1
-      ln -sf omarchy-build.db.tar.zst omarchy-build.db
-      sudo pacman -Sy >/dev/null 2>&1
+      if [[ ${#repo_pkgs[@]} -gt 0 ]]; then
+        repo-add omarchy-build.db.tar.zst "${repo_pkgs[@]}" >/dev/null 2>&1
+        ln -sf omarchy-build.db.tar.zst omarchy-build.db
+        sudo pacman -Sy >/dev/null 2>&1
+
+        # Install split packages to make them available as dependencies
+        # This handles cases like dotnet-core-bin which creates multiple packages
+        sudo pacman -U --noconfirm "${repo_pkgs[@]}" >/dev/null 2>&1 || true
+      fi
     fi
     
     cd /src/$pkg
@@ -147,27 +164,65 @@ build_package() {
   fi
 }
 
+# Build a map of split packages to their parent PKGBUILD
+# Format: split_pkg_map[package-name]=parent-pkgbuild-dir
+build_split_package_map() {
+  declare -gA split_pkg_map
+
+  # Scan all PKGBUILDs
+  for pkgdir in /pkgbuilds/*/; do
+    [[ ! -d "$pkgdir" ]] && continue
+    local parent=$(basename "$pkgdir")
+    local pkgbuild="${pkgdir}PKGBUILD"
+    [[ ! -f "$pkgbuild" ]] && continue
+
+    # Extract pkgname array (split packages)
+    local split_packages=$(bash -c "source '$pkgbuild' 2>/dev/null; echo \"\${pkgname[@]}\"")
+
+    # If pkgname is an array with multiple values, map each to the parent
+    for split_pkg in $split_packages; do
+      if [[ "$split_pkg" != "$parent" ]]; then
+        split_pkg_map[$split_pkg]=$parent
+      fi
+    done
+  done
+}
+
 # Get package dependencies from PKGBUILD
 get_package_deps() {
   local pkg="$1"
   local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
-  
+
   if [[ ! -f "$pkgbuild" ]]; then
     return
   fi
-  
-  # Extract depends and makedepends, filter for packages in our pkgbuilds/
-  (
+
+  # Extract depends and makedepends from top-level arrays
+  local all_deps=$(
     source "$pkgbuild" 2>/dev/null
     echo "${depends[@]} ${makedepends[@]}"
-  ) | tr ' ' '\n' | while read -r dep; do
+  )
+
+  # Special case: dotnet-core-8.0-bin needs dotnet-core-bin
+  # (its split packages depend on dotnet-host and netstandard-targeting-pack from dotnet-core-bin)
+  if [[ "$pkg" == "dotnet-core-8.0-bin" ]]; then
+    all_deps="$all_deps dotnet-core-bin"
+  fi
+
+  # Process each dependency - use process substitution to avoid subshell
+  while read -r dep; do
     # Strip version constraints (e.g., 'hyprshade>=1.0' -> 'hyprshade')
     dep=$(echo "$dep" | sed 's/[<>=].*$//')
+    [[ -z "$dep" ]] && continue
+
     # Check if this dependency exists in our pkgbuilds
     if [[ -d "/pkgbuilds/$dep" ]]; then
       echo "$dep"
+    # Check if it's a split package
+    elif [[ -n "${split_pkg_map[$dep]}" ]]; then
+      echo "${split_pkg_map[$dep]}"
     fi
-  done
+  done < <(echo "$all_deps" | tr ' ' '\n')
 }
 
 # Simple dependency-aware build order
@@ -205,20 +260,48 @@ build_order() {
   printf '%s\n' "${result[@]}"
 }
 
+# Check if package is compatible with target architecture
+check_arch_compatible() {
+  local pkg="$1"
+  local target_arch="$2"
+  local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
+
+  [[ ! -f "$pkgbuild" ]] && return 1
+
+  # Get arch array from PKGBUILD
+  local pkg_archs=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD 2>/dev/null; echo "${arch[@]}"' 2>/dev/null)
+
+  # If arch is empty or extraction failed, skip package
+  [[ -z "$pkg_archs" ]] && return 1
+
+  # Check if 'any' architecture (works on all platforms)
+  if [[ "$pkg_archs" =~ "any" ]]; then
+    return 0
+  fi
+
+  # Check if target arch is in the list
+  if [[ "$pkg_archs" =~ $target_arch ]]; then
+    return 0
+  fi
+
+  # Not compatible
+  return 1
+}
+
 # Check which packages need building (version check only)
 check_needs_build() {
   local pkg="$1"
   local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
-  
+
   [[ ! -f "$pkgbuild" ]] && return 1
-  
+
   # Get PKGBUILD version (including epoch if present)
   local pkgbuild_version=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
   [[ -z "$pkgbuild_version" ]] && return 1
-  
+
   # Check if already built
   local local_version=$(get_local_version "$pkg")
-  
+
   if [[ "$local_version" == "$pkgbuild_version" ]]; then
     return 1  # Already up to date
   else
@@ -230,6 +313,11 @@ check_needs_build() {
 cd /src
 
 TOTAL_COUNT=0
+
+# Build split package mapping before dependency resolution
+echo "==> Building split package mapping..."
+build_split_package_map
+echo "==> Split package mapping complete (${#split_pkg_map[@]} mappings)"
 
 echo "==> Checking which packages need building..."
 
@@ -253,12 +341,19 @@ if [[ -n "$PACKAGES" ]]; then
     fi
   done
 else
-  # Build all packages that need updates
+  # Build all packages that need updates and are compatible with target arch
   for pkgdir in /pkgbuilds/*/; do
     [[ ! -d "$pkgdir" ]] && continue
     pkg=$(basename "$pkgdir")
     [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
-    
+
+    # Check architecture compatibility first
+    if ! check_arch_compatible "$pkg" "$ARCH"; then
+      echo "  ⏭ $pkg - not available for $ARCH"
+      SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
+      continue
+    fi
+
     if check_needs_build "$pkg"; then
       PACKAGES_TO_BUILD+=("$pkg")
     else
@@ -272,6 +367,46 @@ if [[ ${#PACKAGES_TO_BUILD[@]} -eq 0 ]]; then
   echo "==> All packages are up to date!"
 else
   echo "==> ${#PACKAGES_TO_BUILD[@]} package(s) need building: ${PACKAGES_TO_BUILD[@]}"
+
+  # Expand PACKAGES_TO_BUILD to include dependencies that also need building
+  echo "==> Resolving dependencies..."
+  declare -A seen_packages
+  declare -a packages_to_check=("${PACKAGES_TO_BUILD[@]}")
+
+  while [[ ${#packages_to_check[@]} -gt 0 ]]; do
+    current_pkg="${packages_to_check[0]}"
+    packages_to_check=("${packages_to_check[@]:1}")
+
+    # Skip if already processed
+    [[ -n "${seen_packages[$current_pkg]}" ]] && continue
+    seen_packages[$current_pkg]=1
+
+    # Get dependencies for this package
+    while IFS= read -r dep; do
+      [[ -z "$dep" ]] && continue
+      [[ -n "${seen_packages[$dep]}" ]] && continue
+
+      # Check if this dependency needs building
+      if check_needs_build "$dep"; then
+        # Add to build list if not already there
+        already_in_list=0
+        for existing_pkg in "${PACKAGES_TO_BUILD[@]}"; do
+          if [[ "$existing_pkg" == "$dep" ]]; then
+            already_in_list=1
+            break
+          fi
+        done
+
+        if [[ $already_in_list -eq 0 ]]; then
+          echo "  -> Adding dependency: $dep"
+          PACKAGES_TO_BUILD+=("$dep")
+          packages_to_check+=("$dep")
+        fi
+      fi
+    done < <(get_package_deps "$current_pkg")
+  done
+
+  echo "==> ${#PACKAGES_TO_BUILD[@]} package(s) to build (including dependencies): ${PACKAGES_TO_BUILD[@]}"
   echo "==> Determining build order based on dependencies..."
   
   # Second pass: order only the packages that need building
@@ -352,6 +487,18 @@ else
   for pkg in "${ORDERED_PACKAGES[@]}"; do
     ((TOTAL_COUNT++))
     build_package "$pkg"
+
+    # Clean up build artifacts to prevent memory exhaustion
+    # This is critical for long batch builds with many packages
+    echo "    -> Cleaning up build artifacts..."
+    cd /src
+    rm -rf "$pkg" 2>/dev/null || true
+
+    # Clean temporary files (but keep package caches)
+    find /tmp -type f -name "*.tar.*" -o -name "*.zip" -o -name "*.log" 2>/dev/null | xargs rm -f 2>/dev/null || true
+
+    # Force memory sync
+    sync
   done
 fi
 
