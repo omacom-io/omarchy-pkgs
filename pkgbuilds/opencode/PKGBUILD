@@ -2,7 +2,7 @@
 # Maintainer: adam
 
 pkgname='opencode'
-pkgver=1.0.15
+pkgver=1.0.20
 _subver=
 options=('!debug' '!strip')
 pkgrel=1
@@ -16,7 +16,7 @@ depends=('fzf' 'ripgrep')
 makedepends=('git' 'bun-bin' 'go' 'npm')
 
 source=("opencode-${pkgver}.tar.gz::https://github.com/sst/opencode/archive/v${pkgver}${_subver}.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('b19aae9a36e828f7a3a13ef8e57d341085ee4f038e26df8831b919901a883650')
 
 build() {
   cd "opencode-${pkgver}"
@@ -26,7 +26,7 @@ build() {
   
   bun install
   cd ./packages/opencode
-  OPENCODE_CHANNEL=latest OPENCODE_VERSION=1.0.15 bun run ./script/build.ts --single
+  OPENCODE_CHANNEL=latest OPENCODE_VERSION=1.0.20 bun run ./script/build.ts --single
 }
 
 package() {
