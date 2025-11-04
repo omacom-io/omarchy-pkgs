@@ -13,6 +13,15 @@ check_docker() {
   fi
 }
 
+setup_qemu() {
+  # Setup QEMU for building ARM64 packages on x86_64 hosts
+  if ! docker run --rm --privileged multiarch/qemu-user-static --reset -p yes --credential yes >/dev/null 2>&1; then
+    print_error "Failed to setup QEMU for ARM64 emulation"
+    exit 1
+  fi
+  print_success "QEMU ARM64 emulation enabled"
+}
+
 build_docker_image() {
   local build_dir="$1"
   local arch="${2:-x86_64}"

@@ -68,6 +68,15 @@ print_info "Target architecture: $ARCH"
 print_info "Build workspace: $BUILD_OUTPUT_DIR"
 print_info "Final output: $REPO_DIR"
 
+# Setup QEMU for aarch64 builds on x86_64 hosts
+if [[ "$(uname -m)" == "x86_64" && "$ARCH" == "aarch64" ]]; then
+  # Check if QEMU is already working
+  if ! docker run --rm --platform linux/arm64 alpine:3.21 /bin/true >/dev/null 2>&1; then
+    print_info "Setting up QEMU for ARM64 emulation..."
+    setup_qemu
+  fi
+fi
+
 # Clean build-output directory to start fresh
 print_info "Cleaning build workspace..."
 rm -rf "$BUILD_OUTPUT_DIR"/*
