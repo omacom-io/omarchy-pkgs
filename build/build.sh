@@ -74,13 +74,38 @@ get_local_version() {
   fi
 }
 
+# Check if package should be built for current architecture
+# Returns 0 (success) if should build, 1 if should skip
+should_build_for_arch() {
+  local pkg="$1"
+  local current_arch="$ARCH"
+  local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
+
+  [[ ! -f "$pkgbuild" ]] && return 1
+
+  # Check PKGBUILD arch=() array
+  local pkgbuild_archs=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD 2>/dev/null; echo "${arch[@]}"')
+
+  # If arch=('any'), build for all architectures
+  if [[ "$pkgbuild_archs" == "any" ]]; then
+    return 0
+  fi
+
+  # Check if current arch is in PKGBUILD arch=()
+  if echo "$pkgbuild_archs" | grep -qw "$current_arch"; then
+    return 0  # Build
+  else
+    return 1  # Skip
+  fi
+}
+
 # Build a package from /pkgbuilds/
 build_package() {
   local pkg="$1"
-  
+
   echo ""
   echo "  -> Processing: $pkg"
-  
+
   # Copy to build directory
   cd /src
   rm -rf "$pkg"
@@ -89,13 +114,13 @@ build_package() {
 
   # Get PKGBUILD version (including epoch if present)
   local pkgbuild_version=$(bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
-  
+
   if [[ -z "$pkgbuild_version" ]]; then
     echo "    ❌ Failed to read PKGBUILD version"
     FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
     return 1
   fi
-  
+
   # Show version info (version check already done in first pass)
   local local_version=$(get_local_version "$pkg")
   if [[ -n "$local_version" ]]; then
@@ -103,7 +128,7 @@ build_package() {
   else
     echo "    New package (version: $pkgbuild_version)"
   fi
-  
+
   # Import package-specific PGP keys if they exist
   if [[ -d "keys/pgp" ]]; then
     echo "    Importing package-specific PGP keys..."
@@ -113,10 +138,10 @@ build_package() {
       fi
     done
   fi
-  
+
   # Build package without signing (signing is done separately)
   MAKEPKG_FLAGS="-scf --noconfirm"
-  
+
   if makepkg $MAKEPKG_FLAGS; then
     for pkg_file in *.pkg.tar.*; do
       [[ -f "$pkg_file" ]] && cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
@@ -132,9 +157,9 @@ build_package() {
       ln -sf omarchy-build.db.tar.zst omarchy-build.db
       sudo pacman -Sy >/dev/null 2>&1
     fi
-    
+
     cd /src/$pkg
-    
+
     echo "    ✓ Successfully built $pkg"
     SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $pkg"
     return 0
@@ -151,11 +176,11 @@ build_package() {
 get_package_deps() {
   local pkg="$1"
   local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
-  
+
   if [[ ! -f "$pkgbuild" ]]; then
     return
   fi
-  
+
   # Extract depends and makedepends, filter for packages in our pkgbuilds/
   (
     source "$pkgbuild" 2>/dev/null
@@ -176,14 +201,14 @@ build_order() {
   local -a all_packages=()
   local -a result=()
   local -A package_deps_count=()
-  
+
   # Collect all packages
   for pkgdir in /pkgbuilds/*/; do
     [[ ! -d "$pkgdir" ]] && continue
     local pkg=$(basename "$pkgdir")
     [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
     all_packages+=("$pkg")
-    
+
     # Count internal dependencies
     local dep_count=0
     while read -r dep; do
@@ -191,7 +216,7 @@ build_order() {
     done < <(get_package_deps "$pkg")
     package_deps_count[$pkg]=$dep_count
   done
-  
+
   # Sort: packages with fewer deps first
   while IFS= read -r pkg; do
     result+=("$pkg")
@@ -200,7 +225,7 @@ build_order() {
       echo "${package_deps_count[$pkg]} $pkg"
     done | sort -n | cut -d' ' -f2-
   )
-  
+
   # Output in build order
   printf '%s\n' "${result[@]}"
 }
@@ -209,16 +234,16 @@ build_order() {
 check_needs_build() {
   local pkg="$1"
   local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
-  
+
   [[ ! -f "$pkgbuild" ]] && return 1
-  
+
   # Get PKGBUILD version (including epoch if present)
   local pkgbuild_version=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
   [[ -z "$pkgbuild_version" ]] && return 1
-  
+
   # Check if already built
   local local_version=$(get_local_version "$pkg")
-  
+
   if [[ "$local_version" == "$pkgbuild_version" ]]; then
     return 1  # Already up to date
   else
@@ -244,7 +269,14 @@ if [[ -n "$PACKAGES" ]]; then
       echo "==> ERROR: Package '$pkg_name' not found in /pkgbuilds/"
       exit 1
     fi
-    
+
+    # Check if package should be built for this architecture
+    if ! should_build_for_arch "$pkg_name"; then
+      echo "  ⊘ $pkg_name - not built for $ARCH"
+      SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg_name"
+      continue
+    fi
+
     if check_needs_build "$pkg_name"; then
       PACKAGES_TO_BUILD+=("$pkg_name")
     else
@@ -258,7 +290,14 @@ else
     [[ ! -d "$pkgdir" ]] && continue
     pkg=$(basename "$pkgdir")
     [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
-    
+
+    # Check if package should be built for this architecture
+    if ! should_build_for_arch "$pkg"; then
+      echo "  ⊘ $pkg - not built for $ARCH"
+      SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
+      continue
+    fi
+
     if check_needs_build "$pkg"; then
       PACKAGES_TO_BUILD+=("$pkg")
     else
@@ -273,17 +312,17 @@ if [[ ${#PACKAGES_TO_BUILD[@]} -eq 0 ]]; then
 else
   echo "==> ${#PACKAGES_TO_BUILD[@]} package(s) need building: ${PACKAGES_TO_BUILD[@]}"
   echo "==> Determining build order based on dependencies..."
-  
+
   # Second pass: order only the packages that need building
   # Strategy: build packages with no unmet dependencies first
   declare -A unmet_deps_count  # How many dependencies does this package still need?
   declare -A blocks_packages    # Which packages are waiting for this one?
-  
+
   # Count unmet dependencies for each package
   for pkg in "${PACKAGES_TO_BUILD[@]}"; do
     unmet_deps_count[$pkg]=0
   done
-  
+
   # Build the dependency relationships
   for pkg in "${PACKAGES_TO_BUILD[@]}"; do
     while IFS= read -r dep; do
@@ -298,7 +337,7 @@ else
       done
     done < <(get_package_deps "$pkg")
   done
-  
+
   # Start with packages that have all dependencies met (count = 0)
   ready_to_build=()
   for pkg in "${PACKAGES_TO_BUILD[@]}"; do
@@ -306,7 +345,7 @@ else
       ready_to_build+=("$pkg")
     fi
   done
-  
+
   # Build packages as dependencies become available
   ORDERED_PACKAGES=()
   while [[ ${#ready_to_build[@]} -gt 0 ]]; do
@@ -314,7 +353,7 @@ else
     current="${ready_to_build[0]}"
     ready_to_build=("${ready_to_build[@]:1}")
     ORDERED_PACKAGES+=("$current")
-    
+
     # This package is now built, so packages waiting for it can proceed
     for blocked_pkg in ${blocks_packages[$current]}; do
       ((unmet_deps_count[$blocked_pkg]--))
@@ -323,15 +362,15 @@ else
       fi
     done
   done
-  
+
   # Check for circular dependencies
   if [[ ${#ORDERED_PACKAGES[@]} -ne ${#PACKAGES_TO_BUILD[@]} ]]; then
     echo "ERROR: Circular dependency detected!"
     exit 1
   fi
-  
+
   echo "==> Build order: ${ORDERED_PACKAGES[@]}"
-  
+
   # Determine which packages need to be installed for other packages being built
   declare -A INSTALL_PACKAGES
   for pkg in "${ORDERED_PACKAGES[@]}"; do
@@ -343,11 +382,11 @@ else
       done
     done < <(get_package_deps "$pkg")
   done
-  
+
   if [[ ${#INSTALL_PACKAGES[@]} -gt 0 ]]; then
     echo "==> Packages needed as dependencies: ${!INSTALL_PACKAGES[@]}"
   fi
-  
+
   # Build packages in dependency order
   for pkg in "${ORDERED_PACKAGES[@]}"; do
     ((TOTAL_COUNT++))
