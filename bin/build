@@ -108,6 +108,10 @@ build_docker_image "$BUILD_DIR" "$ARCH" "$MIRROR"
 
 print_info "Running AUR package build..."
 
+# Create output directories if they don't exist
+mkdir -p "$BUILD_OUTPUT_DIR"
+mkdir -p "$REPO_DIR"
+
 # Ensure output directories are writable by container user
 make_dir_writable "$BUILD_OUTPUT_DIR"
 make_dir_writable "$REPO_DIR"
