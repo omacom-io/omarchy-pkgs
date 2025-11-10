@@ -31,6 +31,7 @@ while [[ $# -gt 0 ]]; do
       print_error "Invalid mirror: $MIRROR (must be 'edge' or 'stable')"
       exit 1
     fi
+    update_arch_paths
     shift 2
     ;;
   --package)
