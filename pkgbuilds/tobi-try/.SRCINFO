@@ -6,11 +6,11 @@ pkgbase = tobi-try
 	arch = aarch64
 	arch = x86_64
 	license = MIT
-	makedepends = git
 	depends = ruby
 	provides = try
-	options = !strip
-	source = try.rb::https://raw.githubusercontent.com/tobi/try/refs/heads/main/try.rb
+	conflicts = try
+	options = !debug
+	source = try-0.1.0.rb::https://raw.githubusercontent.com/tobi/try/c3693e31e59357ea687a4b3ef0ac937ff653cc93/try.rb
 	sha256sums = SKIP
 
-pkgname = toby-try
+pkgname = tobi-try
