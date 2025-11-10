@@ -10,6 +10,7 @@ FROM docker.io/alpine:3.21 AS bootstrapper
 
 ARG TARGETARCH
 ARG BUILDPLATFORM
+ARG MIRROR=edge
 
 COPY pacstrap-docker /usr/local/bin/
 
@@ -36,7 +37,12 @@ RUN mkdir -p /etc/pacman.d && \
     cat /tmp/repos.conf >> /etc/pacman.conf
 
 RUN if [ "${TARGETARCH}" = "amd64" ]; then \
-        printf 'Server = https://mirror.omarchy.org/$repo/os/$arch\nServer = https://mirror.rackspace.com/archlinux/$repo/os/$arch\nServer = https://geo.mirror.pkgbuild.com/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
+        if [ "${MIRROR}" = "stable" ]; then \
+            OMARCHY_MIRROR="https://stable-mirror.omarchy.org"; \
+        else \
+            OMARCHY_MIRROR="https://mirror.omarchy.org"; \
+        fi && \
+        printf "Server = ${OMARCHY_MIRROR}/"'$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
     else \
         curl -L "https://raw.githubusercontent.com/archlinuxarm/PKGBUILDs/master/core/pacman-mirrorlist/mirrorlist" 2>/dev/null | \
             sed -E 's/^\s*#\s*Server\s*=/Server =/g' > /etc/pacman.d/mirrorlist && \

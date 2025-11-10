@@ -25,8 +25,9 @@ setup_qemu() {
 build_docker_image() {
   local build_dir="$1"
   local arch="${2:-x86_64}"
+  local mirror="${3:-edge}"
   local platform=""
-  local image_tag="omarchy-pkg-builder:latest-$arch"
+  local image_tag="omarchy-pkg-builder:latest-$arch-$mirror"
   
   case "$arch" in
     x86_64)  platform="linux/amd64" ;;
@@ -37,10 +38,11 @@ build_docker_image() {
       ;;
   esac
   
-  print_info "Building Docker image for $arch ($platform)..."
+  print_info "Building Docker image for $arch ($platform) using $mirror mirror..."
   
   docker buildx build \
     --platform "$platform" \
+    --build-arg MIRROR="$mirror" \
     --load \
     -t "$image_tag" \
     -f "$build_dir/Dockerfile" \
