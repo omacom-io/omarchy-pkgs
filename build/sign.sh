@@ -4,10 +4,12 @@
 set -e
 
 ARCH=${ARCH:-x86_64}
-BUILD_OUTPUT_DIR="/build-output/$ARCH"
+MIRROR=${MIRROR:-edge}
+BUILD_OUTPUT_DIR="/build-output/$MIRROR/$ARCH"
 
 echo "==> Package Signing"
 echo "==> Target architecture: $ARCH"
+echo "==> Mirror: $MIRROR"
 echo "==> Build output: $BUILD_OUTPUT_DIR"
 
 # Check if GPG key and passphrase are provided

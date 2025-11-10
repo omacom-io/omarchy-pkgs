@@ -4,8 +4,9 @@
 set -e
 
 ARCH=${ARCH:-x86_64}
+MIRROR=${MIRROR:-edge}
 PACKAGE_NAME="$1"
-REPO_DIR="/pkgs.omarchy.org/$ARCH"
+REPO_DIR="/pkgs.omarchy.org/$MIRROR/$ARCH"
 
 if [[ -z "$PACKAGE_NAME" ]]; then
   echo "ERROR: Package name required"

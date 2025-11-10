@@ -4,7 +4,8 @@
 set -e
 
 ARCH=${ARCH:-x86_64}
-OUTPUT_DIR="/output/$ARCH"
+MIRROR=${MIRROR:-edge}
+OUTPUT_DIR="/output/$MIRROR/$ARCH"
 REPO_NAME="omarchy"
 DB_FILE="$OUTPUT_DIR/${REPO_NAME}.db.tar.zst"
 

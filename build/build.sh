@@ -6,8 +6,9 @@
 
 # Setup directories
 ARCH=${ARCH:-x86_64}
-BUILD_OUTPUT_DIR="/build-output/$ARCH"
-FINAL_OUTPUT_DIR="/pkgs.omarchy.org/$ARCH"
+MIRROR=${MIRROR:-edge}
+BUILD_OUTPUT_DIR="/build-output/$MIRROR/$ARCH"
+FINAL_OUTPUT_DIR="/pkgs.omarchy.org/$MIRROR/$ARCH"
 
 mkdir -p "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR"
 
@@ -55,6 +56,7 @@ sudo pacman -Sy
 
 echo "==> Package Builder"
 echo "==> Target architecture: $ARCH"
+echo "==> Mirror: $MIRROR"
 echo "==> Build workspace: $BUILD_OUTPUT_DIR"
 echo "==> Final output: $FINAL_OUTPUT_DIR"
 
