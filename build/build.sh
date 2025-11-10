@@ -145,6 +145,9 @@ build_package() {
   MAKEPKG_FLAGS="-scf --noconfirm"
 
   if makepkg $MAKEPKG_FLAGS; then
+    # Ensure output directory exists
+    mkdir -p "$BUILD_OUTPUT_DIR"
+    
     for pkg_file in *.pkg.tar.*; do
       [[ -f "$pkg_file" ]] && cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
     done
