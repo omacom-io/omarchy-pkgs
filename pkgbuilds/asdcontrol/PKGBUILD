@@ -6,6 +6,7 @@ pkgdesc="Control brightness on Apple Displays connected via USB-C"
 arch=('x86_64')
 url="https://github.com/nikosdion/asdcontrol"
 license=('GPL2')
+options=('!debug')
 depends=('glibc' 'gcc-libs')
 makedepends=('make' 'gcc')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/nikosdion/asdcontrol/archive/0ee8bd5.tar.gz")
