@@ -14,7 +14,7 @@ conflicts=('try')
 options=('!debug')
 
 source=("try-${pkgver}.rb::https://raw.githubusercontent.com/tobi/try/${_subver}/try.rb")
-sha256sums=('SKIP')
+sha256sums=('41ad73efb031fbd197af2f5bff74a2f6865d4764816ed070cb4b918820d246b6')
 
 build() {
   cd "${srcdir}"
