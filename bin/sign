@@ -8,9 +8,6 @@ source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/docker-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 
-GPG_PRIVATE_KEY="$(op read "op://Shared/Omarchy GPG Private Key/omarchy-private.asc" --account Omarchy)"
-GPG_PASSPHRASE="$(op read "op://Shared/Omarchy GPG Private Key/password" --account Omarchy)"
-
 print_header "Sign Packages"
 
 # Parse arguments
