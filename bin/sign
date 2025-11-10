@@ -18,12 +18,18 @@ while [[ $# -gt 0 ]]; do
     update_arch_paths
     shift 2
     ;;
+  --mirror)
+    MIRROR="$2"
+    update_arch_paths
+    shift 2
+    ;;
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --arch <arch>  Target architecture (x86_64 or aarch64, default: x86_64)"
-    echo "  -h, --help     Show this help message"
+    echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
+    echo "  -h, --help         Show this help message"
     echo ""
     echo "This script signs all packages in build-output/"
     exit 0
@@ -36,6 +42,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 print_info "Target architecture: $ARCH"
+print_info "Mirror: $MIRROR"
 print_info "Build output: $BUILD_OUTPUT_DIR"
 
 # Check if build output exists
@@ -60,7 +67,7 @@ if [[ -z "$GPG_PASSPHRASE" ]]; then
 fi
 
 # Build/update the Docker image (always use x86_64 for signing - it's architecture independent)
-build_docker_image "$BUILD_DIR" "x86_64"
+build_docker_image "$BUILD_DIR" "x86_64" "$MIRROR"
 
 print_info "Running package signing..."
 
@@ -70,11 +77,12 @@ make_dir_writable "$BUILD_OUTPUT_DIR"
 # Run the signing script in Docker (always use x86_64 image)
 docker run --rm --platform linux/amd64 \
   -e ARCH="$ARCH" \
+  -e MIRROR="$MIRROR" \
   -e GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY" \
   -e GPG_PASSPHRASE="$GPG_PASSPHRASE" \
   -v "$BUILD_ROOT/build-output:/build-output" \
   -v "$BUILD_DIR:/build:ro" \
-  omarchy-pkg-builder:latest-x86_64 /build/sign.sh
+  omarchy-pkg-builder:latest-x86_64-$MIRROR /build/sign.sh
 
 SIGN_RESULT=$?
 

@@ -18,6 +18,11 @@ while [[ $# -gt 0 ]]; do
     update_arch_paths
     shift 2
     ;;
+  --mirror)
+    MIRROR="$2"
+    update_arch_paths
+    shift 2
+    ;;
   --dry-run)
     DRY_RUN=true
     shift
@@ -26,9 +31,10 @@ while [[ $# -gt 0 ]]; do
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --arch <arch>  Target architecture (x86_64 or aarch64, default: x86_64)"
-    echo "  --dry-run      Show what would be copied without copying"
-    echo "  -h, --help     Show this help message"
+    echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
+    echo "  --dry-run          Show what would be copied without copying"
+    echo "  -h, --help         Show this help message"
     echo ""
     echo "This script promotes packages from build-output/ to pkgs.omarchy.org/"
     exit 0
@@ -40,6 +46,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+print_info "Mirror: $MIRROR"
 print_info "Build output: $BUILD_OUTPUT_DIR"
 print_info "Final output: $REPO_DIR"
 

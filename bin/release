@@ -30,6 +30,10 @@ while [[ $# -gt 0 ]]; do
     BUILD_ARGS+=("--arch" "$2")
     shift 2
     ;;
+  --mirror)
+    BUILD_ARGS+=("--mirror" "$2")
+    shift 2
+    ;;
   --package)
     BUILD_ARGS+=("--package" "$2")
     shift 2
@@ -47,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "Options:"
     echo "  --arch <arch>         Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --mirror <mirror>     Mirror to use (edge or stable, default: edge)"
     echo "  --package <name>      Build only the specified package"
     echo "  --sync-remote <path>  Rclone remote for sync (default: pkgs.omarchy.org:omarchy-pkgs)"
     echo "  --skip-prod-check     Skip production environment check during sync"
@@ -74,7 +79,7 @@ print_info "Step 1/5: Building packages..."
 # Step 2: Sign
 echo ""
 print_info "Step 2/5: Signing packages..."
-"$BUILD_ROOT/bin/sign" --arch "$ARCH" || {
+"$BUILD_ROOT/bin/sign" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Signing failed"
   exit 1
 }
@@ -82,7 +87,7 @@ print_info "Step 2/5: Signing packages..."
 # Step 3: Promote
 echo ""
 print_info "Step 3/5: Promoting to production..."
-"$BUILD_ROOT/bin/promote-build" --arch "$ARCH" || {
+"$BUILD_ROOT/bin/promote-build" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Promotion failed"
   exit 1
 }
@@ -90,7 +95,7 @@ print_info "Step 3/5: Promoting to production..."
 # Step 4: Clean (which also updates the repo)
 echo ""
 print_info "Step 4/5: Cleaning old versions..."
-"$BUILD_ROOT/bin/clean-repo" || {
+"$BUILD_ROOT/bin/clean-repo" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Cleaning failed"
   exit 1
 }
@@ -98,7 +103,7 @@ print_info "Step 4/5: Cleaning old versions..."
 # Step 5: Sync
 echo ""
 print_info "Step 5/5: Syncing to remote..."
-SYNC_ARGS=("pkgs.omarchy.org/$ARCH")
+SYNC_ARGS=("pkgs.omarchy.org/$MIRROR/$ARCH")
 if [[ -n "$SYNC_REMOTE" ]]; then
   SYNC_ARGS+=("--remote" "$SYNC_REMOTE")
 fi

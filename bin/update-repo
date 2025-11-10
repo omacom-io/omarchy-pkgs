@@ -28,14 +28,15 @@ update_database() {
   make_dir_writable "$REPO_DIR"
 
   # Build Docker image (always use x86_64 for repo update - it's architecture independent)
-  build_docker_image "$BUILD_DIR" "x86_64"
+  build_docker_image "$BUILD_DIR" "x86_64" "$MIRROR"
 
   # Run repo-add in Docker container (always use x86_64 image)
   docker run --rm --platform linux/amd64 \
     -e ARCH="$ARCH" \
+    -e MIRROR="$MIRROR" \
     -v "$BUILD_ROOT/pkgs.omarchy.org:/output" \
     -v "$BUILD_DIR:/build:ro" \
-    omarchy-pkg-builder:latest-x86_64 /build/update-repo.sh
+    omarchy-pkg-builder:latest-x86_64-$MIRROR /build/update-repo.sh
 }
 
 # Main execution
@@ -50,12 +51,18 @@ main() {
       update_arch_paths
       shift 2
       ;;
+    --mirror)
+      MIRROR="$2"
+      update_arch_paths
+      shift 2
+      ;;
     -h | --help)
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --arch <arch>  Target architecture (x86_64 or aarch64, default: x86_64)"
-      echo "  -h, --help     Show this help message"
+      echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
+      echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
+      echo "  -h, --help         Show this help message"
       exit 0
       ;;
     *)
@@ -66,6 +73,7 @@ main() {
   done
 
   print_info "Target architecture: $ARCH"
+  print_info "Mirror: $MIRROR"
   print_info "Output directory: $REPO_DIR"
 
   update_database

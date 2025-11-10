@@ -4,14 +4,47 @@
 SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
 BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 
+source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --arch)
+    ARCH="$2"
+    update_arch_paths
+    shift 2
+    ;;
+  --mirror)
+    MIRROR="$2"
+    update_arch_paths
+    shift 2
+    ;;
+  -h | --help)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
+    echo "  -h, --help         Show this help message"
+    exit 0
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
 
 DB_FILE="$REPO_DIR/omarchy.db.tar.zst"
 
 if [[ ! -f "$DB_FILE" ]]; then
-  echo "Repository database not found"
+  echo "Repository database not found: $DB_FILE"
   exit 1
 fi
+
+echo "Packages in $MIRROR mirror ($ARCH):"
+echo ""
 
 # Extract package names and versions from database
 tar -xOf "$DB_FILE" --wildcards "*/desc" 2>/dev/null |
