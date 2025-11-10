@@ -18,9 +18,10 @@ if [ $# -eq 0 ] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
   echo "  --skip-prod-check      Skip production sync confirmation"
   echo ""
   echo "Examples:"
-  echo "  $0 pkgs.omarchy.org/x86_64                      # Sync to production (with confirmation)"
-  echo "  $0 pkgs.omarchy.org/x86_64 --remote dev-pkgs:/  # Sync to dev remote"
-  echo "  $0 pkgs.omarchy.org/x86_64 --skip-prod-check    # Sync without confirmation"
+  echo "  $0 pkgs.omarchy.org/edge/x86_64                      # Sync edge mirror to production (with confirmation)"
+  echo "  $0 pkgs.omarchy.org/stable/x86_64                    # Sync stable mirror to production"
+  echo "  $0 pkgs.omarchy.org/edge/x86_64 --remote dev-pkgs:/  # Sync to dev remote"
+  echo "  $0 pkgs.omarchy.org/edge/x86_64 --skip-prod-check    # Sync without confirmation"
   exit 0
 fi
 

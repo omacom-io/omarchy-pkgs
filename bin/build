@@ -25,6 +25,14 @@ while [[ $# -gt 0 ]]; do
     update_arch_paths
     shift 2
     ;;
+  --mirror)
+    MIRROR="$2"
+    if [[ "$MIRROR" != "edge" && "$MIRROR" != "stable" ]]; then
+      print_error "Invalid mirror: $MIRROR (must be 'edge' or 'stable')"
+      exit 1
+    fi
+    shift 2
+    ;;
   --package)
     shift
     PACKAGES=""
@@ -39,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "Options:"
     echo "  --arch <arch>        Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --mirror <mirror>    Mirror to use (edge or stable, default: edge)"
     echo "  --package <names>    Build only the specified package(s) (space-separated)"
     echo "  -h, --help           Show this help message"
     echo ""
@@ -51,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "Examples:"
     echo "  $0 --arch aarch64"
+    echo "  $0 --mirror stable"
     echo "  $0 --package yay"
     echo "  $0 --package yay elephant cursor-bin"
     echo ""
@@ -63,8 +73,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Show target architecture after parsing args
+# Show target architecture and mirror after parsing args
 print_info "Target architecture: $ARCH"
+print_info "Mirror: $MIRROR"
 print_info "Build workspace: $BUILD_OUTPUT_DIR"
 print_info "Final output: $REPO_DIR"
 
@@ -93,7 +104,7 @@ else
 fi
 
 # Build/update the Docker image
-build_docker_image "$BUILD_DIR" "$ARCH"
+build_docker_image "$BUILD_DIR" "$ARCH" "$MIRROR"
 
 print_info "Running AUR package build..."
 
@@ -105,6 +116,7 @@ make_dir_writable "$REPO_DIR"
 DOCKER_ARGS=(
   --rm
   -e ARCH="$ARCH"
+  -e MIRROR="$MIRROR"
   -e PACKAGES="$PACKAGES"
   -v "$BUILD_ROOT/build-output:/build-output"
   -v "$BUILD_ROOT/pkgs.omarchy.org:/pkgs.omarchy.org"
@@ -113,7 +125,7 @@ DOCKER_ARGS=(
 )
 
 # Run the builder with assembled args
-IMAGE_TAG="omarchy-pkg-builder:latest-$ARCH"
+IMAGE_TAG="omarchy-pkg-builder:latest-$ARCH-$MIRROR"
 PLATFORM_ARG=$(get_platform_arg "$ARCH")
 
 docker run $PLATFORM_ARG "${DOCKER_ARGS[@]}" "$IMAGE_TAG" /build/build.sh
