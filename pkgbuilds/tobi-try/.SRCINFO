@@ -1,0 +1,16 @@
+pkgbase = tobi-try
+	pkgdesc = Fresh directories for every vibe.
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/tobi/try
+	arch = aarch64
+	arch = x86_64
+	license = MIT
+	makedepends = git
+	depends = ruby
+	provides = try
+	options = !strip
+	source = try.rb::https://raw.githubusercontent.com/tobi/try/refs/heads/main/try.rb
+	sha256sums = SKIP
+
+pkgname = toby-try

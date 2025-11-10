@@ -1,0 +1,28 @@
+# Maintainer: dhh
+
+pkgname='tobi-try'
+pkgver=0.1.0
+_subver=c3693e31e59357ea687a4b3ef0ac937ff653cc93
+pkgrel=1
+pkgdesc='Fresh directories for every vibe.'
+url='https://github.com/tobi/try'
+arch=('aarch64' 'x86_64')
+license=('MIT')
+depends=('ruby')
+provides=('try')
+conflicts=('try')
+options=('!debug')
+
+source=("try-${pkgver}.rb::https://raw.githubusercontent.com/tobi/try/${_subver}/try.rb")
+sha256sums=('SKIP')
+
+build() {
+  cd "${srcdir}"
+
+  # Ensure shebang points to system Ruby (so no mise conflicts)
+  sed -i '1c#!/usr/bin/ruby' "try-${pkgver}.rb"
+}
+
+package() {
+  install -Dm755 "${srcdir}/try-${pkgver}.rb" "${pkgdir}/usr/bin/try"
+}
