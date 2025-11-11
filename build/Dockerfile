@@ -38,11 +38,10 @@ RUN mkdir -p /etc/pacman.d && \
 
 RUN if [ "${TARGETARCH}" = "amd64" ]; then \
         if [ "${MIRROR}" = "stable" ]; then \
-            OMARCHY_MIRROR="https://stable-mirror.omarchy.org"; \
+            printf 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
         else \
-            OMARCHY_MIRROR="https://mirror.omarchy.org"; \
-        fi && \
-        printf "Server = ${OMARCHY_MIRROR}/"'$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
+            printf 'Server = https://mirror.omarchy.org/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
+        fi; \
     else \
         curl -L "https://raw.githubusercontent.com/archlinuxarm/PKGBUILDs/master/core/pacman-mirrorlist/mirrorlist" 2>/dev/null | \
             sed -E 's/^\s*#\s*Server\s*=/Server =/g' > /etc/pacman.d/mirrorlist && \
