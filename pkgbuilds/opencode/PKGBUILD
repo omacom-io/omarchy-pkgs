@@ -20,18 +20,24 @@ sha256sums=('3db64a1cd6f0b1163e50092aeac73ba21144d8bacbe52c70b1493ba2e52dd05b')
 
 build() {
   cd "opencode-${pkgver}"
-  
+
   # Ensure npm is in PATH for bun's shell
   export PATH="/usr/bin:$PATH"
-  
+
+  # Install workspace dependencies from root
   bun install
-  cd ./packages/opencode
-  OPENCODE_CHANNEL=latest OPENCODE_VERSION=1.0.55 bun run ./script/build.ts --single
+
+  # Install from package directory to create local node_modules with workspace symlinks
+  cd packages/opencode
+  bun install
+
+  # Build the binary
+  OPENCODE_CHANNEL=latest OPENCODE_VERSION=${pkgver} bun run build --single
 }
 
 package() {
   cd "opencode-${pkgver}/packages/opencode"
-  
+
   # Determine architecture for the binary path
   case "${CARCH}" in
     x86_64)
@@ -41,6 +47,6 @@ package() {
       _arch="arm64"
       ;;
   esac
-  
+
   install -Dm755 "./dist/opencode-linux-${_arch}/bin/opencode" "${pkgdir}/usr/bin/opencode"
 }
