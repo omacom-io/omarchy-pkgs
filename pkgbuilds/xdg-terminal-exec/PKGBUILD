@@ -1,6 +1,6 @@
 # Maintainer: Max Gautier <mg@max.gautier.name>
 pkgname=xdg-terminal-exec
-pkgver=0.13.2
+pkgver=0.13.3
 pkgrel=1
 pkgdesc="Proposed standard to launching desktop apps with Terminal=true"
 arch=(any)
@@ -9,8 +9,8 @@ makedepends=('scdoc')
 checkdepends=('bats')
 license=('GPL-3.0-or-later')
 source=("${pkgname}-${pkgver}::$url/-/archive/v${pkgver}/${pkgname}-v${pkgver}.tar.gz")
-sha256sums=('5b0130d5f322ed59466993875bf6a8c09169edc650dcd3367dd6d6704a02e876')
-b2sums=('04a7fc89d9081fe22317afa8df3f12180f0fbf511a9e9e79269558fea73988794a656875640fed118e8ab538a10287f56cad0a1a7e4df1ccfb2163ff195d4c35')
+sha256sums=('4c8db6be925a5260683a20870d470e6d0deca427e5efce0c322374502eb9b184')
+b2sums=('20a6920503f6a364b460b892fd11c0307725bee4a137c230f6ddddaf5c23eddf3aa4d2aec649e7a134f67b6597a8057fcd4646c9aec3071493596415ff9872ea')
 
 check() {
     cd "$pkgname-v$pkgver"
