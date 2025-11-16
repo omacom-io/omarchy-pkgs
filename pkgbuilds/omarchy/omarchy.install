@@ -1,0 +1,22 @@
+post_install() {
+  echo "Omarchy has been installed!"
+  echo ""
+  echo "All configurations are provided by omarchy-settings."
+  echo "Installation scripts are available in /usr/share/omarchy/"
+  echo ""
+  echo "To complete installation, run:"
+  echo "  bash /usr/share/omarchy/install.sh"
+}
+
+post_upgrade() {
+  echo "Omarchy has been upgraded!"
+  echo ""
+  echo "To run any pending migrations:"
+  echo "  omarchy-migrate"
+}
+
+post_remove() {
+  echo "Omarchy has been removed."
+  echo "Note: User configurations in home directories were not removed."
+  echo "Note: omarchy-settings package is still installed (provides configs and Plymouth theme)"
+}

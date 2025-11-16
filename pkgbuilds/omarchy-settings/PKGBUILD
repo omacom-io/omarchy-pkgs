@@ -1,0 +1,102 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+pkgname='omarchy-settings'
+pkgver=3.2.0
+pkgrel=1
+pkgdesc='Configuration files and user defaults for Omarchy'
+arch=('any')
+url='https://github.com/basecamp/omarchy'
+license=('MIT')
+provides=('omarchy-settings')
+install='omarchy-settings.install'
+
+backup=(
+  'etc/skel/.bashrc'
+  'etc/security/faillock.conf'
+  'etc/nsswitch.conf'
+  'etc/plymouth/plymouthd.conf'
+  'etc/cups/cups-browsed.conf'
+)
+
+depends=(
+  'bash'
+  'curl'           # Required by omarchy-upload-log
+  'gum'            # Required by omarchy-debug and install helpers
+  'plymouth'       # For boot theme
+)
+
+optdepends=(
+  'omarchy: Full Omarchy desktop environment'
+  'inxi: System information for omarchy-debug'
+  'fastfetch: System information for omarchy-upload-log'
+)
+
+source=('omarchy-installer::git+https://github.com/basecamp/omarchy.git')
+sha256sums=('SKIP')
+
+package() {
+  cd "omarchy-installer"
+
+  # 1. User skeleton files - /etc/skel/
+  # Install non-conflicting files directly
+  install -d "$pkgdir/etc/skel/.config"
+  cp -r config/* "$pkgdir/etc/skel/.config/"
+  
+  # Remove .local from .config (it belongs in .local, not .config)
+  rm -rf "$pkgdir/etc/skel/.config/.local"
+  
+  # Desktop applications and icons
+  install -d "$pkgdir/etc/skel/.local/share/applications"
+  cp applications/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
+  cp applications/hidden/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
+  
+  install -d "$pkgdir/etc/skel/.local/share/applications/icons"
+  cp applications/icons/*.png "$pkgdir/etc/skel/.local/share/applications/icons/"
+  
+  # 2. System configuration files - /etc/
+  # Install non-conflicting files directly
+  install -d "$pkgdir/etc"
+  cp -r etc/* "$pkgdir/etc/"
+  
+  # Remove the 5 files that conflict with other packages
+  # These will be stored in /usr/share/omarchy/etc-overrides/ instead
+  rm -f "$pkgdir/etc/security/faillock.conf"
+  rm -f "$pkgdir/etc/nsswitch.conf"
+  rm -f "$pkgdir/etc/plymouth/plymouthd.conf"
+  rm -f "$pkgdir/etc/cups/cups-browsed.conf"
+  
+  # Fix sudoers permissions
+  if [ -d "$pkgdir/etc/sudoers.d" ]; then
+    chmod 440 "$pkgdir/etc/sudoers.d/"* 2>/dev/null || true
+  fi
+  
+  # 3. Conflicting files - stored for post_install
+  # These 5 files conflict with other packages:
+  # - bash owns .bashrc
+  # - pam owns faillock.conf
+  # - filesystem owns nsswitch.conf
+  # - plymouth owns plymouthd.conf
+  # - cups-browsed owns cups-browsed.conf
+  install -d "$pkgdir/usr/share/omarchy/etc-overrides"
+  install -Dm644 default/bashrc "$pkgdir/usr/share/omarchy/etc-overrides/skel-.bashrc"
+  install -Dm644 etc/security/faillock.conf "$pkgdir/usr/share/omarchy/etc-overrides/security-faillock.conf"
+  install -Dm644 etc/nsswitch.conf "$pkgdir/usr/share/omarchy/etc-overrides/nsswitch.conf"
+  install -Dm644 etc/plymouth/plymouthd.conf "$pkgdir/usr/share/omarchy/etc-overrides/plymouth-plymouthd.conf"
+  install -Dm644 etc/cups/cups-browsed.conf "$pkgdir/usr/share/omarchy/etc-overrides/cups-cups-browsed.conf"
+  
+  # 3. Plymouth theme - /usr/share/plymouth/themes/omarchy/
+  install -d "$pkgdir/usr/share/plymouth/themes/omarchy"
+  cp default/plymouth/* "$pkgdir/usr/share/plymouth/themes/omarchy/"
+  
+  # 4. System fonts - /usr/share/fonts/
+  # Omarchy icon font used by waybar
+  install -Dm644 config/.local/share/fonts/omarchy.ttf "$pkgdir/usr/share/fonts/omarchy/omarchy.ttf"
+  
+  # 5. ISO/Installation helper binaries - /usr/bin/
+  # These are needed during ISO boot and installation
+  install -Dm755 bin/omarchy-upload-log "$pkgdir/usr/bin/omarchy-upload-log"
+  install -Dm755 bin/omarchy-debug "$pkgdir/usr/bin/omarchy-debug"
+  
+  # Create symlink for install script compatibility
+  ln -s omarchy-upload-log "$pkgdir/usr/bin/omarchy-upload-install-log"
+  
+}

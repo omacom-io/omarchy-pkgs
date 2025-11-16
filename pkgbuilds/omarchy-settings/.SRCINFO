@@ -1,0 +1,24 @@
+pkgbase = omarchy-settings
+	pkgdesc = Configuration files and user defaults for Omarchy
+	pkgver = 3.2.0
+	pkgrel = 1
+	url = https://github.com/basecamp/omarchy
+	install = omarchy-settings.install
+	arch = any
+	license = MIT
+	depends = bash
+	depends = curl
+	depends = gum
+	depends = plymouth
+	optdepends = omarchy: Full Omarchy desktop environment
+	optdepends = inxi: System information for omarchy-debug
+	optdepends = fastfetch: System information for omarchy-upload-log
+	provides = omarchy-settings
+	backup = etc/cups/cups-browsed.conf
+	backup = etc/nsswitch.conf
+	backup = etc/security/faillock.conf
+	backup = etc/skel/.bashrc
+	source = omarchy-installer::git+https://github.com/basecamp/omarchy.git
+	sha256sums = SKIP
+
+pkgname = omarchy-settings

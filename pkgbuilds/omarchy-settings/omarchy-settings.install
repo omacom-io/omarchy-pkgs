@@ -1,0 +1,37 @@
+post_install() {
+  echo "Setting up Omarchy configuration..."
+  
+  # Copy the 5 conflicting files from storage to their destinations
+  # These weren't installed directly to avoid conflicts with other packages
+  if [ -d "/usr/share/omarchy/etc-overrides" ]; then
+    echo "Installing Omarchy configuration overrides..."
+    cp -f /usr/share/omarchy/etc-overrides/skel-.bashrc /etc/skel/.bashrc
+    cp -f /usr/share/omarchy/etc-overrides/security-faillock.conf /etc/security/faillock.conf
+    cp -f /usr/share/omarchy/etc-overrides/nsswitch.conf /etc/nsswitch.conf
+    cp -f /usr/share/omarchy/etc-overrides/plymouth-plymouthd.conf /etc/plymouth/plymouthd.conf
+    cp -f /usr/share/omarchy/etc-overrides/cups-cups-browsed.conf /etc/cups/cups-browsed.conf
+  fi
+  
+  # Set Plymouth theme
+  if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+    plymouth-set-default-theme -R omarchy 2>/dev/null || true
+  fi
+  
+  echo ""
+  echo "✓ Omarchy settings installed successfully!"
+  echo ""
+  echo "All configurations applied to /etc/ and /etc/skel/"
+  echo ""
+  echo "Note: Existing users should copy configs from /etc/skel/ to apply Omarchy defaults"
+}
+
+post_upgrade() {
+  # On upgrade, backup=() array protects user-modified files
+  # Only run post_install tasks (like Plymouth theme)
+  post_install
+}
+
+post_remove() {
+  echo "Omarchy settings have been removed."
+  echo "Note: User configurations in home directories were not removed."
+}

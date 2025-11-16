@@ -1,0 +1,157 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+pkgname='omarchy'
+pkgver=3.2.0
+pkgrel=1
+pkgdesc='Beautiful, Modern & Opinionated Arch Linux by DHH'
+arch=('any')
+url='https://github.com/basecamp/omarchy'
+license=('MIT')
+provides=('omarchy')
+install='omarchy.install'
+
+depends=(
+  # Omarchy configuration and installation
+  'omarchy-settings'
+  'omarchy-installer'
+  
+  # Core Wayland/Hyprland stack
+  'hyprland'
+  'waybar'
+  'hypridle'
+  'hyprlock'
+  'hyprsunset'
+  'swaybg'
+  'swayosd'
+  'mako'
+  'uwsm'
+  'omarchy-walker'
+
+  # Terminal & Shell
+  'ghostty'
+  'bash-completion'
+  'starship'
+
+  # Core utilities
+  'neovim'
+  'mise'
+  'ripgrep'
+  'fzf'
+  'fd'
+  'eza'
+  'bat'
+  'zoxide'
+  'jq'
+
+  # System essentials
+  'polkit-gnome'
+  'gnome-keyring'
+  'plymouth'
+  'xdg-desktop-portal-hyprland'
+  'xdg-desktop-portal-gtk'
+
+  # Fonts
+  'noto-fonts'
+  'noto-fonts-emoji'
+  'ttf-jetbrains-mono-nerd'
+
+  # File management
+  'gvfs-mtp'
+  'gvfs-smb'
+ 
+  # Audio/Video
+  'wireplumber'
+  'playerctl'
+  'pamixer'
+
+  # Networking
+  'iwd'
+  'wireless-regdb'
+  'avahi'
+  'nss-mdns'
+
+  # Screenshots & Screen tools
+  'grim'
+  'slurp'
+  'satty'
+  'wayfreeze'
+  'gpu-screen-recorder'
+
+  # Interactive utilities
+  'gum'
+
+  # System utilities
+  'fastfetch'
+  'brightnessctl'
+  'power-profiles-daemon'
+)
+
+optdepends=(
+  # Development tools
+  '1password: Password manager'
+  '1password-cli: 1Password CLI'
+  'github-cli: GitHub CLI tool'
+  'lazygit: Terminal UI for git'
+  'lazydocker: Terminal UI for docker'
+
+  # Browsers & Communication
+  'omarchy-chromium: Customized Chromium browser'
+  'signal-desktop: Encrypted messaging'
+  'spotify: Music streaming'
+
+  # Productivity
+  'obsidian: Note-taking app'
+  'typora: Markdown editor'
+  'libreoffice: Office suite'
+
+  # Media & Graphics
+  'obs-studio: Screen recording and streaming'
+  'mpv: Video player'
+  'imv: Image viewer'
+  'kdenlive: Video editor'
+  'pinta: Image editor'
+
+  # System utilities
+  'btop: System monitor'
+
+  # Printing
+  'cups: Printing support'
+  'system-config-printer: Printer configuration'
+
+  # Hardware support
+  'asdcontrol: Apple display brightness control'
+  'blueberry: Bluetooth manager'
+
+  # Developer tools
+  'cargo: Rust package manager'
+  'clang: C/C++ compiler'
+  'python-poetry-core: Python packaging'
+  'tree-sitter-cli: Parser generator tool'
+)
+
+source=('omarchy-installer::git+https://github.com/basecamp/omarchy.git')
+sha256sums=('SKIP')
+
+package() {
+  cd "omarchy-installer"
+  
+  # All binaries EXCEPT the ones already in omarchy-settings
+  for bin in bin/*; do
+    bin_name=$(basename "$bin")
+    # Skip binaries already in omarchy-settings
+    if [[ "$bin_name" != "omarchy-upload-log" && "$bin_name" != "omarchy-debug" ]]; then
+      install -Dm755 "$bin" "$pkgdir/usr/bin/$bin_name"
+    fi
+  done
+  
+  # Shared data - /usr/share/omarchy/
+  install -d "$pkgdir/usr/share/omarchy"
+  
+  # Themes (for theme switching)
+  cp -r themes "$pkgdir/usr/share/omarchy/"
+  
+  # Default configs and assets
+  cp -r default "$pkgdir/usr/share/omarchy/"
+  
+  # Note: Branding, install scripts, and migrations are provided by omarchy-installer
+  # Note: Settings and configs are provided by omarchy-settings
+}
