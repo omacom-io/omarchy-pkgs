@@ -12,7 +12,7 @@ depends=(
   'gum'            # Required by installer scripts
   'jq'             # Required by installer scripts
   'git'            # Required by installer scripts
-  'python-archinstall'  # Required by omarchy-archinstall-wrapper.py
+  'python-archinstall'  # Required by omarchy-install
 )
 
 optdepends=(
@@ -44,11 +44,11 @@ package() {
   # Migrations - /usr/share/omarchy/migrations/
   cp -r migrations "$pkgdir/usr/share/omarchy/"
   
-  # Archinstall wrapper scripts - /usr/share/omarchy/bin/
+  # Installation wrapper scripts - /usr/share/omarchy/bin/
   install -d "$pkgdir/usr/share/omarchy/bin"
-  install -Dm755 bin/omarchy-archinstall-wrapper.py "$pkgdir/usr/share/omarchy/bin/omarchy-archinstall-wrapper.py"
-  install -Dm755 bin/omarchy-run-as-user.sh "$pkgdir/usr/share/omarchy/bin/omarchy-run-as-user.sh"
-  install -Dm755 bin/omarchy-post-install.sh "$pkgdir/usr/share/omarchy/bin/omarchy-post-install.sh"
+  install -Dm755 bin/omarchy-install "$pkgdir/usr/share/omarchy/bin/omarchy-install"
+  install -Dm755 bin/omarchy-disk-config "$pkgdir/usr/share/omarchy/bin/omarchy-disk-config"
+  install -Dm755 bin/omarchy-install-final-configurations.sh "$pkgdir/usr/share/omarchy/bin/omarchy-install-final-configurations.sh"
   
   # Branding for installer
   install -Dm644 logo.txt "$pkgdir/usr/share/omarchy/logo.txt"

@@ -136,6 +136,7 @@ package() {
   
   # All binaries EXCEPT the ones already in omarchy-settings
   for bin in bin/*; do
+    [[ -f "$bin" ]] || continue  # Skip directories like __pycache__
     bin_name=$(basename "$bin")
     # Skip binaries already in omarchy-settings
     if [[ "$bin_name" != "omarchy-upload-log" && "$bin_name" != "omarchy-debug" ]]; then
