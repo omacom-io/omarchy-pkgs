@@ -23,7 +23,6 @@ This package provides **everything needed for the Omarchy ISO environment**:
 ### Essential Binaries
 - `/usr/bin/omarchy-debug` - System debugging and log collection
 - `/usr/bin/omarchy-upload-log` - Upload logs for support
-- `/usr/bin/omarchy-upload-install-log` - Symlink for install script compatibility
 
 ### Install Helpers (Minimal)
 - `/usr/share/omarchy/install/helpers/` - Helper scripts for ISO configurator

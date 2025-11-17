@@ -11,9 +11,10 @@ install='omarchy.install'
 
 depends=(
   # Omarchy configuration and installation
+  'omarchy-keyring'
   'omarchy-settings'
   'omarchy-installer'
-  
+
   # Core Wayland/Hyprland stack
   'hyprland'
   'waybar'
@@ -32,7 +33,7 @@ depends=(
   'starship'
 
   # Core utilities
-  'neovim'
+  'omarchy-nvim'
   'mise'
   'ripgrep'
   'fzf'
@@ -57,7 +58,7 @@ depends=(
   # File management
   'gvfs-mtp'
   'gvfs-smb'
- 
+
   # Audio/Video
   'wireplumber'
   'playerctl'
@@ -134,25 +135,19 @@ sha256sums=('SKIP')
 package() {
   cd "omarchy-installer"
   
-  # All binaries EXCEPT the ones already in omarchy-settings
+  # User binaries (excluding ones in omarchy-settings)
   for bin in bin/*; do
-    [[ -f "$bin" ]] || continue  # Skip directories like __pycache__
+    [[ -f "$bin" ]] || continue
     bin_name=$(basename "$bin")
-    # Skip binaries already in omarchy-settings
     if [[ "$bin_name" != "omarchy-upload-log" && "$bin_name" != "omarchy-debug" ]]; then
       install -Dm755 "$bin" "$pkgdir/usr/bin/$bin_name"
     fi
   done
   
-  # Shared data - /usr/share/omarchy/
+  # Themes for theme switching
   install -d "$pkgdir/usr/share/omarchy"
-  
-  # Themes (for theme switching)
   cp -r themes "$pkgdir/usr/share/omarchy/"
-  
-  # Default configs and assets
-  cp -r default "$pkgdir/usr/share/omarchy/"
-  
-  # Note: Branding, install scripts, and migrations are provided by omarchy-installer
-  # Note: Settings and configs are provided by omarchy-settings
+
+  # System migrations
+  cp -r migrations "$pkgdir/usr/share/omarchy/"
 }

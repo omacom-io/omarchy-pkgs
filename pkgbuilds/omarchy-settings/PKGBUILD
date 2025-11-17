@@ -36,67 +36,54 @@ sha256sums=('SKIP')
 package() {
   cd "omarchy-installer"
 
-  # 1. User skeleton files - /etc/skel/
-  # Install non-conflicting files directly
+  # User skeleton files (/etc/skel/)
   install -d "$pkgdir/etc/skel/.config"
   cp -r config/* "$pkgdir/etc/skel/.config/"
-  
-  # Remove .local from .config (it belongs in .local, not .config)
   rm -rf "$pkgdir/etc/skel/.config/.local"
-  
-  # Desktop applications and icons
+
   install -d "$pkgdir/etc/skel/.local/share/applications"
   cp applications/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
   cp applications/hidden/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
-  
+
   install -d "$pkgdir/etc/skel/.local/share/applications/icons"
   cp applications/icons/*.png "$pkgdir/etc/skel/.local/share/applications/icons/"
-  
-  # 2. System configuration files - /etc/
-  # Install non-conflicting files directly
+
+  # System configuration files (/etc/)
   install -d "$pkgdir/etc"
   cp -r etc/* "$pkgdir/etc/"
-  
-  # Remove the 5 files that conflict with other packages
-  # These will be stored in /usr/share/omarchy/etc-overrides/ instead
-  rm -f "$pkgdir/etc/security/faillock.conf"
-  rm -f "$pkgdir/etc/nsswitch.conf"
-  rm -f "$pkgdir/etc/plymouth/plymouthd.conf"
-  rm -f "$pkgdir/etc/cups/cups-browsed.conf"
-  
-  # Fix sudoers permissions
+
   if [ -d "$pkgdir/etc/sudoers.d" ]; then
     chmod 440 "$pkgdir/etc/sudoers.d/"* 2>/dev/null || true
   fi
-  
-  # 3. Conflicting files - stored for post_install
-  # These 5 files conflict with other packages:
-  # - bash owns .bashrc
-  # - pam owns faillock.conf
-  # - filesystem owns nsswitch.conf
-  # - plymouth owns plymouthd.conf
-  # - cups-browsed owns cups-browsed.conf
+
+  # Move conflicting files to etc-overrides for post_install
   install -d "$pkgdir/usr/share/omarchy/etc-overrides"
-  install -Dm644 default/bashrc "$pkgdir/usr/share/omarchy/etc-overrides/skel-.bashrc"
-  install -Dm644 etc/security/faillock.conf "$pkgdir/usr/share/omarchy/etc-overrides/security-faillock.conf"
-  install -Dm644 etc/nsswitch.conf "$pkgdir/usr/share/omarchy/etc-overrides/nsswitch.conf"
-  install -Dm644 etc/plymouth/plymouthd.conf "$pkgdir/usr/share/omarchy/etc-overrides/plymouth-plymouthd.conf"
-  install -Dm644 etc/cups/cups-browsed.conf "$pkgdir/usr/share/omarchy/etc-overrides/cups-cups-browsed.conf"
-  
-  # 3. Plymouth theme - /usr/share/plymouth/themes/omarchy/
+  install -Dm644 default/bashrc "$pkgdir/usr/share/omarchy/etc-overrides/dot.bashrc"
+  mv "$pkgdir/etc/security/faillock.conf" "$pkgdir/usr/share/omarchy/etc-overrides/security-faillock.conf"
+  mv "$pkgdir/etc/nsswitch.conf" "$pkgdir/usr/share/omarchy/etc-overrides/nsswitch.conf"
+  mv "$pkgdir/etc/plymouth/plymouthd.conf" "$pkgdir/usr/share/omarchy/etc-overrides/plymouth-plymouthd.conf"
+  mv "$pkgdir/etc/cups/cups-browsed.conf" "$pkgdir/usr/share/omarchy/etc-overrides/cups-cups-browsed.conf"
+
+  # Plymouth theme
   install -d "$pkgdir/usr/share/plymouth/themes/omarchy"
   cp default/plymouth/* "$pkgdir/usr/share/plymouth/themes/omarchy/"
-  
-  # 4. System fonts - /usr/share/fonts/
-  # Omarchy icon font used by waybar
+
+  # Default configs and assets
+  install -d "$pkgdir/usr/share/omarchy"
+  cp -r default "$pkgdir/usr/share/omarchy/"
+
+  # System fonts
   install -Dm644 config/.local/share/fonts/omarchy.ttf "$pkgdir/usr/share/fonts/omarchy/omarchy.ttf"
-  
-  # 5. ISO/Installation helper binaries - /usr/bin/
-  # These are needed during ISO boot and installation
+
+  # ISO/Installation helper binaries
   install -Dm755 bin/omarchy-upload-log "$pkgdir/usr/bin/omarchy-upload-log"
   install -Dm755 bin/omarchy-debug "$pkgdir/usr/bin/omarchy-debug"
-  
-  # Create symlink for install script compatibility
-  ln -s omarchy-upload-log "$pkgdir/usr/bin/omarchy-upload-install-log"
-  
+
+  # Branding assets
+  install -Dm644 logo.txt "$pkgdir/usr/share/omarchy/logo.txt"
+  install -Dm644 icon.png "$pkgdir/usr/share/omarchy/icon.png"
+  install -Dm644 icon.txt "$pkgdir/usr/share/omarchy/icon.txt"
+  install -Dm644 logo.svg "$pkgdir/usr/share/omarchy/logo.svg"
+  install -Dm644 version "$pkgdir/usr/share/omarchy/version"
+
 }

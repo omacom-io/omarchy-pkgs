@@ -24,36 +24,23 @@ sha256sums=('SKIP')
 
 package() {
   cd "omarchy-installer"
-  
-  # Main install script - /usr/share/omarchy/install.sh
+
+  # Main install script
   install -Dm755 install.sh "$pkgdir/usr/share/omarchy/install.sh"
-  
-  # Install scripts - /usr/share/omarchy/install/
+
+  # Install scripts and helpers
   install -d "$pkgdir/usr/share/omarchy/install"
-  
-  # All installer subdirectories
   for dir in install/*/; do
     cp -r "$dir" "$pkgdir/usr/share/omarchy/install/"
   done
-  
-  # Install script files (*.sh and other scripts)
+
   for file in install/*; do
     [[ -f "$file" ]] && cp "$file" "$pkgdir/usr/share/omarchy/install/"
   done
-  
-  # Migrations - /usr/share/omarchy/migrations/
-  cp -r migrations "$pkgdir/usr/share/omarchy/"
-  
-  # Installation wrapper scripts - /usr/share/omarchy/bin/
+
+  # Installation wrapper scripts
   install -d "$pkgdir/usr/share/omarchy/bin"
   install -Dm755 bin/omarchy-install "$pkgdir/usr/share/omarchy/bin/omarchy-install"
   install -Dm755 bin/omarchy-disk-config "$pkgdir/usr/share/omarchy/bin/omarchy-disk-config"
   install -Dm755 bin/omarchy-install-final-configurations.sh "$pkgdir/usr/share/omarchy/bin/omarchy-install-final-configurations.sh"
-  
-  # Branding for installer
-  install -Dm644 logo.txt "$pkgdir/usr/share/omarchy/logo.txt"
-  install -Dm644 icon.png "$pkgdir/usr/share/omarchy/icon.png"
-  install -Dm644 icon.txt "$pkgdir/usr/share/omarchy/icon.txt"
-  install -Dm644 logo.svg "$pkgdir/usr/share/omarchy/logo.svg"
-  install -Dm644 version "$pkgdir/usr/share/omarchy/version"
 }

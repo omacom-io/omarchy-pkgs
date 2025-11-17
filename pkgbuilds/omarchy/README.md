@@ -1,52 +1,33 @@
 # Omarchy Package
 
-The main Omarchy desktop environment package.
+Meta-package that pulls in the full Omarchy desktop environment.
 
 ## Package Split
 
-The Omarchy system is split into two packages:
-
 ### omarchy-settings
-- Configuration files (`/etc/skel/`)
-- System settings (`/etc/`)
-- Plymouth boot theme
-- Essential ISO/installation binaries (`omarchy-debug`, `omarchy-upload-log`)
-- **Purpose**: Minimal package for ISO and base system configuration
+- User configs (`/etc/skel/`)
+- System configs (`/etc/`)
+- Default configs (`/usr/share/omarchy/default/`)
+- Plymouth theme
+- System fonts
+- Branding assets (logo, icons)
+- ISO helper binaries (`omarchy-debug`, `omarchy-upload-log`)
+
+### omarchy-installer
+- Installation scripts (`/usr/share/omarchy/install/`)
+- Installer binaries (`omarchy-install`, `omarchy-disk-config`)
 
 ### omarchy (this package)
-- All other binaries (30+ omarchy-* commands)
-- Install scripts and migrations (`/usr/share/omarchy/`)
+- User binaries (`omarchy-*` commands)
 - Themes for runtime switching
-- Branding and assets
-- Full desktop environment dependencies
-- **Purpose**: Complete Omarchy desktop experience
+- System migrations
+- Desktop environment dependencies (Hyprland, Wayland, apps)
 
 ## Dependencies
 
-This package depends on `omarchy-settings` and will install it automatically.
-
-## Installation
-
-```bash
-# Install full desktop environment
-pacman -S omarchy
-
-# Run the installer
-bash /usr/share/omarchy/install.sh
-```
-
-## Building
-
-```bash
-# Build the package
-makepkg -si
-
-# Or using the omarchy-pkgs build system
-cd ../..
-bin/repo build --package omarchy
-```
+Depends on both `omarchy-settings` and `omarchy-installer`.
 
 ## Files
 
-- `/usr/bin/omarchy-*` - All Omarchy commands (except debug and upload-log)
-- `/usr/share/omarchy/` - Themes, assets, install scripts, migrations
+- `/usr/bin/omarchy-*` - User commands (excludes ISO helpers)
+- `/usr/share/omarchy/themes/` - Theme switching configs
