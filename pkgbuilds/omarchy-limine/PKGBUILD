@@ -1,0 +1,49 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+pkgname='omarchy-limine'
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Limine bootloader configuration and snapper integration for Omarchy'
+arch=('any')
+url='https://github.com/basecamp/omarchy'
+license=('MIT')
+provides=('omarchy-limine')
+install='omarchy-limine.install'
+backup=(
+  'etc/mkinitcpio.conf.d/omarchy_hooks.conf'
+  'etc/default/limine'
+  'etc/snapper/config-templates/omarchy'
+  'etc/limine-entry-tool.d/omarchy-uki.conf'
+)
+
+depends=(
+  'limine'
+  'limine-mkinitcpio-hook'
+  'limine-snapper-sync'
+  'snapper'
+)
+
+source=(
+  'omarchy_hooks.conf'
+  'limine.default'
+  'limine.conf'
+  'snapper-omarchy.template'
+  'omarchy-uki.conf'
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  # mkinitcpio hooks configuration
+  install -Dm644 omarchy_hooks.conf "$pkgdir/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+
+  # Limine default configuration
+  install -Dm644 limine.default "$pkgdir/etc/default/limine"
+
+  # Limine drop-in configurations
+  install -Dm644 omarchy-uki.conf "$pkgdir/etc/limine-entry-tool.d/omarchy-uki.conf"
+
+  # Limine bootloader theme
+  install -Dm644 limine.conf "$pkgdir/usr/share/omarchy/limine/limine.conf"
+
+  # Snapper configuration template
+  install -Dm644 snapper-omarchy.template "$pkgdir/etc/snapper/config-templates/omarchy"
+}

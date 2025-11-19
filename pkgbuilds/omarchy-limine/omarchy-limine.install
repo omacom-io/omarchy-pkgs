@@ -1,0 +1,8 @@
+post_install() {
+  echo "omarchy-limine package installed."
+  echo "Limine will be configured during post-installation."
+}
+
+post_upgrade() {
+  post_install
+}
