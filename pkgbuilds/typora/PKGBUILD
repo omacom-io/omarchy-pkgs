@@ -2,7 +2,7 @@
 # Contributor: Jonathan Duck <duckbrain30@gmail.com>
 
 pkgname=typora
-pkgver=1.12.3
+pkgver=1.12.4
 _pkgver_x86_64="$pkgver"
 _pkgver_aarch64="$pkgver"
 pkgrel=1
@@ -19,8 +19,8 @@ _urlbase="https://download.typora.io/linux/typora_"
 source_x86_64=("${_urlbase}${_pkgver_x86_64}_amd64.deb")
 source_aarch64=("${_urlbase}${_pkgver_aarch64}_arm64.deb")
 sha512sums=('de9c883c63f3ea35bd551c8761e605f8e1a3468943e000abcbf94bb0c5cbb5f0f6c7fa4d49ab39c177f167e0e3d0b061c861bf828627b4a34f7f1589119c3d04')
-sha512sums_x86_64=('1cac2641d846c1229bd07df5d71bdf450bfc27fbd8b10ae1949f090f9b7013bd78ac7f927408a799741a906ed2f15221609a5b68c6b363f9566968adf9899880')
-sha512sums_aarch64=('dd83498588b41158c64192afcfce5b22c7d8eea99ba28ca49490999c07d7dfb9c426e466110b276a57dc3bf0aa618a51bfc3cd86abfc4b34e21db22a62f01c98')
+sha512sums_x86_64=('f2504c5ab4c80a1b4927b5498a7d8cb15509b1485111a886add75db35984daf49485db49e0fce9ec251be76b08ddf0dc7fd1150de4b7ffd284f67db60905c47a')
+sha512sums_aarch64=('1bc6808b574f0073856daf2471a592cbee374384a60c6cc8f11fed4a6a80eab7512343e86083f60b995c439b323dc1c82582576d611dcd07072e7cf6507aa7eb')
 
 package() {
 	# unpack archive
