@@ -3,34 +3,29 @@
 # Source common functions
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 
 # Default remote (production)
 DEFAULT_REMOTE="pkgs.omarchy.org:omarchy-pkgs"
 REMOTE="$DEFAULT_REMOTE"
 SKIP_PROD_CHECK=false
 
+# Print header
+print_header "Sync Repository to Remote"
+
 # Parse arguments
-if [ $# -eq 0 ] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
-  echo "Usage: $0 <directory> [options]"
-  echo ""
-  echo "Options:"
-  echo "  --remote <remote>      Rclone remote destination (default: $DEFAULT_REMOTE)"
-  echo "  --skip-prod-check      Skip production sync confirmation"
-  echo ""
-  echo "Examples:"
-  echo "  $0 pkgs.omarchy.org/edge/x86_64                      # Sync edge mirror to production (with confirmation)"
-  echo "  $0 pkgs.omarchy.org/stable/x86_64                    # Sync stable mirror to production"
-  echo "  $0 pkgs.omarchy.org/edge/x86_64 --remote dev-pkgs:/  # Sync to dev remote"
-  echo "  $0 pkgs.omarchy.org/edge/x86_64 --skip-prod-check    # Sync without confirmation"
-  exit 0
-fi
-
-DIRECTORY="$1"
-shift
-
-# Parse optional arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
+  --arch)
+    ARCH="$2"
+    update_arch_paths
+    shift 2
+    ;;
+  --mirror)
+    MIRROR="$2"
+    update_arch_paths
+    shift 2
+    ;;
   --remote)
     REMOTE="$2"
     shift 2
@@ -39,6 +34,17 @@ while [[ $# -gt 0 ]]; do
     SKIP_PROD_CHECK=true
     shift
     ;;
+  -h | --help)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
+    echo "  --remote <remote>  Rclone remote destination (default: $DEFAULT_REMOTE)"
+    echo "  --skip-prod-check  Skip production sync confirmation"
+    echo "  -h, --help         Show this help message"
+    exit 0
+    ;;
   *)
     print_error "Unknown option: $1"
     exit 1
@@ -46,7 +52,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-DESTINATION_DIRECTORY="${DIRECTORY#pkgs.omarchy.org/}"
+print_info "Mirror: $MIRROR"
+print_info "Architecture: $ARCH"
+print_info "Local Repository: $REPO_DIR"
+print_info "Remote: $REMOTE"
+echo ""
+
+# Check if local repo exists
+if [[ ! -d "$REPO_DIR" ]]; then
+  print_error "Local repository directory not found: $REPO_DIR"
+  exit 1
+fi
+
+DESTINATION_DIRECTORY="$MIRROR/$ARCH"
 
 # Check if syncing to production and warn user
 if [[ "$REMOTE" == "$DEFAULT_REMOTE" ]] && [[ "$SKIP_PROD_CHECK" != true ]]; then
@@ -65,7 +83,7 @@ print_info "Syncing to: $REMOTE/$DESTINATION_DIRECTORY"
 # First sync packages (excluding database files to ensure packages are uploaded first)
 # Use --ignore-existing to not overwrite different versions already on remote
 print_info "Syncing packages..."
-rclone sync "$DIRECTORY" "$REMOTE/$DESTINATION_DIRECTORY" \
+rclone sync "$REPO_DIR" "$REMOTE/$DESTINATION_DIRECTORY" \
   --exclude "omarchy.db*" \
   --exclude "omarchy.files*" \
   --ignore-existing \
@@ -73,8 +91,8 @@ rclone sync "$DIRECTORY" "$REMOTE/$DESTINATION_DIRECTORY" \
 
 # Then sync database files last to ensure repository integrity
 print_info "Updating repository database..."
-rclone copy "$DIRECTORY" "$REMOTE/$DESTINATION_DIRECTORY" \
+rclone copy "$REPO_DIR" "$REMOTE/$DESTINATION_DIRECTORY" \
   --include "omarchy.*" \
   --checksum --copy-links -v
 
-print_success "sync complete!"
+print_success "Sync complete!"

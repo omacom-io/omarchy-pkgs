@@ -111,7 +111,7 @@ print_info "Step 4/5: Cleaning old versions..."
 # Step 5: Sync
 echo ""
 print_info "Step 5/5: Syncing to remote..."
-SYNC_ARGS=("pkgs.omarchy.org/$MIRROR/$ARCH")
+SYNC_ARGS=("--mirror" "$MIRROR" "--arch" "$ARCH")
 if [[ -n "$SYNC_REMOTE" ]]; then
   SYNC_ARGS+=("--remote" "$SYNC_REMOTE")
 fi
