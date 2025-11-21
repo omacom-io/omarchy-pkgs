@@ -147,11 +147,6 @@ show_disk_usage() {
 main() {
   print_header "Omarchy Repository Cleaner"
   
-  print_info "Mirror: $MIRROR"
-  print_info "Architecture: $ARCH"
-  print_info "Repository: $REPO_DIR"
-  echo ""
-
   # Parse command line arguments
   DRY_RUN=false
   REMOVE_ALL=false
@@ -210,6 +205,11 @@ main() {
       ;;
     esac
   done
+
+  print_info "Mirror: $MIRROR"
+  print_info "Architecture: $ARCH"
+  print_info "Repository: $REPO_DIR"
+  echo ""
 
   # Validate keep versions
   if ! [[ "$KEEP_VERSIONS" =~ ^[0-9]+$ ]] || [[ "$KEEP_VERSIONS" -lt 1 ]]; then
