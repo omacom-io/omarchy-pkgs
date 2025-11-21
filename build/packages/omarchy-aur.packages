@@ -46,7 +46,7 @@ claude-code
 lmstudio
 crush-bin
 bun-bin # for opencode
-# opencode
+opencode
 minecraft-launcher
 sublime-text-4
 symfony-cli
