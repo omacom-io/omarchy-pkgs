@@ -31,6 +31,7 @@ while [[ $# -gt 0 ]]; do
     shift 2
     ;;
   --mirror)
+    MIRROR="$2"
     BUILD_ARGS+=("--mirror" "$2")
     shift 2
     ;;
