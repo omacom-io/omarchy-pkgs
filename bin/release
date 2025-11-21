@@ -68,6 +68,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+echo ""
+print_info "Target architecture: $ARCH"
+print_info "Mirror: $MIRROR"
+print_info "Build workspace: $BUILD_OUTPUT_DIR"
+
 # Step 1: Build
 echo ""
 print_info "Step 1/5: Building packages..."
