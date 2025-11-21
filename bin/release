@@ -28,11 +28,13 @@ while [[ $# -gt 0 ]]; do
   --arch)
     ARCH="$2"
     BUILD_ARGS+=("--arch" "$2")
+    update_arch_paths
     shift 2
     ;;
   --mirror)
     MIRROR="$2"
     BUILD_ARGS+=("--mirror" "$2")
+    update_arch_paths
     shift 2
     ;;
   --package)
