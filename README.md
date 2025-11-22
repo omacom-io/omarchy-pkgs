@@ -24,15 +24,20 @@ docker run --rm --platform linux/arm64 alpine:latest uname -m
 
 ### Complete Workflow
 
+The release command is smart and **incremental** - it only builds packages that have changed or are missing. You generally don't need to specify a package manually unless you are debugging a specific failure.
+
 ```bash
-# Build, sign, promote, clean, and sync
+# Build changed/new packages, sign, promote, clean, update, and sync
 bin/repo release
 
-# Single package
-bin/repo release --package omarchy-nvim
+# Stable Mirror
+bin/repo release --mirror stable
 
 # ARM64
-bin/repo release --arch aarch64 --package omarchy-nvim
+bin/repo release --arch aarch64
+
+# Force build specific package (useful for debugging failures)
+bin/repo release --package omarchy-nvim
 ```
 
 ### Step-by-Step
@@ -42,20 +47,29 @@ bin/repo build                          # Build (unsigned)
 bin/repo sign                           # Sign packages
 bin/repo promote                        # Copy to production
 bin/repo clean                          # Remove old versions
-bin/repo sync pkgs.omarchy.org/x86_64   # Sync to remote
+bin/repo update                         # Update database
+bin/repo sync                           # Sync to remote
 ```
 
 ## Commands
 
+### Global Flags
+
+These flags can be used with all commands:
+
+- `--mirror <edge|stable>`: Selects the repository mirror (default: `edge`).
+- `--arch <x86_64|aarch64>`: Selects the target architecture (default: `x86_64`).
+
 ### Build
 
 ```bash
-bin/repo build                                   # All packages (x86_64)
-bin/repo build --package yay cursor-bin          # Specific packages
+bin/repo build                                   # All packages (x86_64, edge)
 bin/repo build --arch aarch64                    # ARM64
+bin/repo build --mirror stable                   # Stable mirror
+bin/repo build --package yay cursor-bin          # Specific packages
 ```
 
-**Output**: Unsigned `.pkg.tar.zst` in `build-output/`
+**Output**: Unsigned `.pkg.tar.zst` in `build-output/`. Only builds packages that are newer than what is in the repository.
 
 ### Sign
 
@@ -63,7 +77,7 @@ bin/repo build --arch aarch64                    # ARM64
 bin/repo sign
 ```
 
-Fetches GPG key from 1Password or environment, signs all packages in `build-output/`.
+Fetches GPG key from 1Password or environment, signs all packages in `build-output/`. Supports `--arch` and `--mirror`.
 
 ### Promote
 
@@ -83,24 +97,32 @@ bin/repo clean --keep 3             # Keep 3 versions
 bin/repo clean --dry-run            # Preview
 ```
 
-Removes old versions, updates database.
+Removes old package versions from the file system. **Does not update the database.**
+
+### Update
+
+```bash
+bin/repo update                     # Update database
+```
+
+Updates the repository database (adding the newest version of each package). Run this after `promote` or `clean`.
 
 ### Sync
 
 ```bash
-bin/repo sync pkgs.omarchy.org/x86_64                    # Production
-bin/repo sync pkgs.omarchy.org/aarch64                   # ARM64
-bin/repo sync pkgs.omarchy.org/x86_64 --skip-prod-check # No confirmation
+bin/repo sync                           # Sync current arch/mirror
+bin/repo sync --mirror stable           # Sync stable
+bin/repo sync --arch aarch64            # Sync ARM64
+bin/repo sync --skip-prod-check         # No confirmation
 ```
 
-Syncs to remote server using rclone.
+Syncs to remote server using rclone based on the configured mirror and architecture.
 
 ### Other
 
 ```bash
 bin/repo list                       # List packages
 bin/repo remove <package>           # Remove package
-bin/repo update                     # Update database
 ```
 
 ## Directory Structure
@@ -174,8 +196,8 @@ bin/repo release --package myapp
 bin/repo release --arch aarch64 --package myapp
 
 # Sync both
-bin/repo sync pkgs.omarchy.org/x86_64
-bin/repo sync pkgs.omarchy.org/aarch64
+bin/repo sync
+bin/repo sync --arch aarch64
 ```
 
 ## Dependency Resolution
