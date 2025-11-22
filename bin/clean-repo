@@ -232,12 +232,8 @@ main() {
 
     # Update database after cleaning (unless dry run)
     if [[ "$DRY_RUN" != true ]]; then
-      print_info "Updating repository database..."
-      "$BUILD_ROOT/bin/update-repo" >/dev/null 2>&1 && {
-        echo "  -> Database updated successfully!"
-      } || {
-        print_warning "  -> Database update failed (may need manual update)"
-      }
+      # Moved to release workflow
+      :
     fi
 
     show_disk_usage
