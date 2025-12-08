@@ -18,6 +18,12 @@ makedepends=('git' 'bun-bin' 'go')
 source=("opencode-${pkgver}.tar.gz::https://github.com/sst/opencode/archive/v${pkgver}${_subver}.tar.gz")
 sha256sums=('SKIP')
 
+prepare() {
+  cd "opencode-${pkgver}"
+  # Change strict bun version check to >= comparison
+  sed -i 's/process\.versions\.bun !== expectedBunVersion/process.versions.bun.localeCompare(expectedBunVersion, undefined, {numeric: true}) < 0/' packages/script/src/index.ts
+}
+
 build() {
   cd "opencode-${pkgver}"
   bun install
