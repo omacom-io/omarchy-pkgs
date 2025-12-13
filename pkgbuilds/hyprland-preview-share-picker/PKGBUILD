@@ -13,7 +13,7 @@ optdepends=(
   'slurp: default tool for selecting share regions'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/WhySoBad/hyprland-preview-share-picker/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('bef140a1a96994029153dca8c00b1750b9a5a764fb9db2dc68d7bb40e8a29e8a')
+sha256sums=('dfbd6773884c24bb300d756420cc540dda0c3518e910e20d1538e7dd6c0990da')
 
 prepare() {
     cd "$pkgname-$pkgver"
