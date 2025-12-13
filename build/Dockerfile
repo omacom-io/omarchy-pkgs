@@ -22,19 +22,19 @@ RUN apk add --no-cache \
     gnupg
 
 # Map Docker TARGETARCH (amd64/arm64) to Arch naming (x86_64/aarch64)
-RUN case "${TARGETARCH}" in \
+# Create pacman.conf from scratch so we control it entirely
+RUN mkdir -p /etc/pacman.d && \
+    case "${TARGETARCH}" in \
     amd64) \
         echo "x86_64" > /tmp/arch && \
-        printf '[core]\nInclude = /etc/pacman.d/mirrorlist\n\n[extra]\nInclude = /etc/pacman.d/mirrorlist\n' > /tmp/repos.conf ;; \
+        REPOS="[core]\nInclude = /etc/pacman.d/mirrorlist\n\n[extra]\nInclude = /etc/pacman.d/mirrorlist\n" ;; \
     arm64) \
         echo "aarch64" > /tmp/arch && \
-        printf '[core]\nInclude = /etc/pacman.d/mirrorlist\n\n[extra]\nInclude = /etc/pacman.d/mirrorlist\n\n[alarm]\nInclude = /etc/pacman.d/mirrorlist\n\n[aur]\nInclude = /etc/pacman.d/mirrorlist\n' > /tmp/repos.conf ;; \
+        REPOS="[core]\nInclude = /etc/pacman.d/mirrorlist\n\n[extra]\nInclude = /etc/pacman.d/mirrorlist\n\n[alarm]\nInclude = /etc/pacman.d/mirrorlist\n\n[aur]\nInclude = /etc/pacman.d/mirrorlist\n" ;; \
     *) \
         echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
-    esac
-
-RUN mkdir -p /etc/pacman.d && \
-    cat /tmp/repos.conf >> /etc/pacman.conf
+    esac && \
+    printf '[options]\nHoldPkg = pacman glibc\nArchitecture = auto\nSigLevel = Required DatabaseOptional\nLocalFileSigLevel = Optional\n\n%b' "$REPOS" > /etc/pacman.conf
 
 RUN if [ "${TARGETARCH}" = "amd64" ]; then \
         if [ "${MIRROR}" = "stable" ]; then \
