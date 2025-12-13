@@ -41,6 +41,7 @@ build_docker_image() {
   print_info "Building Docker image for $arch ($platform) using $mirror mirror..."
   
   docker buildx build \
+    --no-cache \
     --platform "$platform" \
     --build-arg MIRROR="$mirror" \
     --load \
