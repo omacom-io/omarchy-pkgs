@@ -1,7 +1,7 @@
 # Maintainer: wysbd <aur@wysbd.dev>
 
-pkgname="hyprland-preview-share-picker-git"
-pkgver=0.2.0.r5.g111fd70
+pkgname="hyprland-preview-share-picker"
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="An alternative share picker for hyprland with window and monitor previews"
 arch=(x86_64)
@@ -12,26 +12,18 @@ makedepends=(cargo)
 optdepends=(
   'slurp: default tool for selecting share regions'
 )
-source=("$pkgname::git+https://github.com/WhySoBad/hyprland-preview-share-picker")
-md5sums=('SKIP')
-
-pkgver() {
-    cd "$pkgname"
-    git describe --long --abbrev=7 --tags | sed -E 's/^[^0-9]*//;s/([^-]*-g)/r\1/;s/-/./g'
-}
+source=("$pkgname-$pkgver.tar.gz::https://github.com/WhySoBad/hyprland-preview-share-picker/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('bef140a1a96994029153dca8c00b1750b9a5a764fb9db2dc68d7bb40e8a29e8a')
 
 prepare() {
-    cd "$pkgname"
-    git submodule init
-    git config submodule.subprojects/lib.url "$srcdir/lib"
-    git -c protocol.file.allow=always submodule update
+    cd "$pkgname-$pkgver"
 
     export RUSTUP_TOOLCHAIN=nightly
     cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 
 build() {
-    cd "$pkgname"
+    cd "$pkgname-$pkgver"
 
     export RUSTUP_TOOLCHAIN=nightly
     export CARGO_TARGET_DIR=target
@@ -42,7 +34,7 @@ build() {
 }
 
 package() {
-    cd "$pkgname"
+    cd "$pkgname-$pkgver"
 
     install -Dm0755 -T "target/release/hyprland-preview-share-picker" "$pkgdir/usr/bin/hyprland-preview-share-picker"
 
