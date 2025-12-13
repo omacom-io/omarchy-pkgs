@@ -12,11 +12,25 @@ makedepends=(cargo)
 optdepends=(
   'slurp: default tool for selecting share regions'
 )
-source=("$pkgname-$pkgver.tar.gz::https://github.com/WhySoBad/hyprland-preview-share-picker/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('dfbd6773884c24bb300d756420cc540dda0c3518e910e20d1538e7dd6c0990da')
+_protocols_commit=3a5c2bda1c1a4e55cc1330c782547695a93f05b2
+source=("$pkgname-$pkgver.tar.gz::https://github.com/WhySoBad/hyprland-preview-share-picker/archive/refs/tags/v$pkgver.tar.gz"
+        "hyprland-protocols-$_protocols_commit.tar.gz::https://github.com/hyprwm/hyprland-protocols/archive/$_protocols_commit.tar.gz")
+sha256sums=('dfbd6773884c24bb300d756420cc540dda0c3518e910e20d1538e7dd6c0990da'
+            'SKIP')
 
 prepare() {
     cd "$pkgname-$pkgver"
+
+    # Link the hyprland-protocols submodule
+    rmdir lib/hyprland-protocols 2>/dev/null || true
+    ln -sf "$srcdir/hyprland-protocols-$_protocols_commit" lib/hyprland-protocols
+
+    # Replace build.rs with a simple version that doesn't require git
+    cat > build.rs << 'EOF'
+fn main() {
+    println!("cargo::rustc-env=GIT_VERSION=v0.2.1-r0-release");
+}
+EOF
 
     export RUSTUP_TOOLCHAIN=nightly
     cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
