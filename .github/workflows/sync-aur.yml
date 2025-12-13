@@ -1,0 +1,58 @@
+name: Sync AUR Packages
+
+on:
+  schedule:
+    # Daily at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Specific packages to sync (space-separated, leave empty for all)'
+        required: false
+        default: ''
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync AUR packages
+        run: |
+          if [ -n "$PACKAGES" ]; then
+            ./bin/sync-aur $PACKAGES
+          else
+            ./bin/sync-aur
+          fi
+        env:
+          PACKAGES: ${{ github.event.inputs.packages }}
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: sync AUR packages'
+          title: 'chore: sync AUR packages'
+          body: |
+            Automated AUR package sync.
+
+            Please review the changes before merging.
+          branch: auto/sync-aur
+          delete-branch: true
+          labels: automated
+          reviewers: ryanrhughes
