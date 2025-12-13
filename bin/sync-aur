@@ -44,6 +44,7 @@ fi
 
 SYNCED=0
 FAILED=0
+SYNCED_PACKAGES=()
 
 # Function to sync a package from AUR
 sync_package() {
@@ -65,6 +66,7 @@ sync_package() {
     # Remove .git from destination
     rm -rf "$PKGBUILDS_DIR/$package/.git"
     
+    SYNCED_PACKAGES+=("$package")
     ((SYNCED++))
   else
     print_warning "Failed to clone $package (may not exist in AUR)"
@@ -94,12 +96,11 @@ else
   done < <(grep -v "^#" "$PACKAGES_FILE" | grep -v "^$")
 fi
 
-# Apply patches for packages that have them
-cd "$PKGBUILDS_DIR"
-for dir in */; do
-  if [[ -d "$dir/patches" ]]; then
-    print_info "Applying patches for $dir..."
-    (cd "$dir" && shopt -s nullglob && for patch in patches/*.patch; do 
+# Apply patches only to packages that were actually synced
+for package in "${SYNCED_PACKAGES[@]}"; do
+  if [[ -d "$PKGBUILDS_DIR/$package/patches" ]]; then
+    print_info "Applying patches for $package..."
+    (cd "$PKGBUILDS_DIR/$package" && shopt -s nullglob && for patch in patches/*.patch; do 
       if ! patch -p1 --no-backup-if-mismatch < "$patch"; then
         print_error "Failed to apply patch: $patch"
         exit 1
