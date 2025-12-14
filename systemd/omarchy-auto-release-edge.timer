@@ -1,0 +1,10 @@
+[Unit]
+Description=Process omarchy-pkgs sync for edge mirror
+
+[Timer]
+# Run 30 minutes after the upstream check
+OnCalendar=*-*-* 15:00:00 America/New_York
+Persistent=true
+
+[Install]
+WantedBy=timers.target

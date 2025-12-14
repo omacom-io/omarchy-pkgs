@@ -1,0 +1,13 @@
+[Unit]
+Description=Auto-release omarchy-pkgs for edge mirror
+After=network-online.target omarchy-check-upstream.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/omarchy-pkgs/bin/auto-release edge
+Environment=OMARCHY_STATE_DIR=/root/.state
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

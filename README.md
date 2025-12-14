@@ -215,3 +215,51 @@ Example: If `aether` depends on `hyprshade`, `hyprshade` is built first.
 Packages are only rebuilt if:
 - PKGBUILD version is newer than repository version
 - Package doesn't exist in production
+
+## Automated Releases
+
+The repository includes a GitHub workflow and systemd services for automated daily releases.
+
+### How It Works
+
+1. **GitHub Action** (6:00 AM UTC): Syncs AUR packages and opens a PR if there are updates
+2. **Merge PR**: Review and merge the PR to trigger the release pipeline
+3. **check-upstream** (2:00 PM Eastern): Detects the merged changes, pulls them, creates state files
+4. **auto-release** (3:00 PM Eastern): If state file exists, runs full release workflow and removes state file on success
+
+State files are stored in `/root/.state/`:
+- `.sync-needed-edge`
+- `.sync-needed-stable`
+
+### Installation
+
+```bash
+# Copy systemd units
+cp /root/omarchy-pkgs/systemd/*.service /root/omarchy-pkgs/systemd/*.timer /etc/systemd/system/
+
+# Reload systemd
+systemctl daemon-reload
+
+# Enable and start timers
+systemctl enable --now omarchy-check-upstream.timer
+systemctl enable --now omarchy-auto-release-edge.timer
+systemctl enable --now omarchy-auto-release-stable.timer
+
+# Create state directory
+mkdir -p /root/.state
+```
+
+### Management
+
+```bash
+# Check timer status
+systemctl list-timers omarchy-*
+
+# Manual trigger
+systemctl start omarchy-check-upstream.service
+systemctl start omarchy-auto-release-edge.service
+
+# View logs
+journalctl -u omarchy-check-upstream.service
+journalctl -u omarchy-auto-release-edge.service
+```

@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily check for upstream changes in omarchy-pkgs
+
+[Timer]
+OnCalendar=*-*-* 14:00:00 America/New_York
+Persistent=true
+
+[Install]
+WantedBy=timers.target

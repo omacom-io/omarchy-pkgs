@@ -1,0 +1,16 @@
+#!/bin/bash
+# Check for upstream changes and create state files if updates were pulled
+set -e
+
+REPO_DIR=/root/omarchy-pkgs
+STATE_DIR=/root/.state
+
+mkdir -p "$STATE_DIR"
+cd "$REPO_DIR"
+
+git fetch origin main --quiet
+
+if [[ $(git rev-parse HEAD) != $(git rev-parse origin/main) ]]; then
+  git pull --ff-only origin main
+  touch "$STATE_DIR/.sync-needed-edge"
+fi
