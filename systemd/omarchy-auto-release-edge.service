@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/root/omarchy-pkgs/bin/auto-release edge
+ExecStart=/bin/bash -c 'source /root/.omarchy/build-credentials && /root/omarchy-pkgs/bin/auto-release edge'
 Environment=OMARCHY_STATE_DIR=/root/.state
 TimeoutStartSec=3600
 
