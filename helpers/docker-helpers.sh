@@ -28,6 +28,7 @@ build_docker_image() {
   local mirror="${3:-edge}"
   local platform=""
   local image_tag="omarchy-pkg-builder:latest-$arch-$mirror"
+
   
   case "$arch" in
     x86_64)  platform="linux/amd64" ;;
@@ -41,7 +42,6 @@ build_docker_image() {
   print_info "Building Docker image for $arch ($platform) using $mirror mirror..."
   
   docker buildx build \
-    --no-cache \
     --platform "$platform" \
     --build-arg MIRROR="$mirror" \
     --load \
