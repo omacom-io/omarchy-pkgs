@@ -8,9 +8,9 @@ STATE_DIR=/root/.state
 mkdir -p "$STATE_DIR"
 cd "$REPO_DIR"
 
-git fetch origin main --quiet
+git fetch origin master --quiet
 
-if [[ $(git rev-parse HEAD) != $(git rev-parse origin/main) ]]; then
-  git pull --ff-only origin main
+if [[ $(git rev-parse HEAD) != $(git rev-parse origin/master) ]]; then
+  git pull --ff-only origin master
   touch "$STATE_DIR/.sync-needed-edge"
 fi
