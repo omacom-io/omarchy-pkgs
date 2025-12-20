@@ -40,8 +40,9 @@ get_pkg_info() {
   '
 }
 
-for pkg in *.pkg.tar.*(N); do
+for pkg in *.pkg.tar.*; do
   [[ "$pkg" == *.sig ]] && continue
+  [[ ! -f "$pkg" ]] && continue
   
   read -r name ver <<< "$(get_pkg_info "$pkg")"
   [[ -z "$name" ]] && continue
