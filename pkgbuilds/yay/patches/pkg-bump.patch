@@ -24,34 +24,3 @@ index 8262007..a11b031 100644
  pkgdesc="Yet another yogurt. Pacman wrapper and AUR helper written in go."
  arch=('i686' 'pentium4' 'x86_64' 'arm' 'armv7h' 'armv6h' 'aarch64' 'riscv64')
  url="https://github.com/Jguer/yay"
-diff --git a/pkgbuilds/yay/patches/pkg-bump.patch b/pkgbuilds/yay/patches/pkg-bump.patch
-index af1fa26..e69de29 100644
---- a/pkgbuilds/yay/patches/pkg-bump.patch
-+++ b/pkgbuilds/yay/patches/pkg-bump.patch
-@@ -1,26 +0,0 @@
--diff --git a/pkgbuilds/yay/.SRCINFO b/pkgbuilds/yay/.SRCINFO
--index 956a91c..3e59c4c 100644
----- a/pkgbuilds/yay/.SRCINFO
--+++ b/pkgbuilds/yay/.SRCINFO
--@@ -1,7 +1,7 @@
-- pkgbase = yay
-- 	pkgdesc = Yet another yogurt. Pacman wrapper and AUR helper written in go.
-- 	pkgver = 12.5.3
---	pkgrel = 1
--+	pkgrel = 2
-- 	url = https://github.com/Jguer/yay
-- 	arch = i686
-- 	arch = pentium4
--diff --git a/pkgbuilds/yay/PKGBUILD b/pkgbuilds/yay/PKGBUILD
--index 7c4214a..c10bc32 100644
----- a/pkgbuilds/yay/PKGBUILD
--+++ b/pkgbuilds/yay/PKGBUILD
--@@ -1,7 +1,7 @@
-- # Maintainer: Jguer <pkgbuilds at jguer.space>
-- pkgname=yay
-- pkgver=12.5.3
---pkgrel=1
--+pkgrel=2
-- pkgdesc="Yet another yogurt. Pacman wrapper and AUR helper written in go."
-- arch=('i686' 'pentium4' 'x86_64' 'arm' 'armv7h' 'armv6h' 'aarch64' 'riscv64')
-- url="https://github.com/Jguer/yay"
