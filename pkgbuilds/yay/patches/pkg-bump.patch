@@ -1,7 +1,7 @@
-diff --git a/pkgbuilds/yay/.SRCINFO b/pkgbuilds/yay/.SRCINFO
+diff --git a/.SRCINFO b/.SRCINFO
 index a8a0df1..5698489 100644
---- a/pkgbuilds/yay/.SRCINFO
-+++ b/pkgbuilds/yay/.SRCINFO
+--- a/.SRCINFO
++++ b/.SRCINFO
 @@ -1,7 +1,7 @@
  pkgbase = yay
  	pkgdesc = Yet another yogurt. Pacman wrapper and AUR helper written in go.
@@ -11,10 +11,10 @@ index a8a0df1..5698489 100644
  	url = https://github.com/Jguer/yay
  	arch = i686
  	arch = pentium4
-diff --git a/pkgbuilds/yay/PKGBUILD b/pkgbuilds/yay/PKGBUILD
+diff --git a/PKGBUILD b/PKGBUILD
 index 8262007..a11b031 100644
---- a/pkgbuilds/yay/PKGBUILD
-+++ b/pkgbuilds/yay/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
 @@ -1,7 +1,7 @@
  # Maintainer: Jguer <pkgbuilds at jguer.space>
  pkgname=yay
