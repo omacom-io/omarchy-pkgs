@@ -54,3 +54,5 @@ dropbox
 dropbox-cli
 nautilus-dropbox
 openai-codex-bin
+nvidia-580xx-utils # also builds nvidia-580xx-dkms and opencl-nvidia-580xx
+lib32-nvidia-580xx-utils
