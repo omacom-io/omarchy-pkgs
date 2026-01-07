@@ -46,6 +46,7 @@ claude-code
 lmstudio
 crush-bin
 bun-bin # for opencode
+github-copilot-cli
 opencode
 minecraft-launcher
 sublime-text-4
@@ -56,3 +57,4 @@ nautilus-dropbox
 openai-codex-bin
 nvidia-580xx-utils # also builds nvidia-580xx-dkms and opencl-nvidia-580xx
 lib32-nvidia-580xx-utils
+voxtype-bin
