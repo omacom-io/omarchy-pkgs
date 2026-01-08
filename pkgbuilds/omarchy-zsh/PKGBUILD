@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 
 pkgname=omarchy-zsh
-pkgver=1.1.0
+pkgver=1.2.0
 pkgrel=1
 pkgdesc="Omarchy shell configuration for Zsh"
 arch=('any')
@@ -11,7 +11,7 @@ depends=('zsh' 'eza' 'mise' 'zoxide' 'starship' 'fzf' 'fd' 'bat')
 options=('!debug')
 install=omarchy-zsh.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('55af874dbcc863987ecaea098c5b0820d881a8a43f9ad6f38e1843cafd3c9d2e')
+sha256sums=('d99d0ed0a07bf0d5043b0faef94bb8ce4dddf8cb1229dc364d5701e11af6a4a5')
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
