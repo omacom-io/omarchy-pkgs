@@ -4,6 +4,13 @@ Build system for the Omarchy Package Repository. Builds PKGBUILDs from local sou
 
 **Multi-Architecture**: Supports both x86_64 and aarch64 (ARM64).
 
+## PKGBUILDs
+There are 3 folders housing PKGBUILD that drive what is ultimately on the respective repos. 
+
+- `edge` - Built and pushed to the edge repo. These are synced daily with AUR if they're set to mirror it.
+- `stable` - Built and pushed to the stable repo. These are only synced manually when stable is bumped.
+- `shared` - Built and pushed to both stable and edge repo every 6hrs.
+
 ## Prerequisites
 ### aarch64 Builds (Optional)
 
@@ -123,6 +130,7 @@ Syncs to remote server using rclone based on the configured mirror and architect
 ```bash
 bin/repo list                       # List packages
 bin/repo remove <package>           # Remove package
+bin/clean-docker                    # Clear Docker images/cache (forces fresh rebuild)
 ```
 
 ## Directory Structure
@@ -272,9 +280,9 @@ The repository includes GitHub workflows and systemd services for automated rele
 
 #### Systemd Services
 
-1. **check-versions** (Every 6 hours at :30): Compares PKGBUILD versions to published versions, creates state files if builds are needed
+1. **check-versions** (Every 6 hours at :30): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
 2. **auto-release-edge** (Every 6 hours at +1:00): If state file exists, builds edge packages
-3. **auto-release-stable** (Every 6 hours at +1:30): If state file exists, builds stable packages
+3. **auto-release-stable** (Every 6 hours at +1:00): If state file exists, builds stable packages (runs in parallel with edge)
 
 State files are stored in `/root/.state/`:
 - `.sync-needed-edge`
@@ -284,9 +292,8 @@ State files are stored in `/root/.state/`:
 
 | Time | Action |
 |------|--------|
-| 00:30, 06:30, 12:30, 18:30 | check-versions (creates state files) |
-| 01:00, 07:00, 13:00, 19:00 | auto-release-edge |
-| 01:30, 07:30, 13:30, 19:30 | auto-release-stable |
+| 00:30, 06:30, 12:30, 18:30 | check-versions (git pull + creates state files) |
+| 01:00, 07:00, 13:00, 19:00 | auto-release-edge + auto-release-stable (parallel) |
 
 ### Installation
 
