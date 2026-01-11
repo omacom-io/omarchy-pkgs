@@ -1,0 +1,28 @@
+# Shared packages - sync every 6 hours, auto-merge, built for BOTH edge and stable
+# These packages mirror AUR as closely as possible
+
+1password-beta
+1password-cli
+aether
+bun-bin
+claude-code
+crush-bin
+cursor-bin
+cursor-cli
+dropbox
+dropbox-cli
+github-copilot-cli
+hyprshade
+lmstudio
+localsend
+localsend-bin
+minecraft-launcher
+nautilus-dropbox
+omarchy-chromium-bin
+openai-codex-bin
+opencode
+spotify
+sublime-text-4
+symfony-cli
+visual-studio-code-bin
+voxtype-bin

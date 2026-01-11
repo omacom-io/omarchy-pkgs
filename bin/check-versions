@@ -1,0 +1,139 @@
+#!/bin/bash
+# Check PKGBUILD versions against published repo versions
+# Creates state files for edge and/or stable if any packages need building
+
+set -e
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
+
+STATE_DIR="${OMARCHY_STATE_DIR:-/root/.state}"
+ARCH="${ARCH:-x86_64}"
+
+# Ensure state directory exists
+mkdir -p "$STATE_DIR"
+
+print_header "Package Version Check"
+
+# Get version from repo database
+get_repo_version() {
+  local pkg="$1"
+  local mirror="$2"
+  local repo_db="$BUILD_ROOT/pkgs.omarchy.org/$mirror/$ARCH/omarchy.db.tar.zst"
+  
+  if [[ -f "$repo_db" ]]; then
+    local desc_file=$(tar -tf "$repo_db" 2>/dev/null | grep "^${pkg}-[0-9r].*/desc$" | head -1)
+    if [[ -n "$desc_file" ]]; then
+      tar -xOf "$repo_db" "$desc_file" 2>/dev/null | awk '/%VERSION%/{getline; print; exit}'
+    fi
+  fi
+}
+
+# Get version from PKGBUILD
+get_pkgbuild_version() {
+  local pkgdir="$1"
+  if [[ -f "$pkgdir/PKGBUILD" ]]; then
+    (cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi')
+  fi
+}
+
+# Check if package needs building for a mirror
+check_package() {
+  local pkg="$1"
+  local pkgdir="$2"
+  local mirror="$3"
+  
+  local pkgbuild_version=$(get_pkgbuild_version "$pkgdir")
+  local repo_version=$(get_repo_version "$pkg" "$mirror")
+  
+  if [[ -z "$pkgbuild_version" ]]; then
+    return 1  # Can't read version, skip
+  fi
+  
+  if [[ "$pkgbuild_version" != "$repo_version" ]]; then
+    return 0  # Needs building
+  fi
+  
+  return 1  # Up to date
+}
+
+edge_needs_build=false
+stable_needs_build=false
+edge_packages=()
+stable_packages=()
+
+print_info "Checking edge packages..."
+
+# Check edge/ packages -> only affects edge
+for pkgdir in "$BUILD_ROOT/pkgbuilds/edge"/*/; do
+  [[ ! -d "$pkgdir" ]] && continue
+  pkg=$(basename "$pkgdir")
+  [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
+  
+  if check_package "$pkg" "$pkgdir" "edge"; then
+    edge_needs_build=true
+    edge_packages+=("$pkg")
+  fi
+done
+
+print_info "Checking stable packages..."
+
+# Check stable/ packages -> only affects stable
+for pkgdir in "$BUILD_ROOT/pkgbuilds/stable"/*/; do
+  [[ ! -d "$pkgdir" ]] && continue
+  pkg=$(basename "$pkgdir")
+  [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
+  
+  if check_package "$pkg" "$pkgdir" "stable"; then
+    stable_needs_build=true
+    stable_packages+=("$pkg")
+  fi
+done
+
+print_info "Checking shared packages..."
+
+# Check shared/ packages -> affects BOTH edge and stable
+for pkgdir in "$BUILD_ROOT/pkgbuilds/shared"/*/; do
+  [[ ! -d "$pkgdir" ]] && continue
+  pkg=$(basename "$pkgdir")
+  [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
+  
+  # Check against edge
+  if check_package "$pkg" "$pkgdir" "edge"; then
+    edge_needs_build=true
+    edge_packages+=("$pkg")
+  fi
+  
+  # Check against stable
+  if check_package "$pkg" "$pkgdir" "stable"; then
+    stable_needs_build=true
+    stable_packages+=("$pkg")
+  fi
+done
+
+echo ""
+
+# Drop state files as needed
+if [[ "$edge_needs_build" == true ]]; then
+  touch "$STATE_DIR/.sync-needed-edge"
+  print_success "Edge needs building (${#edge_packages[@]} packages)"
+  print_info "Packages: ${edge_packages[*]}"
+  print_info "State file created: $STATE_DIR/.sync-needed-edge"
+else
+  print_info "Edge is up to date"
+fi
+
+echo ""
+
+if [[ "$stable_needs_build" == true ]]; then
+  touch "$STATE_DIR/.sync-needed-stable"
+  print_success "Stable needs building (${#stable_packages[@]} packages)"
+  print_info "Packages: ${stable_packages[*]}"
+  print_info "State file created: $STATE_DIR/.sync-needed-stable"
+else
+  print_info "Stable is up to date"
+fi
+
+echo ""
+print_success "Version check complete!"

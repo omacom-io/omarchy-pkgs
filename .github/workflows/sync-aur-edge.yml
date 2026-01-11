@@ -1,4 +1,4 @@
-name: Sync AUR Packages
+name: Sync AUR Packages (Edge)
 
 on:
   schedule:
@@ -22,12 +22,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Sync AUR packages
+      - name: Sync AUR packages (edge tier)
         run: |
           if [ -n "$PACKAGES" ]; then
-            ./bin/sync-aur $PACKAGES
+            ./bin/sync-aur --tier edge $PACKAGES
           else
-            ./bin/sync-aur
+            ./bin/sync-aur --tier edge
           fi
         env:
           PACKAGES: ${{ github.event.inputs.packages }}
@@ -46,13 +46,13 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore: sync AUR packages'
-          title: 'chore: sync AUR packages'
+          commit-message: 'chore: sync AUR packages (edge)'
+          title: 'chore: sync AUR packages (edge)'
           body: |
-            Automated AUR package sync.
+            Automated AUR package sync for edge tier.
 
             Please review the changes before merging.
-          branch: auto/sync-aur
+          branch: auto/sync-aur-edge
           delete-branch: true
           labels: automated
           reviewers: ryanrhughes

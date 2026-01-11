@@ -1,6 +1,6 @@
 [Unit]
 Description=Auto-release omarchy-pkgs for stable mirror
-After=network-online.target omarchy-check-upstream.service
+After=network-online.target omarchy-check-versions.service
 Wants=network-online.target
 
 [Service]

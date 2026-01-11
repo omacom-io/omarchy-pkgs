@@ -129,38 +129,81 @@ bin/repo remove <package>           # Remove package
 
 ```
 omarchy-pkgs/
-├── pkgbuilds/              # Source PKGBUILDs
-├── build-output/           # Unsigned packages (temporary)
-│   ├── x86_64/
-│   └── aarch64/
-├── pkgs.omarchy.org/       # Signed packages (production)
-│   ├── x86_64/
-│   └── aarch64/
-├── build/                  # Build scripts (in container)
-└── bin/                    # CLI tools (on host)
+├── pkgbuilds/                  # Source PKGBUILDs (tiered)
+│   ├── stable/                 # Manual promotion only, builds for stable
+│   ├── edge/                   # Daily sync w/ PR review, builds for edge only
+│   └── shared/                 # 6-hourly sync, auto-merge, builds for BOTH
+├── build/
+│   └── packages/
+│       ├── edge.packages       # Package list for daily sync (PR review)
+│       └── shared.packages     # Package list for 6-hourly sync (auto-merge)
+├── build-output/               # Unsigned packages (temporary)
+│   ├── edge/
+│   │   ├── x86_64/
+│   │   └── aarch64/
+│   └── stable/
+│       ├── x86_64/
+│       └── aarch64/
+├── pkgs.omarchy.org/           # Signed packages (production)
+│   ├── edge/
+│   │   ├── x86_64/
+│   │   └── aarch64/
+│   └── stable/
+│       ├── x86_64/
+│       └── aarch64/
+└── bin/                        # CLI tools (on host)
 ```
+
+## Package Tiers
+
+Packages are organized into three tiers based on their release cadence:
+
+| Tier | Directory | Sync Frequency | Review | Builds To |
+|------|-----------|----------------|--------|-----------|
+| **Stable** | `pkgbuilds/stable/` | Manual | N/A | stable only |
+| **Edge** | `pkgbuilds/edge/` | Daily | PR required | edge only |
+| **Shared** | `pkgbuilds/shared/` | Every 6 hours | Auto-merge | edge AND stable |
+
+### Build Matrix
+
+- **Edge builds** (`--mirror edge`): `pkgbuilds/edge/*` + `pkgbuilds/shared/*`
+- **Stable builds** (`--mirror stable`): `pkgbuilds/stable/*` + `pkgbuilds/shared/*`
 
 ## Adding Packages
 
-### From AUR
+### From AUR (Edge - Daily Sync, PR Review)
 
 ```bash
-# Add to sync list
-echo "package-name" >> build/packages/omarchy-aur.packages
+# Add to edge package list
+echo "package-name" >> build/packages/edge.packages
 
 # Sync PKGBUILD
-bin/sync-aur package-name
+bin/sync-aur --tier edge package-name
 
 # Build and release
 bin/repo release --package package-name
 ```
 
-#### Local Patches for AUR Packages
-
-Create `pkgbuilds/package-name/patches/*.patch` to maintain modifications across AUR syncs:
+### From AUR (Shared - 6-Hourly Sync, Auto-Merge)
 
 ```bash
-cd pkgbuilds/package-name
+# Add to shared package list
+echo "package-name" >> build/packages/shared.packages
+
+# Sync PKGBUILD
+bin/sync-aur --tier shared package-name
+
+# Build and release (will publish to both edge and stable)
+bin/repo release --package package-name
+bin/repo release --mirror stable --package package-name
+```
+
+### Local Patches for AUR Packages
+
+Create `pkgbuilds/<tier>/package-name/patches/*.patch` to maintain modifications across AUR syncs:
+
+```bash
+cd pkgbuilds/edge/package-name
 # Make changes
 git diff > patches/my-fix.patch
 # Next sync will auto-apply patches
@@ -169,7 +212,7 @@ git diff > patches/my-fix.patch
 ### Custom Package
 
 ```bash
-mkdir pkgbuilds/my-package
+mkdir pkgbuilds/edge/my-package
 # Add PKGBUILD and files
 bin/repo release --package my-package
 ```
@@ -218,18 +261,32 @@ Packages are only rebuilt if:
 
 ## Automated Releases
 
-The repository includes a GitHub workflow and systemd services for automated daily releases.
+The repository includes GitHub workflows and systemd services for automated releases.
 
 ### How It Works
 
-1. **GitHub Action** (6:00 AM UTC): Syncs AUR packages and opens a PR if there are updates
-2. **Merge PR**: Review and merge the PR to trigger the release pipeline
-3. **check-upstream** (2:00 PM Eastern): Detects the merged changes, pulls them, creates state files
-4. **auto-release** (3:00 PM Eastern): If state file exists, runs full release workflow and removes state file on success
+#### GitHub Workflows
+
+1. **sync-aur-edge.yml** (Daily at 6:00 AM UTC): Syncs edge packages from AUR, creates PR for review
+2. **sync-aur-shared.yml** (Every 6 hours): Syncs shared packages from AUR, auto-commits to master
+
+#### Systemd Services
+
+1. **check-versions** (Every 6 hours at :30): Compares PKGBUILD versions to published versions, creates state files if builds are needed
+2. **auto-release-edge** (Every 6 hours at +1:00): If state file exists, builds edge packages
+3. **auto-release-stable** (Every 6 hours at +1:30): If state file exists, builds stable packages
 
 State files are stored in `/root/.state/`:
 - `.sync-needed-edge`
 - `.sync-needed-stable`
+
+### Schedule (America/New_York)
+
+| Time | Action |
+|------|--------|
+| 00:30, 06:30, 12:30, 18:30 | check-versions (creates state files) |
+| 01:00, 07:00, 13:00, 19:00 | auto-release-edge |
+| 01:30, 07:30, 13:30, 19:30 | auto-release-stable |
 
 ### Installation
 
@@ -241,7 +298,7 @@ cp /root/omarchy-pkgs/systemd/*.service /root/omarchy-pkgs/systemd/*.timer /etc/
 systemctl daemon-reload
 
 # Enable and start timers
-systemctl enable --now omarchy-check-upstream.timer
+systemctl enable --now omarchy-check-versions.timer
 systemctl enable --now omarchy-auto-release-edge.timer
 systemctl enable --now omarchy-auto-release-stable.timer
 
@@ -256,10 +313,12 @@ mkdir -p /root/.state
 systemctl list-timers omarchy-*
 
 # Manual trigger
-systemctl start omarchy-check-upstream.service
+systemctl start omarchy-check-versions.service
 systemctl start omarchy-auto-release-edge.service
+systemctl start omarchy-auto-release-stable.service
 
 # View logs
-journalctl -u omarchy-check-upstream.service
+journalctl -u omarchy-check-versions.service
 journalctl -u omarchy-auto-release-edge.service
+journalctl -u omarchy-auto-release-stable.service
 ```

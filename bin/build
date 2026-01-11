@@ -52,12 +52,12 @@ while [[ $# -gt 0 ]]; do
     echo "  --package <names>    Build only the specified package(s) (space-separated)"
     echo "  -h, --help           Show this help message"
     echo ""
-    echo "This script builds AUR packages from:"
-    echo "  build/packages/omarchy-aur.packages"
+    echo "This script builds packages from pkgbuilds/ directories based on mirror:"
+    echo "  --mirror edge:   builds from pkgbuilds/edge/ + pkgbuilds/shared/"
+    echo "  --mirror stable: builds from pkgbuilds/stable/ + pkgbuilds/shared/"
     echo ""
-    echo "Or build a single package with --package:"
-    echo "  Package can be: AUR package, GitHub repo (owner/repo), or local PKGBUILD"
-    echo "  Options can be appended after package name (skip-pgp, install, always-build, etc.)"
+    echo "Or build specific packages with --package:"
+    echo "  Package names should match directories in the relevant pkgbuilds/ tier"
     echo ""
     echo "Examples:"
     echo "  $0 --arch aarch64"
@@ -94,14 +94,11 @@ print_info "Cleaning build workspace..."
 rm -rf "$BUILD_OUTPUT_DIR"/*
 mkdir -p "$BUILD_OUTPUT_DIR"
 
-# Check if AUR package list exists (only required if not building specific packages)
-if [[ -z "$PACKAGES" ]]; then
-  if [[ ! -f "$BUILD_DIR/packages/omarchy-aur.packages" ]]; then
-    print_error "omarchy-aur.packages not found at $BUILD_DIR/packages/"
-    exit 1
-  fi
-else
+# Show package info
+if [[ -n "$PACKAGES" ]]; then
   print_info "Building packages: $PACKAGES"
+else
+  print_info "Building all packages for $MIRROR mirror"
 fi
 
 # Build/update the Docker image

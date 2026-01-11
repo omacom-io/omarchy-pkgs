@@ -4,38 +4,64 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 
-PACKAGES_FILE="$BUILD_ROOT/build/packages/omarchy-aur.packages"
 TEMP_DIR=$(mktemp -d)
 
 trap "rm -rf $TEMP_DIR" EXIT
 
-# Parse arguments
+# Default tier
+TIER=""
 SPECIFIC_PACKAGES=()
-for arg in "$@"; do
-  case "$arg" in
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tier)
+      TIER="$2"
+      if [[ "$TIER" != "edge" && "$TIER" != "shared" ]]; then
+        print_error "Invalid tier: $TIER (must be 'edge' or 'shared')"
+        exit 1
+      fi
+      shift 2
+      ;;
     -h|--help)
-      echo "Usage: $0 [PACKAGE...]"
+      echo "Usage: $0 --tier <edge|shared> [PACKAGE...]"
       echo ""
-      echo "Sync AUR packages to pkgbuilds/ directory"
+      echo "Sync AUR packages to pkgbuilds/<tier>/ directory"
+      echo ""
+      echo "Options:"
+      echo "  --tier <tier>  Target tier: edge or shared (required)"
       echo ""
       echo "Arguments:"
       echo "  PACKAGE    One or more package names to sync (optional)"
       echo ""
       echo "Examples:"
-      echo "  $0              # Sync all packages from omarchy-aur.packages"
-      echo "  $0 yay          # Sync only the yay package"
-      echo "  $0 yay paru     # Sync yay and paru packages"
+      echo "  $0 --tier edge              # Sync all packages from edge.packages"
+      echo "  $0 --tier shared            # Sync all packages from shared.packages"
+      echo "  $0 --tier edge yay          # Sync only the yay package to edge/"
+      echo "  $0 --tier shared cursor-bin # Sync only cursor-bin to shared/"
       exit 0
       ;;
     *)
-      SPECIFIC_PACKAGES+=("$arg")
+      SPECIFIC_PACKAGES+=("$1")
+      shift
       ;;
   esac
 done
 
-print_header "AUR Package Sync"
+# Require tier
+if [[ -z "$TIER" ]]; then
+  print_error "Missing required --tier argument"
+  echo "Usage: $0 --tier <edge|shared> [PACKAGE...]"
+  exit 1
+fi
 
-mkdir -p "$PKGBUILDS_DIR"
+# Set paths based on tier
+PACKAGES_FILE="$BUILD_ROOT/build/packages/${TIER}.packages"
+TARGET_DIR="$PKGBUILDS_DIR/$TIER"
+
+print_header "AUR Package Sync (tier: $TIER)"
+
+mkdir -p "$TARGET_DIR"
 
 if [[ ! -f "$PACKAGES_FILE" ]]; then
   print_error "Package list not found: $PACKAGES_FILE"
@@ -57,14 +83,14 @@ sync_package() {
   
   if git clone "https://aur.archlinux.org/${package}.git" 2>/dev/null; then
     # Create target directory if it doesn't exist
-    mkdir -p "$PKGBUILDS_DIR/$package"
+    mkdir -p "$TARGET_DIR/$package"
     
     # Copy files (not .git directory)
-    cp -r "$package"/* "$PKGBUILDS_DIR/$package/" 2>/dev/null || true
-    cp -r "$package"/.* "$PKGBUILDS_DIR/$package/" 2>/dev/null || true
+    cp -r "$package"/* "$TARGET_DIR/$package/" 2>/dev/null || true
+    cp -r "$package"/.* "$TARGET_DIR/$package/" 2>/dev/null || true
     
     # Remove .git from destination
-    rm -rf "$PKGBUILDS_DIR/$package/.git"
+    rm -rf "$TARGET_DIR/$package/.git"
     
     SYNCED_PACKAGES+=("$package")
     ((SYNCED++))
@@ -98,9 +124,9 @@ fi
 
 # Apply patches only to packages that were actually synced
 for package in "${SYNCED_PACKAGES[@]}"; do
-  if [[ -d "$PKGBUILDS_DIR/$package/patches" ]]; then
+  if [[ -d "$TARGET_DIR/$package/patches" ]]; then
     print_info "Applying patches for $package..."
-    (cd "$PKGBUILDS_DIR/$package" && shopt -s nullglob && for patch in patches/*.patch; do 
+    (cd "$TARGET_DIR/$package" && shopt -s nullglob && for patch in patches/*.patch; do 
       if ! patch -p1 --no-backup-if-mismatch < "$patch"; then
         print_error "Failed to apply patch: $patch"
         exit 1
@@ -110,6 +136,7 @@ for package in "${SYNCED_PACKAGES[@]}"; do
 done
 
 echo ""
-print_success "Sync complete!"
+print_success "Sync complete! (tier: $TIER)"
+echo "  Target: $TARGET_DIR"
 echo "  Synced: $SYNCED"
 echo "  Failed: $FAILED"

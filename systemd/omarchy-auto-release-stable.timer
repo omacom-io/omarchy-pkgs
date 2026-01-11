@@ -1,9 +1,9 @@
 [Unit]
-Description=Process omarchy-pkgs sync for stable mirror
+Description=Auto-release stable mirror every 6 hours
 
 [Timer]
-# Run 1 hour after the upstream check (after edge has completed)
-OnCalendar=*-*-* 15:00:00 America/New_York
+# Run every 6 hours at :00 (after version check at :30)
+OnCalendar=*-*-* 01,07,13,19:00:00 America/New_York
 Persistent=true
 
 [Install]

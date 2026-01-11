@@ -1,0 +1,50 @@
+name: Sync AUR Packages (Shared)
+
+on:
+  schedule:
+    # Every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Specific packages to sync (space-separated, leave empty for all)'
+        required: false
+        default: ''
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync AUR packages (shared tier)
+        run: |
+          if [ -n "$PACKAGES" ]; then
+            ./bin/sync-aur --tier shared $PACKAGES
+          else
+            ./bin/sync-aur --tier shared
+          fi
+        env:
+          PACKAGES: ${{ github.event.inputs.packages }}
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: sync AUR packages (shared)"
+          git push

@@ -1,5 +1,7 @@
 #!/bin/bash
-# Simplified build script - builds all packages in /pkgbuilds/
+# Build script - builds packages based on mirror tier
+# Edge builds: /pkgbuilds/edge/* + /pkgbuilds/shared/*
+# Stable builds: /pkgbuilds/stable/* + /pkgbuilds/shared/*
 
 # Import GPG keys
 /build/import-gpg-keys.sh || exit 1
@@ -9,6 +11,13 @@ ARCH=${ARCH:-x86_64}
 MIRROR=${MIRROR:-edge}
 BUILD_OUTPUT_DIR="/build-output/$MIRROR/$ARCH"
 FINAL_OUTPUT_DIR="/pkgs.omarchy.org/$MIRROR/$ARCH"
+
+# Determine which package directories to use based on mirror
+if [[ "$MIRROR" == "stable" ]]; then
+  PKGBUILD_DIRS="/pkgbuilds/stable /pkgbuilds/shared"
+else
+  PKGBUILD_DIRS="/pkgbuilds/edge /pkgbuilds/shared"
+fi
 
 mkdir -p "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR"
 
@@ -57,12 +66,25 @@ sudo pacman -Sy
 echo "==> Package Builder"
 echo "==> Target architecture: $ARCH"
 echo "==> Mirror: $MIRROR"
+echo "==> Package directories: $PKGBUILD_DIRS"
 echo "==> Build workspace: $BUILD_OUTPUT_DIR"
 echo "==> Final output: $FINAL_OUTPUT_DIR"
 
 FAILED_PACKAGES=""
 SUCCESSFUL_PACKAGES=""
 SKIPPED_PACKAGES=""
+
+# Find package directory - searches through PKGBUILD_DIRS
+find_package_dir() {
+  local pkg="$1"
+  for dir in $PKGBUILD_DIRS; do
+    if [[ -d "$dir/$pkg" ]]; then
+      echo "$dir/$pkg"
+      return 0
+    fi
+  done
+  return 1
+}
 
 # Get version from final output (production packages)
 get_local_version() {
@@ -81,12 +103,13 @@ get_local_version() {
 should_build_for_arch() {
   local pkg="$1"
   local current_arch="$ARCH"
-  local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
+  local pkgdir=$(find_package_dir "$pkg")
+  local pkgbuild="$pkgdir/PKGBUILD"
 
   [[ ! -f "$pkgbuild" ]] && return 1
 
   # Check PKGBUILD arch=() array
-  local pkgbuild_archs=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD 2>/dev/null; echo "${arch[@]}"')
+  local pkgbuild_archs=$(cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; echo "${arch[@]}"')
 
   # If arch=('any'), build for all architectures
   if [[ "$pkgbuild_archs" == "any" ]]; then
@@ -101,9 +124,10 @@ should_build_for_arch() {
   fi
 }
 
-# Build a package from /pkgbuilds/
+# Build a package
 build_package() {
   local pkg="$1"
+  local pkgdir=$(find_package_dir "$pkg")
 
   echo ""
   echo "  -> Processing: $pkg"
@@ -111,14 +135,14 @@ build_package() {
   # Copy to build directory
   cd /src
   rm -rf "$pkg"
-  cp -r "/pkgbuilds/$pkg" "$pkg"
+  cp -r "$pkgdir" "$pkg"
   cd "/src/$pkg" || return 1
 
   # Get PKGBUILD version (including epoch if present)
   local pkgbuild_version=$(bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
 
   if [[ -z "$pkgbuild_version" ]]; then
-    echo "    ❌ Failed to read PKGBUILD version"
+    echo "    Failed to read PKGBUILD version"
     FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
     return 1
   fi
@@ -136,7 +160,7 @@ build_package() {
     echo "    Importing package-specific PGP keys..."
     for keyfile in keys/pgp/*.asc; do
       if [[ -f "$keyfile" ]]; then
-        gpg --import "$keyfile" 2>/dev/null && echo "      ✓ Imported $(basename "$keyfile")" || echo "      ⚠ Failed to import $(basename "$keyfile")"
+        gpg --import "$keyfile" 2>/dev/null && echo "      Imported $(basename "$keyfile")" || echo "      Failed to import $(basename "$keyfile")"
       fi
     done
   fi
@@ -165,11 +189,11 @@ build_package() {
 
     cd /src/$pkg
 
-    echo "    ✓ Successfully built $pkg"
+    echo "    Successfully built $pkg"
     SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $pkg"
     return 0
   else
-    echo "    ❌ Makepkg failed for $pkg"
+    echo "    Makepkg failed for $pkg"
     echo "    DEBUG: Files in build directory:"
     ls -lah *.pkg.tar.* 2>&1 | head -20 || echo "    No package files found"
     FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
@@ -180,7 +204,8 @@ build_package() {
 # Get package dependencies from PKGBUILD
 get_package_deps() {
   local pkg="$1"
-  local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
+  local pkgdir=$(find_package_dir "$pkg")
+  local pkgbuild="$pkgdir/PKGBUILD"
 
   if [[ ! -f "$pkgbuild" ]]; then
     return
@@ -193,57 +218,23 @@ get_package_deps() {
   ) | tr ' ' '\n' | while read -r dep; do
     # Strip version constraints (e.g., 'hyprshade>=1.0' -> 'hyprshade')
     dep=$(echo "$dep" | sed 's/[<>=].*$//')
-    # Check if this dependency exists in our pkgbuilds
-    if [[ -d "/pkgbuilds/$dep" ]]; then
+    # Check if this dependency exists in our pkgbuilds (any tier)
+    if find_package_dir "$dep" >/dev/null 2>&1; then
       echo "$dep"
     fi
   done
 }
 
-# Simple dependency-aware build order
-# Build packages with no internal deps first, then those that depend on them
-build_order() {
-  local -a all_packages=()
-  local -a result=()
-  local -A package_deps_count=()
-
-  # Collect all packages
-  for pkgdir in /pkgbuilds/*/; do
-    [[ ! -d "$pkgdir" ]] && continue
-    local pkg=$(basename "$pkgdir")
-    [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
-    all_packages+=("$pkg")
-
-    # Count internal dependencies
-    local dep_count=0
-    while read -r dep; do
-      ((dep_count++))
-    done < <(get_package_deps "$pkg")
-    package_deps_count[$pkg]=$dep_count
-  done
-
-  # Sort: packages with fewer deps first
-  while IFS= read -r pkg; do
-    result+=("$pkg")
-  done < <(
-    for pkg in "${all_packages[@]}"; do
-      echo "${package_deps_count[$pkg]} $pkg"
-    done | sort -n | cut -d' ' -f2-
-  )
-
-  # Output in build order
-  printf '%s\n' "${result[@]}"
-}
-
 # Check which packages need building (version check only)
 check_needs_build() {
   local pkg="$1"
-  local pkgbuild="/pkgbuilds/$pkg/PKGBUILD"
+  local pkgdir=$(find_package_dir "$pkg")
+  local pkgbuild="$pkgdir/PKGBUILD"
 
   [[ ! -f "$pkgbuild" ]] && return 1
 
   # Get PKGBUILD version (including epoch if present)
-  local pkgbuild_version=$(cd "/pkgbuilds/$pkg" && bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
+  local pkgbuild_version=$(cd "$pkgdir" && bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
   [[ -z "$pkgbuild_version" ]] && return 1
 
   # Check if already built
@@ -254,6 +245,20 @@ check_needs_build() {
   else
     return 0  # Needs building
   fi
+}
+
+# Collect all packages from the relevant directories
+collect_packages() {
+  for dir in $PKGBUILD_DIRS; do
+    if [[ -d "$dir" ]]; then
+      for pkgdir in "$dir"/*/; do
+        [[ ! -d "$pkgdir" ]] && continue
+        local pkg=$(basename "$pkgdir")
+        [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
+        echo "$pkg"
+      done
+    fi
+  done
 }
 
 # Main execution
@@ -270,14 +275,15 @@ PACKAGES_TO_BUILD=()
 if [[ -n "$PACKAGES" ]]; then
   echo "==> Checking specified packages: $PACKAGES"
   for pkg_name in $PACKAGES; do
-    if [[ ! -f "/pkgbuilds/$pkg_name/PKGBUILD" ]]; then
-      echo "==> ERROR: Package '$pkg_name' not found in /pkgbuilds/"
+    pkgdir=$(find_package_dir "$pkg_name")
+    if [[ -z "$pkgdir" || ! -f "$pkgdir/PKGBUILD" ]]; then
+      echo "==> ERROR: Package '$pkg_name' not found in $PKGBUILD_DIRS"
       exit 1
     fi
 
     # Check if package should be built for this architecture
     if ! should_build_for_arch "$pkg_name"; then
-      echo "  ⊘ $pkg_name - not built for $ARCH"
+      echo "  - $pkg_name - not built for $ARCH"
       SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg_name"
       continue
     fi
@@ -285,20 +291,16 @@ if [[ -n "$PACKAGES" ]]; then
     if check_needs_build "$pkg_name"; then
       PACKAGES_TO_BUILD+=("$pkg_name")
     else
-      echo "  ✓ $pkg_name - already up to date"
+      echo "  + $pkg_name - already up to date"
       SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg_name"
     fi
   done
 else
-  # Build all packages that need updates
-  for pkgdir in /pkgbuilds/*/; do
-    [[ ! -d "$pkgdir" ]] && continue
-    pkg=$(basename "$pkgdir")
-    [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
-
+  # Build all packages that need updates from the relevant directories
+  while IFS= read -r pkg; do
     # Check if package should be built for this architecture
     if ! should_build_for_arch "$pkg"; then
-      echo "  ⊘ $pkg - not built for $ARCH"
+      echo "  - $pkg - not built for $ARCH"
       SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
       continue
     fi
@@ -306,10 +308,10 @@ else
     if check_needs_build "$pkg"; then
       PACKAGES_TO_BUILD+=("$pkg")
     else
-      echo "  ✓ $pkg - already up to date"
+      echo "  + $pkg - already up to date"
       SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
     fi
-  done
+  done < <(collect_packages)
 fi
 
 if [[ ${#PACKAGES_TO_BUILD[@]} -eq 0 ]]; then
@@ -400,9 +402,9 @@ else
 fi
 
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "========================================"
 echo "==> Build Summary"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "========================================"
 
 # Count results
 SUCCESS_COUNT=$(echo $SUCCESSFUL_PACKAGES | wc -w)
@@ -410,9 +412,9 @@ SKIPPED_COUNT=$(echo $SKIPPED_PACKAGES | wc -w)
 FAILED_COUNT=$(echo $FAILED_PACKAGES | wc -w)
 
 echo "  Total packages: $TOTAL_COUNT"
-echo "  ✓ Built:        $SUCCESS_COUNT"
-echo "  ⏭  Skipped:      $SKIPPED_COUNT (already up-to-date)"
-echo "  ❌ Failed:       $FAILED_COUNT"
+echo "  Built:          $SUCCESS_COUNT"
+echo "  Skipped:        $SKIPPED_COUNT (already up-to-date)"
+echo "  Failed:         $FAILED_COUNT"
 
 # List failures if any
 if [[ -n "$FAILED_PACKAGES" ]]; then

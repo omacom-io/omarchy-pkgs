@@ -1,0 +1,35 @@
+# Edge packages - sync daily, PR review required, built for edge only
+
+# Core
+elephant install
+elephant-archlinuxpkgs
+elephant-bluetooth
+elephant-calc
+elephant-clipboard
+elephant-desktopapplications
+elephant-files
+elephant-menus
+elephant-providerlist
+elephant-runner
+elephant-symbols
+elephant-todo
+elephant-unicode
+elephant-websearch
+gpu-screen-recorder
+limine-mkinitcpio-hook
+limine-snapper-sync
+macbook12-spi-driver-dkms
+pinta
+python-terminaltexteffects
+ttf-ia-writer
+typora
+tzupdate
+ufw-docker
+walker
+xdg-terminal-exec
+yaru-icon-theme
+yay
+
+# Drivers
+nvidia-580xx-utils
+lib32-nvidia-580xx-utils
