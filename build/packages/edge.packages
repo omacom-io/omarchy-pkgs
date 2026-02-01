@@ -1,6 +1,7 @@
 # Edge packages - sync daily, PR review required, built for edge only
 
 # Core
+asusctl
 elephant install
 elephant-archlinuxpkgs
 elephant-bluetooth
