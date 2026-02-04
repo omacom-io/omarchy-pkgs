@@ -30,6 +30,7 @@ walker
 xdg-terminal-exec
 yaru-icon-theme
 yay
+yt6801-dkms
 
 # Drivers
 nvidia-580xx-utils
