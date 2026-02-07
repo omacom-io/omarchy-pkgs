@@ -1,0 +1,27 @@
+# Build directories
+src/
+pkg/
+
+# Package files
+*.pkg.tar.zst
+*.pkg.tar.xz
+*.pkg.tar.gz
+*.pkg.tar
+
+# Source archives
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.zip
+
+# Logs
+*.log
+
+# Temporary files
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Git clones
+asdcontrol/

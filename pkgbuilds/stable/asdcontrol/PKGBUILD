@@ -1,0 +1,31 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+pkgname=asdcontrol
+pkgver=0.23.0ee8bd5
+pkgrel=1
+pkgdesc="Control brightness on Apple Displays connected via USB-C"
+arch=('x86_64')
+url="https://github.com/nikosdion/asdcontrol"
+license=('GPL2')
+options=('!debug')
+depends=('glibc' 'gcc-libs')
+makedepends=('make' 'gcc')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/nikosdion/asdcontrol/archive/0ee8bd5.tar.gz")
+sha256sums=('1381ba2e048ec73aa0f8c32e47370460efd31b31f7558a7b922a3c4ebef00ebc')
+install=asdcontrol.install
+
+build() {
+  cd "$srcdir/asdcontrol-0ee8bd576d4e93513027d713e688988cb0d827ef"
+  make
+}
+
+package() {
+  cd "$srcdir/asdcontrol-0ee8bd576d4e93513027d713e688988cb0d827ef"
+
+  # Install the binary
+  install -Dm755 asdcontrol "$pkgdir/usr/bin/asdcontrol"
+
+  # Install the sudoers file for passwordless execution
+  install -dm750 "$pkgdir/etc/sudoers.d"
+  echo "ALL ALL=(ALL) NOPASSWD: /usr/bin/asdcontrol" > "$pkgdir/etc/sudoers.d/asdcontrol"
+  chmod 440 "$pkgdir/etc/sudoers.d/asdcontrol"
+}

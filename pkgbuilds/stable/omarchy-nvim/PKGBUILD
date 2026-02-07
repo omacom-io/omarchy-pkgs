@@ -1,0 +1,63 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+pkgname=omarchy-nvim
+pkgver=2025.11.20
+pkgrel=1
+pkgdesc="Pre-built LazyVim configuration with cached plugins"
+arch=('any')
+url="https://github.com/LazyVim/LazyVim"
+license=('MIT')
+depends=('neovim>=0.9.0' 'git')
+makedepends=('git' 'nodejs' 'npm' 'tree-sitter-cli')
+conflicts=('omarchy-lazyvim')
+options=('!debug')
+source=("https://github.com/LazyVim/starter/archive/refs/heads/main.tar.gz")
+sha256sums=('d865d50211358358d3c3c1e356773c1e3de1e8964215d85eb1b4c77521e17488')
+
+build() {
+  cd "$srcdir"
+
+  # Create isolated environment for building
+  export HOME="$srcdir/build-home"
+  export XDG_CONFIG_HOME="$HOME/.config"
+  export XDG_DATA_HOME="$HOME/.local/share"
+  export XDG_STATE_HOME="$HOME/.local/state"
+  export XDG_CACHE_HOME="$HOME/.cache"
+
+  mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
+
+  # Setup LazyVim starter
+  cp -r "$srcdir/starter-main" "$XDG_CONFIG_HOME/nvim"
+  rm -rf "$XDG_CONFIG_HOME/nvim/.git"
+
+  # Copy our custom configs
+  cp -r "$startdir/lua" "$XDG_CONFIG_HOME/nvim/"
+  cp -r "$startdir/plugin" "$XDG_CONFIG_HOME/nvim/"
+  cp "$startdir/lazyvim.json" "$XDG_CONFIG_HOME/nvim/"
+
+  echo "vim.opt.relativenumber = false" >>"$XDG_CONFIG_HOME/nvim/lua/config/options.lua"
+
+  echo "Installing LazyVim plugins..."
+  nvim --headless \
+    "+Lazy! sync" \
+    "+qa!" || true
+}
+
+package() {
+  cd "$srcdir"
+
+  install -dm755 "$pkgdir/usr/share/$pkgname"
+
+  cp -a "$XDG_CONFIG_HOME/nvim" "$pkgdir/usr/share/$pkgname/config"
+  cp -a "$XDG_DATA_HOME/nvim" "$pkgdir/usr/share/$pkgname/data"
+
+  # Remove everything from site/ directory but keep the directory to prevent error
+  rm -rf "$pkgdir/usr/share/$pkgname/data/site"/*
+  mkdir -p "$pkgdir/usr/share/$pkgname/data/site"
+
+  # Fix permissions to be readable by all users
+  chmod -R 755 "$pkgdir/usr/share/$pkgname"
+  find "$pkgdir/usr/share/$pkgname" -type f -exec chmod 644 {} \;
+
+  # Install setup script to /usr/bin
+  install -Dm755 "$startdir/omarchy-nvim-setup" "$pkgdir/usr/bin/omarchy-nvim-setup"
+}
