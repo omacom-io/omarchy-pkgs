@@ -1,0 +1,16 @@
+pkgbase = elephant-calc
+	pkgdesc = calc provider for elephant
+	pkgver = 2.19.1
+	pkgrel = 1
+	url = https://github.com/abenz1267/elephant
+	arch = x86_64
+	arch = aarch64
+	license = GPL
+	makedepends = go
+	depends = libqalculate
+	provides = elephant-calc
+	conflicts = elephant-calc
+	source = https://github.com/abenz1267/elephant/archive/refs/tags/v2.19.1.tar.gz
+	sha256sums = 0d3aaac36c8a4a596c7c699dd32bcf45e47141f3497610a8ba655ffbcaf36e51
+
+pkgname = elephant-calc

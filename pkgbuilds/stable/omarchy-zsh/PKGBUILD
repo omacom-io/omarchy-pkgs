@@ -1,0 +1,25 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+
+pkgname=omarchy-zsh
+pkgver=1.2.0
+pkgrel=1
+pkgdesc="Omarchy shell configuration for Zsh"
+arch=('any')
+url="https://github.com/omacom-io/omarchy-zsh"
+license=('MIT')
+depends=('zsh' 'eza' 'mise' 'zoxide' 'starship' 'fzf' 'fd' 'bat')
+options=('!debug')
+install=omarchy-zsh.install
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('d99d0ed0a07bf0d5043b0faef94bb8ce4dddf8cb1229dc364d5701e11af6a4a5')
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  # Install config files, functions, templates, and documentation
+  install -dm755 "${pkgdir}/usr/share/${pkgname}"
+  cp -r conf.d functions templates LICENSE README.md "${pkgdir}/usr/share/${pkgname}/"
+
+  # Install setup script
+  install -Dm755 bin/omarchy-setup-zsh "${pkgdir}/usr/bin/omarchy-setup-zsh"
+}

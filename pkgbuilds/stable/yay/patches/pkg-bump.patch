@@ -1,0 +1,26 @@
+diff --git a/.SRCINFO b/.SRCINFO
+index a8a0df1..5698489 100644
+--- a/.SRCINFO
++++ b/.SRCINFO
+@@ -1,7 +1,7 @@
+ pkgbase = yay
+ 	pkgdesc = Yet another yogurt. Pacman wrapper and AUR helper written in go.
+ 	pkgver = 12.5.7
+-	pkgrel = 1
++	pkgrel = 2
+ 	url = https://github.com/Jguer/yay
+ 	arch = i686
+ 	arch = pentium4
+diff --git a/PKGBUILD b/PKGBUILD
+index 8262007..a11b031 100644
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -1,7 +1,7 @@
+ # Maintainer: Jguer <pkgbuilds at jguer.space>
+ pkgname=yay
+ pkgver=12.5.7
+-pkgrel=1
++pkgrel=2
+ pkgdesc="Yet another yogurt. Pacman wrapper and AUR helper written in go."
+ arch=('i686' 'pentium4' 'x86_64' 'arm' 'armv7h' 'armv6h' 'aarch64' 'riscv64')
+ url="https://github.com/Jguer/yay"

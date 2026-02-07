@@ -1,0 +1,53 @@
+diff --git a/PKGBUILD b/PKGBUILD
+index 98e2b17..c61fa48 100644
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -8,7 +8,7 @@ pkgver=7.77.1
+ pkgrel=1
+ pkgdesc="Signal Private Messenger for Linux"
+ license=('AGPL-3.0-only')
+-arch=('x86_64')
++arch=('aarch64')  # Only for aarch64 - already in Arch extra repo for x86_64
+ url="https://signal.org"
+ depends=(
+   'alsa-lib' 'libasound.so'
+@@ -67,6 +67,19 @@ prepare() {
+   # Allow higher Node versions
+   sed 's#"node": "#&>=#' -i package.json
+ 
++  # Disable .deb packaging to avoid fpm architecture mismatch in cross-compilation
++  # electron-builder will still create the unpacked directory we need for packaging
++  # Use node to properly modify the JSON structure
++  node -e "
++    const fs = require('fs');
++    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
++    if (pkg.build && pkg.build.linux && pkg.build.linux.target) {
++      pkg.build.linux.target = ['dir'];
++      fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
++      console.log('Modified package.json to use dir target only');
++    }
++  "
++
+   # Install dependencies for sticker-creator
+   pnpm --prefix ./sticker-creator/ install
+ 
+@@ -87,8 +100,18 @@ build() {
+ package() {
+   cd "${_pkgname}-${pkgver}"
+ 
++  # Determine the architecture-specific directory
++  case "${CARCH}" in
++    x86_64)
++      _releasedir="release/linux-unpacked"
++      ;;
++    aarch64)
++      _releasedir="release/linux-arm64-unpacked"
++      ;;
++  esac
++
+   install -d "${pkgdir}/usr/"{lib,bin}
+-  cp -a release/linux-unpacked "${pkgdir}/usr/lib/${pkgname}"
++  cp -a "${_releasedir}" "${pkgdir}/usr/lib/${pkgname}"
+   ln -s "/usr/lib/${pkgname}/${pkgname}" "${pkgdir}/usr/bin/"
+ 
+   chmod u+s "${pkgdir}/usr/lib/signal-desktop/chrome-sandbox"
