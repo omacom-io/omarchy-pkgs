@@ -73,4 +73,9 @@ return {
 		lazy = true,
 		priority = 1000,
 	},
+	{
+		"xero/miasma.nvim",
+		lazy = true,
+		priority = 1000,
+	},
 }
