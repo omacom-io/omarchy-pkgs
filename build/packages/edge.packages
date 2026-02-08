@@ -2,6 +2,7 @@
 
 # Core
 asusctl
+qmk-hid
 elephant install
 elephant-archlinuxpkgs
 elephant-bluetooth
