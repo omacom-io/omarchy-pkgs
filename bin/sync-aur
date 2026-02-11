@@ -135,6 +135,38 @@ for package in "${SYNCED_PACKAGES[@]}"; do
   fi
 done
 
+# Apply pkgrel overrides (version-pinned pkgrel bumps that self-clean)
+for package in "${SYNCED_PACKAGES[@]}"; do
+  override_file="$TARGET_DIR/$package/pkgrel.override"
+  [[ -f "$override_file" ]] || continue
+
+  pkgbuild="$TARGET_DIR/$package/PKGBUILD"
+  srcinfo="$TARGET_DIR/$package/.SRCINFO"
+  gitignore="$TARGET_DIR/$package/.gitignore"
+  current_pkgver=$(grep -m1 '^pkgver=' "$pkgbuild" | cut -d= -f2)
+  matched=false
+
+  while IFS='=' read -r ver rel; do
+    [[ "$ver" =~ ^#.*$ || -z "$ver" ]] && continue
+    if [[ "$current_pkgver" == "$ver" ]]; then
+      print_info "Applying pkgrel override for $package: pkgver=$ver -> pkgrel=$rel"
+      sed -i "s/^pkgrel=.*/pkgrel=$rel/" "$pkgbuild"
+      sed -i "s/pkgrel = .*/pkgrel = $rel/" "$srcinfo"
+      # Ensure .gitignore tracks the override file (AUR may have overwritten it)
+      if [[ -f "$gitignore" ]] && ! grep -q '^!pkgrel.override$' "$gitignore"; then
+        echo '!pkgrel.override' >> "$gitignore"
+      fi
+      matched=true
+      break
+    fi
+  done < "$override_file"
+
+  if [[ "$matched" == false ]]; then
+    print_info "Removing stale pkgrel.override for $package (no match for pkgver=$current_pkgver)"
+    rm "$override_file"
+  fi
+done
+
 echo ""
 print_success "Sync complete! (tier: $TIER)"
 echo "  Target: $TARGET_DIR"
