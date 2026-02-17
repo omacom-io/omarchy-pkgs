@@ -1,0 +1,9 @@
+pkg/
+src/
+*.AppImage
+*.tar.gz
+*.tar.xz
+*.log
+squashfs-root/
+__pycache__/
+*.pkg.tar.zst

@@ -1,3 +1,0 @@
-[lmstudio]
-source = "cmd"
-cmd = "curl -sIL -o /dev/null -w '%{url_effective}\\n' https://lmstudio.ai/download/latest/linux/x64 | sed -E 's|.*x64/([0-9]+\\.[0-9]+\\.[0-9]+)-([0-9]+).*|\\1.\\2|'"
