@@ -166,9 +166,11 @@ build_package() {
   fi
 
   # Build package without signing (signing is done separately)
+  # PACMAN override uses a wrapper that adds --ask 4 to auto-resolve conflicts
+  # (e.g. rustup replacing rust) since --noconfirm defaults to 'N' on those prompts
   MAKEPKG_FLAGS="-scf --noconfirm"
 
-  if makepkg $MAKEPKG_FLAGS; then
+  if PACMAN=/usr/local/bin/pacman-for-makepkg makepkg $MAKEPKG_FLAGS; then
     # Ensure output directory exists
     mkdir -p "$BUILD_OUTPUT_DIR"
     

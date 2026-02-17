@@ -135,6 +135,12 @@ RUN useradd -m -G wheel -s /bin/bash builder && \
 RUN sed -i 's/^#MAKEFLAGS=.*/MAKEFLAGS="-j$(nproc)"/' /etc/makepkg.conf && \
     sed -i 's/^COMPRESSZST=.*/COMPRESSZST=(zstd -c -z -q --threads=0 -)/' /etc/makepkg.conf
 
+# Pacman wrapper that auto-resolves package conflicts (e.g. rustup vs rust).
+# makepkg only passes --noconfirm to pacman, which defaults to 'N' on conflict
+# prompts. --ask 4 tells pacman to answer 'yes' to replacement prompts instead.
+RUN printf '#!/bin/bash\nexec /usr/bin/pacman --ask 4 "$@"\n' > /usr/local/bin/pacman-for-makepkg && \
+    chmod +x /usr/local/bin/pacman-for-makepkg
+
 RUN rm -rf /etc/pacman.d/gnupg/{openpgp-revocs.d/,private-keys-v1.d/,pubring.gpg~,gnupg.S.}*
 
 USER builder

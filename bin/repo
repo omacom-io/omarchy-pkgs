@@ -12,6 +12,16 @@ BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 
+# Extract mirror from arguments for log naming (before args are shifted)
+LOG_MIRROR=""
+for ((i=1; i<=$#; i++)); do
+  if [[ "${!i}" == "--mirror" ]]; then
+    next=$((i+1))
+    LOG_MIRROR="${!next}"
+    break
+  fi
+done
+
 # Setup logging with timestamps
 mkdir -p "$LOG_DIR"
 
@@ -25,7 +35,11 @@ if [[ -d "$LOG_DIR" ]]; then
 fi
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_FILE="$LOG_DIR/repo_${TIMESTAMP}.log"
+if [[ -n "$LOG_MIRROR" ]]; then
+  LOG_FILE="$LOG_DIR/repo_${LOG_MIRROR}_${TIMESTAMP}.log"
+else
+  LOG_FILE="$LOG_DIR/repo_${TIMESTAMP}.log"
+fi
 
 # Show usage
 show_usage() {
