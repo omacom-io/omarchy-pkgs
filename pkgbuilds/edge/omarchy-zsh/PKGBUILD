@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 
 pkgname=omarchy-zsh
-pkgver=1.2.0
+pkgver=1.3.0
 pkgrel=1
 pkgdesc="Omarchy shell configuration for Zsh"
 arch=('any')
@@ -10,15 +10,27 @@ license=('MIT')
 depends=('zsh' 'eza' 'mise' 'zoxide' 'starship' 'fzf' 'fd' 'bat')
 options=('!debug')
 install=omarchy-zsh.install
-source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('d99d0ed0a07bf0d5043b0faef94bb8ce4dddf8cb1229dc364d5701e11af6a4a5')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/heads/master.tar.gz"
+        "omadots.tar.gz::https://github.com/omacom-io/omadots/archive/refs/heads/master.tar.gz")
+sha256sums=('SKIP'
+            'SKIP')
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${srcdir}/${pkgname}-master"
 
-  # Install config files, functions, templates, and documentation
+  # Install shared shell config from omadots (aliases, functions, envs, inits, inputrc)
+  install -dm755 "${pkgdir}/usr/share/${pkgname}/shell"
+  cp "${srcdir}/omadots-master/config/shell/"* "${pkgdir}/usr/share/${pkgname}/shell/"
+
+  # Rewrite paths to source from installed package location instead of user config
+  sed -i 's|\$HOME/\.config/shell|/usr/share/omarchy-zsh/shell|g' "${pkgdir}/usr/share/${pkgname}/shell/all"
+
+  # Install zsh-specific zoptions from omarchy-zsh
+  cp shell/zoptions "${pkgdir}/usr/share/${pkgname}/shell/"
+
+  # Install templates and documentation
   install -dm755 "${pkgdir}/usr/share/${pkgname}"
-  cp -r conf.d functions templates LICENSE README.md "${pkgdir}/usr/share/${pkgname}/"
+  cp -r templates LICENSE README.md "${pkgdir}/usr/share/${pkgname}/"
 
   # Install setup script
   install -Dm755 bin/omarchy-setup-zsh "${pkgdir}/usr/bin/omarchy-setup-zsh"
