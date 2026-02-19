@@ -27,4 +27,10 @@ package() {
     
     # Copy everything to the target directory
     cp -r usr "$pkgdir/"
+
+    # Fix invalid placeholder accidentally shipped in chromium.desktop
+    local _desk="$pkgdir/usr/share/applications/chromium.desktop"
+    if [[ -f "$_desk" ]]; then
+       sed -i '/^@@EXTRA_DESKTOP_ENTRIES@@$/d' "$_desk"
+    fi
 }
