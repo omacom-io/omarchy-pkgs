@@ -2,7 +2,7 @@
 _pkgname="limine-entry-tool"
 pkgname="limine-mkinitcpio-hook"
 pkgver=1.29.0
-pkgrel=1
+pkgrel=2
 _extver="-${pkgrel}"
 pkgdesc="Install kernels for the Limine bootloader."
 arch=('x86_64' 'aarch64')
@@ -44,6 +44,7 @@ prepare() {
 
 build() {
 	cd "$srcdir/${_pkgname}-${pkgver}${_extver}"
+	export NATIVE_IMAGE_OPTIONS="-march=compatibility"
 	JAVA_HOME="$srcdir/${_graalvm_version}" gradle clean nativeCompile
 }
 
