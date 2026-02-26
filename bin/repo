@@ -52,6 +52,7 @@ show_usage() {
   echo "  promote     Promote build to production (build-output → pkgs.omarchy.org)"
   echo "  update      Update repository database"
   echo "  clean       Clean old package versions"
+  echo "  migrate     Migrate edge packages into stable (no overwrite), then clean + update"
   echo "  list        List packages in repository"
   echo "  remove      Remove a specific package"
   echo "  sync        Sync repository to remote"
@@ -104,6 +105,10 @@ update)
   ;;
 clean)
   "$SCRIPT_DIR/clean-repo" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
+  ;;
+migrate)
+  "$SCRIPT_DIR/migrate-edge-to-stable" "$@" 2>&1 | tee "$LOG_FILE"
   exit ${PIPESTATUS[0]}
   ;;
 list)

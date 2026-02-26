@@ -128,6 +128,8 @@ Syncs to remote server using rclone based on the configured mirror and architect
 ### Other
 
 ```bash
+bin/repo migrate --arch x86_64       # Migrate missing packages edge -> stable, then clean + update
+bin/repo migrate --dry-run           # Preview migration and cleanup
 bin/repo list                       # List packages
 bin/repo remove <package>           # Remove package
 bin/clean-docker                    # Clear Docker images/cache (forces fresh rebuild)

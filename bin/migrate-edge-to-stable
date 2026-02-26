@@ -1,0 +1,82 @@
+#!/bin/bash
+# Migrate package files from edge repo to stable repo without overwriting
+
+set -e
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
+
+DRY_RUN=false
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --arch)
+    ARCH="$2"
+    update_arch_paths
+    shift 2
+    ;;
+  --dry-run)
+    DRY_RUN=true
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --dry-run          Preview migration and cleanup without changing files"
+    echo "  -h, --help         Show this help message"
+    echo ""
+    echo "What it does:"
+    echo "  1) Rsync package files from edge -> stable (without overwriting existing files)"
+    echo "  2) Run stable cleanup (keep 2 versions)"
+    echo "  3) Update stable repository database"
+    exit 0
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
+
+SOURCE_DIR="$BUILD_ROOT/pkgs.omarchy.org/edge/$ARCH"
+TARGET_DIR="$BUILD_ROOT/pkgs.omarchy.org/stable/$ARCH"
+
+print_header "Migrate Edge to Stable"
+print_info "Architecture: $ARCH"
+print_info "Source: $SOURCE_DIR"
+print_info "Target: $TARGET_DIR"
+
+if [[ ! -d "$SOURCE_DIR" ]]; then
+  print_error "Source directory not found: $SOURCE_DIR"
+  exit 1
+fi
+
+mkdir -p "$TARGET_DIR"
+
+if [[ "$DRY_RUN" == true ]]; then
+  print_warning "DRY RUN MODE - No changes will be made"
+fi
+
+print_info "Syncing package files from edge to stable (ignore existing)..."
+RSYNC_FLAGS="-av --ignore-existing --include=*/ --include=*.pkg.tar.* --exclude=*"
+if [[ "$DRY_RUN" == true ]]; then
+  RSYNC_FLAGS="$RSYNC_FLAGS -n"
+fi
+
+# shellcheck disable=SC2086
+rsync $RSYNC_FLAGS "$SOURCE_DIR/" "$TARGET_DIR/"
+
+print_info "Cleaning stable repository..."
+if [[ "$DRY_RUN" == true ]]; then
+  "$BUILD_ROOT/bin/repo" clean --mirror stable --arch "$ARCH" --dry-run
+  print_info "Skipping database update in dry run mode"
+else
+  "$BUILD_ROOT/bin/repo" clean --mirror stable --arch "$ARCH"
+  print_info "Updating stable repository database..."
+  "$BUILD_ROOT/bin/repo" update --mirror stable --arch "$ARCH"
+fi
+
+print_success "Migration workflow complete"
