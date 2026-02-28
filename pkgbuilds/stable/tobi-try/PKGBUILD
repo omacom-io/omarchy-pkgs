@@ -3,7 +3,7 @@
 pkgname='tobi-try'
 pkgver=1.8.1
 _subver=d1bc484cc31a34db3d287550f4800e9a6e56bacd
-pkgrel=2
+pkgrel=1
 pkgdesc='Fresh directories for every vibe.'
 url='https://github.com/tobi/try'
 arch=('aarch64' 'x86_64')
