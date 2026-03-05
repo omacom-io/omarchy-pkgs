@@ -21,6 +21,7 @@ gpu-screen-recorder
 limine-mkinitcpio-hook
 limine-snapper-sync
 macbook12-spi-driver-dkms
+makima-bin
 pinta
 python-terminaltexteffects
 ttf-ia-writer
