@@ -56,3 +56,15 @@ jobs:
           delete-branch: true
           labels: automated
           reviewers: ryanrhughes
+
+      - name: Notify Basecamp on failure
+        if: failure() && env.BASECAMP_CHATBOT_URL != ''
+        env:
+          BASECAMP_CHATBOT_URL: ${{ secrets.BASECAMP_CHATBOT_URL }}
+        run: |
+          curl -s -o /dev/null \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg content \
+              "🔴 <strong>AUR sync failed (edge)</strong><br><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View run</a>" \
+              '{content: $content}')" \
+            "$BASECAMP_CHATBOT_URL"

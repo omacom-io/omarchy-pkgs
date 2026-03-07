@@ -6,6 +6,7 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/basecamp-notifier.sh"
 
 SYNC_REMOTE=""
 SKIP_PROD_CHECK=false
@@ -82,6 +83,7 @@ echo ""
 print_info "Step 1/6: Building packages..."
 "$BUILD_ROOT/bin/build" "${BUILD_ARGS[@]}" || {
   print_error "Build failed"
+  notify_error "Release failed: Build step failed" "Mirror: $MIRROR | Arch: $ARCH"
   exit 1
 }
 
@@ -90,6 +92,7 @@ echo ""
 print_info "Step 2/6: Signing packages..."
 "$BUILD_ROOT/bin/sign" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Signing failed"
+  notify_error "Release failed: Signing step failed" "Mirror: $MIRROR | Arch: $ARCH"
   exit 1
 }
 
@@ -98,6 +101,7 @@ echo ""
 print_info "Step 3/6: Promoting to production..."
 "$BUILD_ROOT/bin/promote-build" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Promotion failed"
+  notify_error "Release failed: Promotion step failed" "Mirror: $MIRROR | Arch: $ARCH"
   exit 1
 }
 
@@ -106,6 +110,7 @@ echo ""
 print_info "Step 4/6: Cleaning old versions..."
 "$BUILD_ROOT/bin/clean-repo" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Cleaning failed"
+  notify_error "Release failed: Clean step failed" "Mirror: $MIRROR | Arch: $ARCH"
   exit 1
 }
 
@@ -114,6 +119,7 @@ echo ""
 print_info "Step 5/6: Updating repository database..."
 "$BUILD_ROOT/bin/update-repo" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Database update failed"
+  notify_error "Release failed: Database update step failed" "Mirror: $MIRROR | Arch: $ARCH"
   exit 1
 }
 
@@ -129,6 +135,7 @@ if [[ "$SKIP_PROD_CHECK" == true ]]; then
 fi
 "$BUILD_ROOT/bin/sync-repo" "${SYNC_ARGS[@]}" || {
   print_error "Sync failed"
+  notify_error "Release failed: Sync step failed" "Mirror: $MIRROR | Arch: $ARCH"
   exit 1
 }
 
