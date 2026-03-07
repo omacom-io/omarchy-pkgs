@@ -77,20 +77,6 @@ for pkgdir in "$BUILD_ROOT/pkgbuilds/edge"/*/; do
   fi
 done
 
-print_info "Checking stable packages..."
-
-# Check stable/ packages -> only affects stable
-for pkgdir in "$BUILD_ROOT/pkgbuilds/stable"/*/; do
-  [[ ! -d "$pkgdir" ]] && continue
-  pkg=$(basename "$pkgdir")
-  [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
-  
-  if check_package "$pkg" "$pkgdir" "stable"; then
-    stable_needs_build=true
-    stable_packages+=("$pkg")
-  fi
-done
-
 print_info "Checking shared packages..."
 
 # Check shared/ packages -> affects BOTH edge and stable

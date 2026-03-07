@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "This script builds packages from pkgbuilds/ directories based on mirror:"
     echo "  --mirror edge:   builds from pkgbuilds/edge/ + pkgbuilds/shared/"
-    echo "  --mirror stable: builds from pkgbuilds/stable/ + pkgbuilds/shared/"
+    echo "  --mirror stable: builds from pkgbuilds/shared/ only (edge pkgs promoted via 'repo migrate')"
     echo ""
     echo "Or build specific packages with --package:"
     echo "  Package names should match directories in the relevant pkgbuilds/ tier"

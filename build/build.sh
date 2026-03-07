@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build script - builds packages based on mirror tier
 # Edge builds: /pkgbuilds/edge/* + /pkgbuilds/shared/*
-# Stable builds: /pkgbuilds/stable/* + /pkgbuilds/shared/*
+# Stable builds: /pkgbuilds/shared/* only (edge packages are promoted via binary copy)
 
 # Import GPG keys
 /build/import-gpg-keys.sh || exit 1
@@ -13,8 +13,9 @@ BUILD_OUTPUT_DIR="/build-output/$MIRROR/$ARCH"
 FINAL_OUTPUT_DIR="/pkgs.omarchy.org/$MIRROR/$ARCH"
 
 # Determine which package directories to use based on mirror
+# Edge builds from edge + shared; stable only builds shared (edge packages are promoted via binary copy)
 if [[ "$MIRROR" == "stable" ]]; then
-  PKGBUILD_DIRS="/pkgbuilds/stable /pkgbuilds/shared"
+  PKGBUILD_DIRS="/pkgbuilds/shared"
 else
   PKGBUILD_DIRS="/pkgbuilds/edge /pkgbuilds/shared"
 fi
