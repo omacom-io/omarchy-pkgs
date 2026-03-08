@@ -29,6 +29,15 @@ docker run --rm --platform linux/arm64 alpine:latest uname -m
 
 ## Quick Start
 
+### Full release
+
+Promote packages from edge build, then sync stable:
+
+```
+bin/repo migrate
+bin/repo sync --mirror=stable
+```
+
 ### Complete Workflow
 
 The release command is smart and **incremental** - it only builds packages that have changed or are missing. You generally don't need to specify a package manually unless you are debugging a specific failure.
