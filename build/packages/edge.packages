@@ -37,3 +37,4 @@ yt6801-dkms
 # Drivers
 nvidia-580xx-utils
 lib32-nvidia-580xx-utils
+tuxedo-drivers-nocompatcheck-dkms
