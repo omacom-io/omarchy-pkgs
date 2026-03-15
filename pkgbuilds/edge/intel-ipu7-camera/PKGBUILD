@@ -1,6 +1,6 @@
 # Maintainer: Omarchy <packages@omarchy.org>
 
-pkgname=omarchy-mipi-camera
+pkgname=intel-ipu7-camera
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="Intel IPU7 MIPI camera stack for Hurrican/Performance (OV08X40 + hardware ISP)"
@@ -28,7 +28,7 @@ makedepends=(
     'libtool'
     'pkgconf'
 )
-install=omarchy-mipi-camera.install
+install=intel-ipu7-camera.install
 options=('!strip')
 
 _ipu7_drivers_commit="a88b19096a738d0708742a78d6540d6d4a3021ff"
