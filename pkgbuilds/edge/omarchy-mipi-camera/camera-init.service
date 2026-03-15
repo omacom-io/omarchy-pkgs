@@ -1,0 +1,11 @@
+[Unit]
+Description=Initialize camera (CVS ownership then sensor driver)
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c "modprobe intel_cvs && sleep 2 && modprobe ov08x40"
+
+[Install]
+WantedBy=multi-user.target

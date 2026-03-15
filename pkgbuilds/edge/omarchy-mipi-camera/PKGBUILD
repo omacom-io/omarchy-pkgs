@@ -1,0 +1,220 @@
+# Maintainer: Omarchy <packages@omarchy.org>
+
+pkgname=omarchy-mipi-camera
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Intel IPU7 MIPI camera stack for Hurrican/Performance (OV08X40 + hardware ISP)"
+arch=('x86_64')
+url="https://github.com/TsaiGaggery/hurrican_omarchy_enabling"
+license=('GPL-2.0-or-later')
+depends=(
+    'dkms'
+    'linux-headers'
+    'v4l2loopback-dkms'
+    'gstreamer'
+    'gst-plugins-base'
+    'gst-plugins-good'
+    'gst-plugins-bad'
+    'jsoncpp'
+    'libdrm'
+    'python'
+)
+makedepends=(
+    'git'
+    'base-devel'
+    'cmake'
+    'autoconf'
+    'automake'
+    'libtool'
+    'pkgconf'
+)
+install=omarchy-mipi-camera.install
+options=('!strip')
+
+_ipu7_drivers_commit="a88b19096a738d0708742a78d6540d6d4a3021ff"
+_vision_drivers_commit="a8d772f261bc90376944956b7bfd49b325ffa2f2"
+_ipu7_camera_bins_commit="403c67db6b279dd02752f11db6a34552f31a3ac5"
+_ipu7_camera_hal_commit="b1f6ebef12111fb5da0133b144d69dd9b001836c"
+_icamerasrc_commit="4fb31db76b618aae72184c59314b839dedb42689"
+
+source=(
+    "ipu7-drivers::git+https://github.com/intel/ipu7-drivers.git#commit=${_ipu7_drivers_commit}"
+    "vision-drivers::git+https://github.com/intel/vision-drivers.git#commit=${_vision_drivers_commit}"
+    "ipu7-camera-bins::git+https://github.com/intel/ipu7-camera-bins.git#commit=${_ipu7_camera_bins_commit}"
+    "ipu7-camera-hal::git+https://github.com/intel/ipu7-camera-hal.git#commit=${_ipu7_camera_hal_commit}"
+    "icamerasrc::git+https://github.com/intel/icamerasrc.git#commit=${_icamerasrc_commit}"
+    "0003-icvs-set-rgbcamera_pwrup_host-0-for-Panther-Lake.patch"
+    "dkms-ipu7-drivers.conf"
+    "dkms-vision-drivers.conf"
+    "camera-deps.conf"
+    "v4l2loopback-modprobe.conf"
+    "v4l2loopback-modules-load.conf"
+    "camera-init.service"
+    "camera-feed-watch"
+    "camera-feed-watch.service"
+    "hide-ipu7-v4l2.conf"
+    "disable-libcamera.conf"
+    "90-ipu7-psys.rules"
+    "camera-tmpfiles.conf"
+    "ov08x40.yaml"
+)
+sha256sums=(
+    'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
+    'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
+    'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
+    'SKIP'
+)
+
+prepare() {
+    cd "${srcdir}/vision-drivers"
+    git config user.email "build@localhost"
+    git config user.name "Build"
+    if ! git log --oneline -1 | grep -q "rgbcamera_pwrup_host"; then
+        git am "${srcdir}/0003-icvs-set-rgbcamera_pwrup_host-0-for-Panther-Lake.patch"
+    fi
+
+    # Stage proprietary libs/headers for build-time use
+    local staging="${srcdir}/staging"
+    rm -rf "${staging}"
+    mkdir -p "${staging}/usr/lib" "${staging}/usr/include" "${staging}/usr/lib/pkgconfig"
+
+    cd "${srcdir}/ipu7-camera-bins"
+    cp -P lib/lib* "${staging}/usr/lib/"
+    cp -r include/* "${staging}/usr/include/"
+    cp -r lib/pkgconfig/* "${staging}/usr/lib/pkgconfig/"
+
+    for pc in "${staging}"/usr/lib/pkgconfig/*.pc; do
+        sed -i "s|^prefix=.*|prefix=${staging}/usr|" "$pc"
+    done
+
+    if [[ -d /usr/include/json ]] && [[ ! -e /usr/include/jsoncpp/json ]]; then
+        mkdir -p "${staging}/usr/include/jsoncpp"
+        ln -sf /usr/include/json "${staging}/usr/include/jsoncpp/json"
+    fi
+}
+
+build() {
+    local staging="${srcdir}/staging"
+
+    export PKG_CONFIG_PATH="${staging}/usr/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+    export LIBRARY_PATH="${staging}/usr/lib:${LIBRARY_PATH:-}"
+    export LD_LIBRARY_PATH="${staging}/usr/lib:${LD_LIBRARY_PATH:-}"
+    export CPATH="${staging}/usr/include:${CPATH:-}"
+
+    cd "${srcdir}/ipu7-camera-hal"
+    rm -rf build && mkdir -p build && cd build
+    cmake -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_INSTALL_LIBDIR=lib \
+        -DBUILD_CAMHAL_ADAPTOR=ON \
+        -DBUILD_CAMHAL_PLUGIN=ON \
+        -DIPU_VERSIONS="ipu75xa" \
+        -DUSE_STATIC_GRAPH=ON \
+        -DUSE_STATIC_GRAPH_AUTOGEN=ON \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCMAKE_PREFIX_PATH="${staging}/usr" \
+        -DCMAKE_LIBRARY_PATH="${staging}/usr/lib" \
+        -DCMAKE_INCLUDE_PATH="${staging}/usr/include" \
+        ..
+    make -j"$(nproc)"
+
+    make DESTDIR="${staging}" install
+    install -Dm644 "${srcdir}/ipu7-camera-hal/libcamhal.pc" \
+        "${staging}/usr/lib/pkgconfig/libcamhal.pc"
+    sed -i "s|^prefix=.*|prefix=${staging}/usr|" "${staging}/usr/lib/pkgconfig/libcamhal.pc"
+
+    cd "${srcdir}/icamerasrc"
+    export CHROME_SLIM_CAMHAL=ON
+    [[ ! -f configure ]] && ./autogen.sh
+    ./configure --prefix=/usr
+    make -j"$(nproc)"
+}
+
+package() {
+    # DKMS: IPU7 drivers (ISYS + PSYS + ACPI)
+    local ipu7_dkms_dir="${pkgdir}/usr/src/ipu7-drivers-${pkgver}"
+    install -dm755 "${ipu7_dkms_dir}"
+    cp -r "${srcdir}/ipu7-drivers/"* "${ipu7_dkms_dir}/"
+    rm -rf "${ipu7_dkms_dir}/.git"
+    install -Dm644 "${srcdir}/dkms-ipu7-drivers.conf" "${ipu7_dkms_dir}/dkms.conf"
+    sed -i "s/@PKGVER@/${pkgver}/" "${ipu7_dkms_dir}/dkms.conf"
+
+    # DKMS: Vision drivers (CVS)
+    local cvs_dkms_dir="${pkgdir}/usr/src/vision-drivers-${pkgver}"
+    install -dm755 "${cvs_dkms_dir}"
+    cp -r "${srcdir}/vision-drivers/"* "${cvs_dkms_dir}/"
+    install -Dm644 "${srcdir}/dkms-vision-drivers.conf" "${cvs_dkms_dir}/dkms.conf"
+    sed -i "s/@PKGVER@/${pkgver}/" "${cvs_dkms_dir}/dkms.conf"
+
+    # Firmware
+    install -dm755 "${pkgdir}/usr/lib/firmware/intel/ipu"
+    install -Dm644 "${srcdir}/ipu7-camera-bins/lib/firmware/intel/ipu/"*.bin \
+        -t "${pkgdir}/usr/lib/firmware/intel/ipu/"
+
+    # Proprietary libraries + headers from ipu7-camera-bins
+    cd "${srcdir}/ipu7-camera-bins"
+    install -dm755 "${pkgdir}/usr/lib"
+    cp -P lib/lib* "${pkgdir}/usr/lib/"
+    install -dm755 "${pkgdir}/usr/include"
+    cp -r include/* "${pkgdir}/usr/include/"
+    install -dm755 "${pkgdir}/usr/lib/pkgconfig"
+    cp -r lib/pkgconfig/* "${pkgdir}/usr/lib/pkgconfig/"
+
+    # Camera HAL + config
+    cd "${srcdir}/ipu7-camera-hal/build"
+    make DESTDIR="${pkgdir}" install
+
+    cd "${srcdir}/ipu7-camera-hal"
+    install -dm755 "${pkgdir}/usr/share/defaults/etc/camera"
+    install -Dm644 config/linux/ipu75xa/libcamhal_configs.json \
+        "${pkgdir}/usr/share/defaults/etc/camera/"
+    install -Dm644 config/linux/ipu75xa/*.aiqb \
+        -t "${pkgdir}/usr/share/defaults/etc/camera/"
+
+    install -dm755 "${pkgdir}/etc/camera/ipu75xa/gcss"
+    install -Dm644 config/linux/ipu75xa/gcss/*.bin \
+        -t "${pkgdir}/etc/camera/ipu75xa/gcss/"
+
+    install -dm755 "${pkgdir}/etc/camera/ipu75xa/sensors"
+    install -Dm644 config/linux/ipu75xa/sensors/*.json \
+        -t "${pkgdir}/etc/camera/ipu75xa/sensors/"
+
+    install -Dm644 config/linux/ipu75xa/pipe_scheduler_profiles.json \
+        "${pkgdir}/etc/camera/ipu75xa/"
+    install -Dm644 config/linux/ipu75xa/pnp_profiles.json \
+        "${pkgdir}/etc/camera/ipu75xa/"
+
+    # icamerasrc GStreamer plugin
+    cd "${srcdir}/icamerasrc"
+    make DESTDIR="${pkgdir}" install
+
+    # modprobe / modules-load
+    install -Dm644 "${srcdir}/camera-deps.conf" \
+        "${pkgdir}/usr/lib/modprobe.d/camera-deps.conf"
+    install -Dm644 "${srcdir}/v4l2loopback-modprobe.conf" \
+        "${pkgdir}/usr/lib/modprobe.d/v4l2loopback-camera.conf"
+    install -Dm644 "${srcdir}/v4l2loopback-modules-load.conf" \
+        "${pkgdir}/usr/lib/modules-load.d/v4l2loopback.conf"
+
+    # systemd
+    install -Dm644 "${srcdir}/camera-init.service" \
+        "${pkgdir}/usr/lib/systemd/system/camera-init.service"
+    install -Dm644 "${srcdir}/camera-feed-watch.service" \
+        "${pkgdir}/usr/lib/systemd/user/camera-feed-watch.service"
+    install -Dm755 "${srcdir}/camera-feed-watch" \
+        "${pkgdir}/usr/bin/camera-feed-watch"
+
+    # WirePlumber
+    install -Dm644 "${srcdir}/hide-ipu7-v4l2.conf" \
+        "${pkgdir}/usr/share/wireplumber/wireplumber.conf.d/hide-ipu7-v4l2.conf"
+    install -Dm644 "${srcdir}/disable-libcamera.conf" \
+        "${pkgdir}/usr/share/wireplumber/wireplumber.conf.d/disable-libcamera.conf"
+
+    # udev / tmpfiles / libcamera tuning
+    install -Dm644 "${srcdir}/90-ipu7-psys.rules" \
+        "${pkgdir}/usr/lib/udev/rules.d/90-ipu7-psys.rules"
+    install -Dm644 "${srcdir}/camera-tmpfiles.conf" \
+        "${pkgdir}/usr/lib/tmpfiles.d/camera.conf"
+    install -Dm644 "${srcdir}/ov08x40.yaml" \
+        "${pkgdir}/usr/share/libcamera/ipa/simple/ov08x40.yaml"
+}
