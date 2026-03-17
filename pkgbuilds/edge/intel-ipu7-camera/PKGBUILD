@@ -1,7 +1,7 @@
 # Maintainer: Omarchy <packages@omarchy.org>
 
 pkgname=intel-ipu7-camera
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc="Intel IPU7 MIPI camera stack for Hurrican/Performance (OV08X40 + hardware ISP)"
 arch=('x86_64')
@@ -57,12 +57,13 @@ source=(
     "90-ipu7-psys.rules"
     "camera-tmpfiles.conf"
     "ov08x40.yaml"
+    "camera-sleep-hook"
 )
 sha256sums=(
     'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
     'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
     'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-    'SKIP'
+    'SKIP' 'SKIP'
 )
 
 prepare() {
@@ -217,4 +218,8 @@ package() {
         "${pkgdir}/usr/lib/tmpfiles.d/camera.conf"
     install -Dm644 "${srcdir}/ov08x40.yaml" \
         "${pkgdir}/usr/share/libcamera/ipa/simple/ov08x40.yaml"
+
+    # Sleep hook to re-probe camera after suspend/hibernate
+    install -Dm755 "${srcdir}/camera-sleep-hook" \
+        "${pkgdir}/usr/lib/systemd/system-sleep/camera-sleep-hook"
 }
