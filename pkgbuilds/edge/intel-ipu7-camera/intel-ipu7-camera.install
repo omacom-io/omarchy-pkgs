@@ -24,6 +24,11 @@ post_install() {
     fi
 }
 
+pre_upgrade() {
+    # Remove sleep hook if it exists untracked from a prior manual install
+    rm -f /usr/lib/systemd/system-sleep/camera-sleep-hook
+}
+
 post_upgrade() {
     systemctl daemon-reload
     udevadm control --reload-rules 2>/dev/null || true
