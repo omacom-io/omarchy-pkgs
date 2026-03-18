@@ -34,6 +34,9 @@ yaru-icon-theme
 yay
 yt6801-dkms
 
+# Kernel
+linux-mainline-panther-lake
+
 # Drivers
 nvidia-580xx-utils
 lib32-nvidia-580xx-utils
