@@ -1,0 +1,149 @@
+From 10bf875e22235547b28f5143566d154c665206cc Mon Sep 17 00:00:00 2001
+From: Charles Keepax <ckeepax@opensource.cirrus.com>
+Date: Fri, 9 Jan 2026 14:52:04 +0000
+Subject: [PATCH 05/17] ASoC: SDCA: Add basic system suspend support
+
+Add basic system suspend support. Disable the IRQs and force runtime
+suspend, during system suspend, because the device will likely fully
+power down during suspend.
+
+Signed-off-by: Charles Keepax <ckeepax@opensource.cirrus.com>
+Reviewed-by: Pierre-Louis Bossart <pierre-louis.bossart@linux.dev>
+Link: https://patch.msgid.link/20260109145206.3456151-3-ckeepax@opensource.cirrus.com
+Signed-off-by: Mark Brown <broonie@kernel.org>
+---
+ sound/soc/sdca/sdca_class.c          | 33 ++++++++++++++++++
+ sound/soc/sdca/sdca_class_function.c | 51 ++++++++++++++++++++++++++++
+ 2 files changed, 84 insertions(+)
+
+diff --git a/sound/soc/sdca/sdca_class.c b/sound/soc/sdca/sdca_class.c
+index 349d32933ba8..6d19a183683e 100644
+--- a/sound/soc/sdca/sdca_class.c
++++ b/sound/soc/sdca/sdca_class.c
+@@ -238,6 +238,38 @@ static int class_sdw_probe(struct sdw_slave *sdw, const struct sdw_device_id *id
+ 	return 0;
+ }
+ 
++static int class_suspend(struct device *dev)
++{
++	struct sdca_class_drv *drv = dev_get_drvdata(dev);
++	int ret;
++
++	disable_irq(drv->sdw->irq);
++
++	ret = pm_runtime_force_suspend(dev);
++	if (ret) {
++		dev_err(dev, "failed to force suspend: %d\n", ret);
++		return ret;
++	}
++
++	return 0;
++}
++
++static int class_resume(struct device *dev)
++{
++	struct sdca_class_drv *drv = dev_get_drvdata(dev);
++	int ret;
++
++	ret = pm_runtime_force_resume(dev);
++	if (ret) {
++		dev_err(dev, "failed to force resume: %d\n", ret);
++		return ret;
++	}
++
++	enable_irq(drv->sdw->irq);
++
++	return 0;
++}
++
+ static int class_runtime_suspend(struct device *dev)
+ {
+ 	struct sdca_class_drv *drv = dev_get_drvdata(dev);
+@@ -278,6 +310,7 @@ static int class_runtime_resume(struct device *dev)
+ }
+ 
+ static const struct dev_pm_ops class_pm_ops = {
++	SYSTEM_SLEEP_PM_OPS(class_suspend, class_resume)
+ 	RUNTIME_PM_OPS(class_runtime_suspend, class_runtime_resume, NULL)
+ };
+ 
+diff --git a/sound/soc/sdca/sdca_class_function.c b/sound/soc/sdca/sdca_class_function.c
+index 416948cfb5cb..7d0a6c0adbfb 100644
+--- a/sound/soc/sdca/sdca_class_function.c
++++ b/sound/soc/sdca/sdca_class_function.c
+@@ -33,6 +33,7 @@ struct class_function_drv {
+ 	struct sdca_class_drv *core;
+ 
+ 	struct sdca_function_data *function;
++	bool suspended;
+ };
+ 
+ static void class_function_regmap_lock(void *data)
+@@ -417,6 +418,14 @@ static int class_function_runtime_resume(struct device *dev)
+ 	regcache_mark_dirty(drv->regmap);
+ 	regcache_cache_only(drv->regmap, false);
+ 
++	if (drv->suspended) {
++		sdca_irq_enable_early(drv->function, drv->core->irq_info);
++		/* TODO: Add FDL process between early and late IRQs */
++		sdca_irq_enable(drv->function, drv->core->irq_info);
++
++		drv->suspended = false;
++	}
++
+ 	ret = regcache_sync(drv->regmap);
+ 	if (ret) {
+ 		dev_err(drv->dev, "failed to restore register cache: %d\n", ret);
+@@ -431,7 +440,49 @@ static int class_function_runtime_resume(struct device *dev)
+ 	return ret;
+ }
+ 
++static int class_function_suspend(struct device *dev)
++{
++	struct auxiliary_device *auxdev = to_auxiliary_dev(dev);
++	struct class_function_drv *drv = auxiliary_get_drvdata(auxdev);
++	int ret;
++
++	drv->suspended = true;
++
++	/* Ensure runtime resume runs on resume */
++	ret = pm_runtime_resume_and_get(dev);
++	if (ret) {
++		dev_err(dev, "failed to resume for suspend: %d\n", ret);
++		return ret;
++	}
++
++	sdca_irq_disable(drv->function, drv->core->irq_info);
++
++	ret = pm_runtime_force_suspend(dev);
++	if (ret) {
++		dev_err(dev, "failed to force suspend: %d\n", ret);
++		return ret;
++	}
++
++	pm_runtime_put_noidle(dev);
++
++	return 0;
++}
++
++static int class_function_resume(struct device *dev)
++{
++	int ret;
++
++	ret = pm_runtime_force_resume(dev);
++	if (ret) {
++		dev_err(dev, "failed to force resume: %d\n", ret);
++		return ret;
++	}
++
++	return 0;
++}
++
+ static const struct dev_pm_ops class_function_pm_ops = {
++	SYSTEM_SLEEP_PM_OPS(class_function_suspend, class_function_resume)
+ 	RUNTIME_PM_OPS(class_function_runtime_suspend,
+ 		       class_function_runtime_resume, NULL)
+ };
+-- 
+2.43.0
+

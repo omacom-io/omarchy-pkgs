@@ -1,0 +1,61 @@
+From c7da79578f653d5503f5faadcb887e4f8997c2b9 Mon Sep 17 00:00:00 2001
+From: Charles Keepax <ckeepax@opensource.cirrus.com>
+Date: Wed, 4 Feb 2026 12:59:41 +0000
+Subject: [PATCH 12/17] ASoC: SDCA: Rearrange FDL file messages
+
+It is helpful to have something in the log showing which firmware file
+was loaded by the driver. Update the existing FDL disk file debug
+statement to just note that a disk file rather than ACPI file was used,
+and add a new info printk that prints out the details of the loaded file
+regardless of where that file came from. Likewise, sometimes it is
+useful to get a message if the file-sets list is missing, although this
+isn't technically an error so make it a debug.
+
+Signed-off-by: Charles Keepax <ckeepax@opensource.cirrus.com>
+Link: https://patch.msgid.link/20260204125944.1134011-5-ckeepax@opensource.cirrus.com
+Reviewed-by: Pierre-Louis Bossart <pierre-louis.bossart@linux.dev>
+Signed-off-by: Mark Brown <broonie@kernel.org>
+---
+ sound/soc/sdca/sdca_fdl.c       | 6 ++++--
+ sound/soc/sdca/sdca_functions.c | 1 +
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/sdca/sdca_fdl.c b/sound/soc/sdca/sdca_fdl.c
+index 8bee9f23c473..07892bc3a44e 100644
+--- a/sound/soc/sdca/sdca_fdl.c
++++ b/sound/soc/sdca/sdca_fdl.c
+@@ -256,8 +256,7 @@ static int fdl_load_file(struct sdca_interrupt *interrupt,
+ 		    tmp->file_length != firmware->size) {
+ 			dev_err(dev, "bad disk SWF size\n");
+ 		} else if (!swf || swf->file_version <= tmp->file_version) {
+-			dev_dbg(dev, "using SWF from disk: %x-%x-%x\n",
+-				tmp->vendor_id, tmp->file_id, tmp->file_version);
++			dev_dbg(dev, "using SWF from disk\n");
+ 			swf = tmp;
+ 		}
+ 	}
+@@ -267,6 +266,9 @@ static int fdl_load_file(struct sdca_interrupt *interrupt,
+ 		return -ENOENT;
+ 	}
+ 
++	dev_info(dev, "loading SWF: %x-%x-%x\n",
++		 swf->vendor_id, swf->file_id, swf->file_version);
++
+ 	ret = sdca_ump_write_message(dev, interrupt->device_regmap,
+ 				     interrupt->function_regmap,
+ 				     interrupt->function, interrupt->entity,
+diff --git a/sound/soc/sdca/sdca_functions.c b/sound/soc/sdca/sdca_functions.c
+index f97dde912d59..f38791eab4f1 100644
+--- a/sound/soc/sdca/sdca_functions.c
++++ b/sound/soc/sdca/sdca_functions.c
+@@ -2029,6 +2029,7 @@ static int find_sdca_filesets(struct device *dev, struct sdw_slave *sdw,
+ 	num_sets = fwnode_property_count_u32(function_node,
+ 					     "mipi-sdca-file-set-id-list");
+ 	if (num_sets == 0 || num_sets == -EINVAL) {
++		dev_dbg(dev, "%pfwP: file set id list missing\n", function_node);
+ 		return 0;
+ 	} else if (num_sets < 0) {
+ 		dev_err(dev, "%pfwP: failed to read file set list: %d\n",
+-- 
+2.43.0
+

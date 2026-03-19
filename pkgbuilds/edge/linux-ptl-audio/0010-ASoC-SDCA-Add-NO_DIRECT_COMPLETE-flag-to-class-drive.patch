@@ -1,0 +1,43 @@
+From b92178f5dd8fa8f70e26d4e2b055327842e58a74 Mon Sep 17 00:00:00 2001
+From: Charles Keepax <ckeepax@opensource.cirrus.com>
+Date: Thu, 15 Jan 2026 13:17:26 +0000
+Subject: [PATCH 10/17] ASoC: SDCA: Add NO_DIRECT_COMPLETE flag to class driver
+
+The SDCA class driver currently expects the device will be fully powered
+down on system suspend but not on runtime suspend. This is typically
+required as when audio is not active (ie. runtime suspend) jack detect
+is expected to still function, but when the whole system is hibernated
+there is no need to recognise audio jack events. This means the class
+driver needs to always be informed of a system suspend, so the direct
+complete optimisation (where PM will skip calling system suspend if the
+device is runtime suspended) is not appropriate for the SDCA class
+driver.
+
+Add the NO_DIRECT_COMPLETE flag to prevent this optimisation from
+running against this driver.
+
+Signed-off-by: Charles Keepax <ckeepax@opensource.cirrus.com>
+Reviewed-by: Pierre-Louis Bossart <pierre-louis.bossart@linux.dev>
+link: https://github.com/thesofproject/linux/blob/ec0e6c69113f4b342ee8eabec286dea33d98a7cc/drivers/soundwire/intel_auxdevice.c#L568
+Link: https://patch.msgid.link/20260115131727.373738-1-ckeepax@opensource.cirrus.com
+Signed-off-by: Mark Brown <broonie@kernel.org>
+---
+ sound/soc/sdca/sdca_class_function.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/sound/soc/sdca/sdca_class_function.c b/sound/soc/sdca/sdca_class_function.c
+index 0afa41c1ee93..98fd3fd1052b 100644
+--- a/sound/soc/sdca/sdca_class_function.c
++++ b/sound/soc/sdca/sdca_class_function.c
+@@ -377,6 +377,8 @@ static int class_function_probe(struct auxiliary_device *auxdev,
+ 	if (ret)
+ 		return ret;
+ 
++	dev_pm_set_driver_flags(dev, DPM_FLAG_NO_DIRECT_COMPLETE);
++
+ 	pm_runtime_set_autosuspend_delay(dev, 200);
+ 	pm_runtime_use_autosuspend(dev);
+ 	pm_runtime_set_active(dev);
+-- 
+2.43.0
+
