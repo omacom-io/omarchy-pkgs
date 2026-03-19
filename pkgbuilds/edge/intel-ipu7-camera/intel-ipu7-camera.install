@@ -10,7 +10,13 @@ _remove_pipewire_camera() {
     [ -f "$conf" ] && sed -i 's/,PipeWireCamera//g' "$conf"
 }
 
+_install_sleep_hook() {
+    cp /usr/share/intel-ipu7-camera/camera-sleep-hook /usr/lib/systemd/system-sleep/camera-sleep-hook
+    chmod 755 /usr/lib/systemd/system-sleep/camera-sleep-hook
+}
+
 post_install() {
+    _install_sleep_hook
     systemctl daemon-reload
     systemctl enable camera-init.service
     udevadm control --reload-rules 2>/dev/null || true
@@ -24,12 +30,8 @@ post_install() {
     fi
 }
 
-pre_upgrade() {
-    # Remove sleep hook if it exists untracked from a prior manual install
-    rm -f /usr/lib/systemd/system-sleep/camera-sleep-hook
-}
-
 post_upgrade() {
+    _install_sleep_hook
     systemctl daemon-reload
     udevadm control --reload-rules 2>/dev/null || true
 }
@@ -47,6 +49,7 @@ pre_remove() {
 }
 
 post_remove() {
+    rm -f /usr/lib/systemd/system-sleep/camera-sleep-hook
     systemctl daemon-reload
     udevadm control --reload-rules 2>/dev/null || true
 }
