@@ -38,6 +38,7 @@ yt6801-dkms
 linux-mainline-panther-lake
 
 # Drivers
+intel-lpmd
 nvidia-580xx-utils
 lib32-nvidia-580xx-utils
 tuxedo-drivers-nocompatcheck-dkms
