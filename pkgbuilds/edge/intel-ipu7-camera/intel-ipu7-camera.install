@@ -1,15 +1,3 @@
-_add_pipewire_camera() {
-    local conf="$1"
-    if [ -f "$conf" ] && grep -q 'enable-features=' "$conf" && ! grep -q 'PipeWireCamera' "$conf"; then
-        sed -i 's/--enable-features=\([^ ]*\)/--enable-features=\1,PipeWireCamera/' "$conf"
-    fi
-}
-
-_remove_pipewire_camera() {
-    local conf="$1"
-    [ -f "$conf" ] && sed -i 's/,PipeWireCamera//g' "$conf"
-}
-
 _install_sleep_hook() {
     cp /usr/share/intel-ipu7-camera/camera-sleep-hook /usr/lib/systemd/system-sleep/camera-sleep-hook
     chmod 755 /usr/lib/systemd/system-sleep/camera-sleep-hook
@@ -19,14 +7,21 @@ post_install() {
     _install_sleep_hook
     systemctl daemon-reload
     systemctl enable camera-init.service
+    systemctl --global enable camera-feed-watch.service
     udevadm control --reload-rules 2>/dev/null || true
 
     if [ -n "$SUDO_USER" ]; then
         usermod -aG video "$SUDO_USER" 2>/dev/null || true
-        su - "$SUDO_USER" -c "systemctl --user daemon-reload; systemctl --user enable camera-feed-watch.service" 2>/dev/null || true
 
-        _add_pipewire_camera "/home/$SUDO_USER/.config/chromium-flags.conf"
-        _add_pipewire_camera "/home/$SUDO_USER/.config/brave-flags.conf"
+        # Start the service in the current user session if one is active
+        local uid
+        uid=$(id -u "$SUDO_USER" 2>/dev/null)
+        if [ -n "$uid" ] && [ -d "/run/user/$uid" ]; then
+            XDG_RUNTIME_DIR="/run/user/$uid" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+            runuser -u "$SUDO_USER" -- \
+                systemctl --user start camera-feed-watch.service 2>/dev/null || true
+        fi
     fi
 }
 
@@ -37,14 +32,19 @@ post_upgrade() {
 }
 
 pre_remove() {
+    systemctl --global disable camera-feed-watch.service 2>/dev/null || true
     systemctl disable camera-init.service 2>/dev/null || true
     systemctl stop camera-init.service 2>/dev/null || true
 
     if [ -n "$SUDO_USER" ]; then
-        su - "$SUDO_USER" -c "systemctl --user stop camera-feed-watch.service; systemctl --user disable camera-feed-watch.service" 2>/dev/null || true
-
-        _remove_pipewire_camera "/home/$SUDO_USER/.config/chromium-flags.conf"
-        _remove_pipewire_camera "/home/$SUDO_USER/.config/brave-flags.conf"
+        local uid
+        uid=$(id -u "$SUDO_USER" 2>/dev/null)
+        if [ -n "$uid" ] && [ -d "/run/user/$uid" ]; then
+            XDG_RUNTIME_DIR="/run/user/$uid" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+            runuser -u "$SUDO_USER" -- \
+                systemctl --user stop camera-feed-watch.service 2>/dev/null || true
+        fi
     fi
 }
 
