@@ -1,0 +1,120 @@
+From 4b55c8cdab4fbbf35fdb22e711a473c7c19b8c39 Mon Sep 17 00:00:00 2001
+From: Charles Keepax <ckeepax@opensource.cirrus.com>
+Date: Fri, 9 Jan 2026 14:52:03 +0000
+Subject: [PATCH 04/17] ASoC: SDCA: Add SDCA IRQ enable/disable helpers
+
+Add helpers to enable and disable the SDCA IRQs by Function. These are
+useful to sequence the powering down and up around system suspend.
+
+Signed-off-by: Charles Keepax <ckeepax@opensource.cirrus.com>
+Reviewed-by: Pierre-Louis Bossart <pierre-louis.bossart@linux.dev>
+Link: https://patch.msgid.link/20260109145206.3456151-2-ckeepax@opensource.cirrus.com
+Signed-off-by: Mark Brown <broonie@kernel.org>
+---
+ include/sound/sdca_interrupts.h  |  7 +++
+ sound/soc/sdca/sdca_interrupts.c | 76 ++++++++++++++++++++++++++++++++
+ 2 files changed, 83 insertions(+)
+
+diff --git a/include/sound/sdca_interrupts.h b/include/sound/sdca_interrupts.h
+index 8f13417d129a..9bcb5d8fd592 100644
+--- a/include/sound/sdca_interrupts.h
++++ b/include/sound/sdca_interrupts.h
+@@ -84,4 +84,11 @@ int sdca_irq_populate(struct sdca_function_data *function,
+ struct sdca_interrupt_info *sdca_irq_allocate(struct device *dev,
+ 					      struct regmap *regmap, int irq);
+ 
++void sdca_irq_enable_early(struct sdca_function_data *function,
++			   struct sdca_interrupt_info *info);
++void sdca_irq_enable(struct sdca_function_data *function,
++		     struct sdca_interrupt_info *info);
++void sdca_irq_disable(struct sdca_function_data *function,
++		      struct sdca_interrupt_info *info);
++
+ #endif
+diff --git a/sound/soc/sdca/sdca_interrupts.c b/sound/soc/sdca/sdca_interrupts.c
+index ff3a7e405fdc..afef7bbf613c 100644
+--- a/sound/soc/sdca/sdca_interrupts.c
++++ b/sound/soc/sdca/sdca_interrupts.c
+@@ -541,3 +541,79 @@ struct sdca_interrupt_info *sdca_irq_allocate(struct device *sdev,
+ 	return info;
+ }
+ EXPORT_SYMBOL_NS_GPL(sdca_irq_allocate, "SND_SOC_SDCA");
++
++static void irq_enable_flags(struct sdca_function_data *function,
++			     struct sdca_interrupt_info *info, bool early)
++{
++	struct sdca_interrupt *interrupt;
++	int i;
++
++	for (i = 0; i < SDCA_MAX_INTERRUPTS; i++) {
++		interrupt = &info->irqs[i];
++
++		if (!interrupt || interrupt->function != function)
++			continue;
++
++		switch (SDCA_CTL_TYPE(interrupt->entity->type,
++				      interrupt->control->sel)) {
++		case SDCA_CTL_TYPE_S(XU, FDL_CURRENTOWNER):
++			if (early)
++				enable_irq(interrupt->irq);
++			break;
++		default:
++			if (!early)
++				enable_irq(interrupt->irq);
++			break;
++		}
++	}
++}
++
++/**
++ * sdca_irq_enable_early - Re-enable early SDCA IRQs for a given function
++ * @function: Pointer to the SDCA Function.
++ * @info: Pointer to the SDCA interrupt info for this device.
++ *
++ * The early version of the IRQ enable allows enabling IRQs which may be
++ * necessary to bootstrap functionality for other IRQs, such as the FDL
++ * process.
++ */
++void sdca_irq_enable_early(struct sdca_function_data *function,
++			   struct sdca_interrupt_info *info)
++{
++	irq_enable_flags(function, info, true);
++}
++EXPORT_SYMBOL_NS_GPL(sdca_irq_enable_early, "SND_SOC_SDCA");
++
++/**
++ * sdca_irq_enable - Re-enable SDCA IRQs for a given function
++ * @function: Pointer to the SDCA Function.
++ * @info: Pointer to the SDCA interrupt info for this device.
++ */
++void sdca_irq_enable(struct sdca_function_data *function,
++		     struct sdca_interrupt_info *info)
++{
++	irq_enable_flags(function, info, false);
++}
++EXPORT_SYMBOL_NS_GPL(sdca_irq_enable, "SND_SOC_SDCA");
++
++/**
++ * sdca_irq_disable - Disable SDCA IRQs for a given function
++ * @function: Pointer to the SDCA Function.
++ * @info: Pointer to the SDCA interrupt info for this device.
++ */
++void sdca_irq_disable(struct sdca_function_data *function,
++		      struct sdca_interrupt_info *info)
++{
++	struct sdca_interrupt *interrupt;
++	int i;
++
++	for (i = 0; i < SDCA_MAX_INTERRUPTS; i++) {
++		interrupt = &info->irqs[i];
++
++		if (!interrupt || interrupt->function != function)
++			continue;
++
++		disable_irq(interrupt->irq);
++	}
++}
++EXPORT_SYMBOL_NS_GPL(sdca_irq_disable, "SND_SOC_SDCA");
+-- 
+2.43.0
+

@@ -1,0 +1,77 @@
+From 914bb3e2ba56354fd66cbb130eb536513ae3e1ca Mon Sep 17 00:00:00 2001
+From: Charles Keepax <ckeepax@opensource.cirrus.com>
+Date: Fri, 9 Jan 2026 14:52:06 +0000
+Subject: [PATCH 07/17] ASoC: SDCA: Add lock to serialise the Function
+ initialisation
+
+To avoid issues on some devices serialise the boot of each SDCA Function
+from the others.
+
+Signed-off-by: Charles Keepax <ckeepax@opensource.cirrus.com>
+Reviewed-by: Pierre-Louis Bossart <pierre-louis.bossart@linux.dev>
+Link: https://patch.msgid.link/20260109145206.3456151-5-ckeepax@opensource.cirrus.com
+Signed-off-by: Mark Brown <broonie@kernel.org>
+---
+ sound/soc/sdca/sdca_class.c          | 1 +
+ sound/soc/sdca/sdca_class.h          | 2 ++
+ sound/soc/sdca/sdca_class_function.c | 5 +++++
+ 3 files changed, 8 insertions(+)
+
+diff --git a/sound/soc/sdca/sdca_class.c b/sound/soc/sdca/sdca_class.c
+index 6d19a183683e..918b638acb57 100644
+--- a/sound/soc/sdca/sdca_class.c
++++ b/sound/soc/sdca/sdca_class.c
+@@ -205,6 +205,7 @@ static int class_sdw_probe(struct sdw_slave *sdw, const struct sdw_device_id *id
+ 	drv->dev = dev;
+ 	drv->sdw = sdw;
+ 	mutex_init(&drv->regmap_lock);
++	mutex_init(&drv->init_lock);
+ 
+ 	dev_set_drvdata(drv->dev, drv);
+ 
+diff --git a/sound/soc/sdca/sdca_class.h b/sound/soc/sdca/sdca_class.h
+index bb4c9dd12429..6f24ea2bbd38 100644
+--- a/sound/soc/sdca/sdca_class.h
++++ b/sound/soc/sdca/sdca_class.h
+@@ -28,6 +28,8 @@ struct sdca_class_drv {
+ 	struct sdca_interrupt_info *irq_info;
+ 
+ 	struct mutex regmap_lock;
++	/* Serialise function initialisations */
++	struct mutex init_lock;
+ 	struct work_struct boot_work;
+ 	struct completion device_attach;
+ 
+diff --git a/sound/soc/sdca/sdca_class_function.c b/sound/soc/sdca/sdca_class_function.c
+index bbf486d9a3d0..0afa41c1ee93 100644
+--- a/sound/soc/sdca/sdca_class_function.c
++++ b/sound/soc/sdca/sdca_class_function.c
+@@ -8,6 +8,7 @@
+  */
+ 
+ #include <linux/auxiliary_bus.h>
++#include <linux/cleanup.h>
+ #include <linux/minmax.h>
+ #include <linux/module.h>
+ #include <linux/pm.h>
+@@ -244,6 +245,8 @@ static int class_function_boot(struct class_function_drv *drv)
+ 	unsigned int val;
+ 	int ret;
+ 
++	guard(mutex)(&drv->core->init_lock);
++
+ 	ret = regmap_read(drv->regmap, reg, &val);
+ 	if (ret < 0) {
+ 		dev_err(drv->dev, "failed to read function status: %d\n", ret);
+@@ -418,6 +421,8 @@ static int class_function_runtime_resume(struct device *dev)
+ 	struct class_function_drv *drv = auxiliary_get_drvdata(auxdev);
+ 	int ret;
+ 
++	guard(mutex)(&drv->core->init_lock);
++
+ 	regcache_mark_dirty(drv->regmap);
+ 	regcache_cache_only(drv->regmap, false);
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,52 @@
+From 04d5b8676de028c8dded6d174620f69656b6ddd2 Mon Sep 17 00:00:00 2001
+From: Marco Crivellari <marco.crivellari@suse.com>
+Date: Tue, 30 Dec 2025 15:34:29 +0100
+Subject: [PATCH 03/17] ASoC: SDCA: Replace use of system_wq with system_dfl_wq
+
+This patch continues the effort to refactor workqueue APIs, which has begun
+with the changes introducing new workqueues and a new alloc_workqueue flag:
+
+   commit 128ea9f6ccfb ("workqueue: Add system_percpu_wq and system_dfl_wq")
+   commit 930c2ea566af ("workqueue: Add new WQ_PERCPU flag")
+
+The point of the refactoring is to eventually alter the default behavior of
+workqueues to become unbound by default so that their workload placement is
+optimized by the scheduler.
+
+Before that to happen after a careful review and conversion of each individual
+case, workqueue users must be converted to the better named new workqueues with
+no intended behaviour changes:
+
+   system_wq -> system_percpu_wq
+   system_unbound_wq -> system_dfl_wq
+
+This specific workload has no benefits being per-cpu, so system_wq
+has been replaced with system_dfl_wq (the unbound workqueue).
+
+This way the old obsolete workqueues (system_wq, system_unbound_wq) can be
+removed in the future.
+
+Suggested-by: Tejun Heo <tj@kernel.org>
+Signed-off-by: Marco Crivellari <marco.crivellari@suse.com>
+Reviewed-by: Charles Keepax <ckeepax@opensource.cirrus.com>
+Link: https://patch.msgid.link/20251230143429.179643-1-marco.crivellari@suse.com
+Signed-off-by: Mark Brown <broonie@kernel.org>
+---
+ sound/soc/sdca/sdca_ump.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/sound/soc/sdca/sdca_ump.c b/sound/soc/sdca/sdca_ump.c
+index 8aba3ff16872..a86bb28c6d0a 100644
+--- a/sound/soc/sdca/sdca_ump.c
++++ b/sound/soc/sdca/sdca_ump.c
+@@ -257,6 +257,6 @@ void sdca_ump_schedule_timeout(struct delayed_work *work, unsigned int timeout_u
+ 	if (!timeout_us)
+ 		return;
+ 
+-	queue_delayed_work(system_wq, work, usecs_to_jiffies(timeout_us));
++	queue_delayed_work(system_dfl_wq, work, usecs_to_jiffies(timeout_us));
+ }
+ EXPORT_SYMBOL_NS_GPL(sdca_ump_schedule_timeout, "SND_SOC_SDCA");
+-- 
+2.43.0
+
