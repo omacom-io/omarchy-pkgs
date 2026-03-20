@@ -10,3 +10,9 @@ https://download.spotify.com/debian/pubkey_C85668DF69375001.gpg
 
 # Dropbox
 FC918B335044912E
+
+# Linux kernel (Greg Kroah-Hartman)
+647F28654894E3BD457199BE38DBBDC86092693E
+
+# Arch Linux kernel patches (Jan Alexander Steffens / heftig)
+83BC8889351B5DEBBB68416EB8AC08600F108CDF
