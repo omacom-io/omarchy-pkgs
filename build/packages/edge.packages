@@ -2,6 +2,7 @@
 
 # Core
 asusctl
+cliamp
 qmk-hid
 elephant install
 elephant-archlinuxpkgs
