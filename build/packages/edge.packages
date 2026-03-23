@@ -2,6 +2,7 @@
 
 # Core
 asusctl
+iwd
 cliamp
 qmk-hid
 elephant install

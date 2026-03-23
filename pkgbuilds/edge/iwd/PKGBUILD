@@ -1,0 +1,77 @@
+# Maintainer: omarchy
+# Based on: extra/iwd 3.12-1 by AndyRTR, Christian Rebischke, Levente Polyak
+# Patch: adds WiFi 7 operating class 137 (320MHz 6GHz) support
+
+pkgname=iwd
+pkgver=3.12
+pkgrel=2
+pkgdesc='Internet Wireless Daemon - patched for WiFi 7 6GHz support'
+arch=('x86_64')
+url='https://git.kernel.org/cgit/network/wireless/iwd.git/'
+license=('LGPL-2.1-or-later')
+depends=('glibc' 'readline' 'libreadline.so' 'ell' 'libgcc')
+makedepends=('python-docutils' 'dbus' 'systemd')
+optdepends=('qrencode: for displaying QR code after DPP is started')
+provides=("iwd=${pkgver}")
+conflicts=('iwd')
+backup=('etc/iwd/main.conf')
+source=(https://www.kernel.org/pub/linux/network/wireless/iwd-${pkgver}.tar{.xz,.sign}
+        0001-use-arch-network-group-for-dbus-access.diff
+        0002-add-wifi7-operating-class-137-6ghz-320mhz.patch
+        iwd.conf
+        iwlwifi-disable-eht.conf)
+sha256sums=('d89a5e45c7180170e19be828f9e944a768c593758094fc57a358d0e7c4cb1a49'
+            'SKIP'
+            'd5fb4fb864b7a0632117aa2039df535ab5c1d024ae618a1f09e34dfab8ee0cc7'
+            'c7e61c2306c537f8271d175653639602d245575177c263e91b78756512720426'
+            '23d674271acf4a4bd2b79883626f230b6fe7627fe14788a1dab2d0282ca1d51a'
+            'f93971007cf11c4c19e95d03a63cdd37086bc46109104589fbf2f3b3362af9f5')
+validpgpkeys=('E932D120BC2AEC444E558F0106CA9F5D1DCF2659')
+options=('!lto')
+
+prepare() {
+  cd ${pkgname}-${pkgver}
+
+  # Arch: replace Debian "netdev" group with existing "network" group
+  patch -Np1 -i ../0001-use-arch-network-group-for-dbus-access.diff
+
+  # omarchy: add WiFi 7 operating class 137 (320MHz 6GHz) support
+  patch -Np1 -i ../0002-add-wifi7-operating-class-137-6ghz-320mhz.patch
+
+  # disable tests that require kernel modules unavailable in chroot/container
+  sed -i "s:unit/test-storage::" Makefile.am
+  sed -i "s:unit/test-wsc::" Makefile.am
+
+  autoreconf -vfi
+}
+
+build() {
+  cd ${pkgname}-${pkgver}
+  dbus-run-session ./configure --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --libexecdir=/usr/lib/iwd \
+    --enable-external-ell \
+    --enable-wired \
+    --enable-ofono \
+    --enable-hwsim \
+    --disable-tools
+  make
+}
+
+check() {
+  cd ${pkgname}-${pkgver}
+  make check
+}
+
+package() {
+  cd ${pkgname}-${pkgver}
+  make install DESTDIR="${pkgdir}"
+  install -Dm 644 README -t "${pkgdir}/usr/share/doc/${pkgname}"
+
+  # Install iwd config with WiFi 7 6GHz workarounds
+  install -Dm 644 "${srcdir}/../iwd.conf" "${pkgdir}/etc/iwd/main.conf"
+
+  # Disable EHT (WiFi 7) on Intel BE200/BE211 — broken RX rate adaptation
+  install -Dm 644 "${srcdir}/../iwlwifi-disable-eht.conf" "${pkgdir}/usr/lib/modprobe.d/iwlwifi-disable-eht.conf"
+}

@@ -1,0 +1,43 @@
+IEEE 802.11be (WiFi 7) introduced operating class 137 for 320MHz
+channels in the 6GHz band. Without this entry, iwd silently discards
+6GHz BSS candidates advertised with oper class 137 in Reduced Neighbor
+Reports, preventing WiFi 7 clients from connecting to 6GHz networks.
+
+This patch adds:
+1. Operating class 137 to the e4_operating_classes table with the
+   correct 320MHz channel spacing and center frequency indices
+   (31, 63, 95, 127, 159, 191) per IEEE 802.11be Table E-4.
+2. Extends the oper_class_to_band_global range from [131...136] to
+   [131...137] so the band lookup returns BAND_FREQ_6_GHZ for class 137.
+
+Tested with Intel Wi-Fi 7 BE211 against UniFi U7 Pro Max AP.
+
+Signed-off-by: Spencer Bull <spencer.bull@dell.com>
+
+--- a/src/band.c
++++ b/src/band.c
+@@ -899,7 +899,14 @@
+ 		.starting_frequency = 5925,
+ 		.channel_spacing = 20,
+ 		.center_frequencies = { 2 },
+-	}
++	},
++	{
++		/* WiFi 7 (802.11be) 320 MHz channels in 6 GHz band */
++		.operating_class = 137,
++		.starting_frequency = 5950,
++		.channel_spacing = 320,
++		.center_frequencies = { 31, 63, 95, 127, 159, 191 },
++	},
+ };
+
+ static const struct operating_class_info *e4_find_opclass(uint32_t opclass)
+@@ -1478,7 +1485,7 @@
+ static const enum band_freq oper_class_to_band_global[] = {
+ 	[81 ... 84]   = BAND_FREQ_2_4_GHZ,
+ 	[104 ... 130] = BAND_FREQ_5_GHZ,
+-	[131 ... 136] = BAND_FREQ_6_GHZ,
++	[131 ... 137] = BAND_FREQ_6_GHZ,
+ };
+
+ /* Annex E, table E-5 */
