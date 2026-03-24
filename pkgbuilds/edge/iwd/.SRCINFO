@@ -23,13 +23,11 @@ pkgbase = iwd
 	source = 0001-use-arch-network-group-for-dbus-access.diff
 	source = 0002-add-wifi7-operating-class-137-6ghz-320mhz.patch
 	source = iwd.conf
-	source = iwlwifi-disable-eht.conf
 	validpgpkeys = E932D120BC2AEC444E558F0106CA9F5D1DCF2659
 	sha256sums = d89a5e45c7180170e19be828f9e944a768c593758094fc57a358d0e7c4cb1a49
 	sha256sums = SKIP
 	sha256sums = d5fb4fb864b7a0632117aa2039df535ab5c1d024ae618a1f09e34dfab8ee0cc7
 	sha256sums = c7e61c2306c537f8271d175653639602d245575177c263e91b78756512720426
 	sha256sums = 23d674271acf4a4bd2b79883626f230b6fe7627fe14788a1dab2d0282ca1d51a
-	sha256sums = f93971007cf11c4c19e95d03a63cdd37086bc46109104589fbf2f3b3362af9f5
 
 pkgname = iwd
