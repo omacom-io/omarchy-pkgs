@@ -17,7 +17,7 @@ sha256sums=('d4804ac4b0107806146a44f5fca5622c69da6001a6b4f09174079bfac1450dbc'
 
 package() {
   install -d "${pkgdir}/opt/intel"
-  cp -a "${srcdir}/${_srcname}" "${pkgdir}/opt/intel/openvino_${pkgver}"
+  cp -a "${srcdir}/${_srcname}" "${pkgdir}/opt/intel/openvino_genai_${pkgver}"
 
   install -Dm644 "${srcdir}/openvino-genai.sh" "${pkgdir}/etc/profile.d/openvino-genai.sh"
 }
