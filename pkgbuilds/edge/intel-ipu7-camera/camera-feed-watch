@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""On-demand camera feed for v4l2loopback.
+
+Holds /dev/video50 open permanently so v4l2loopback stays in capture mode.
+Writes black frames when idle (0% CPU, LED off). Starts the real camera
+pipeline when an app opens the device, relaying frames through the same fd.
+Stops the camera when all readers close. No fd gap = no stream interruption.
+"""
+
+import fcntl, os, signal, struct, subprocess, sys, threading, time
+
+DEVICE = "/dev/video50"
+W, H = 1920, 1080
+FSIZE = W * H * 3 // 2
+POLL = 2
+STOP_DELAY = 6
+
+BLACK = bytes(W * H) + bytes([128] * (W * H // 2))
+
+dev = os.open(DEVICE, os.O_WRONLY)
+pixfmt = struct.pack("II4sIIII4x188x", W, H, b"NV12", 1, W, FSIZE, 0)
+fmt = struct.pack("I4x", 2) + pixfmt
+fcntl.ioctl(dev, 0xC0D05605, fmt)
+os.write(dev, BLACK)
+
+# Restart WirePlumber so it sees the capture device
+time.sleep(1)
+subprocess.run(["systemctl", "--user", "restart", "wireplumber.service"],
+               capture_output=True, timeout=10)
+
+cam_proc = None
+cam_lock = threading.Lock()
+stop_idle = threading.Event()
+
+
+def write_idle():
+    while not stop_idle.is_set():
+        try:
+            os.write(dev, BLACK)
+        except OSError:
+            pass
+        stop_idle.wait(2)
+
+
+def relay_camera():
+    global cam_proc
+    env = os.environ.copy()
+    env["GST_PLUGIN_PATH"] = "/usr/lib/gstreamer-1.0"
+    cam_proc = subprocess.Popen(
+        ["gst-launch-1.0", "-q",
+         "icamerasrc", "device-name=ov08x40-uf",
+         "sharpness=80", "ev=-1", "saturation=10",
+         "!", "video/x-raw,format=NV12,width=1920,height=1080",
+         "!", "videoflip", "method=rotate-180",
+         "!", "fdsink", "fd=1"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env,
+    )
+    buf = b""
+    while cam_proc.poll() is None:
+        data = cam_proc.stdout.read(65536)
+        if not data:
+            break
+        buf += data
+        while len(buf) >= FSIZE:
+            try:
+                os.write(dev, buf[:FSIZE])
+            except OSError:
+                pass
+            buf = buf[FSIZE:]
+    cam_proc = None
+
+
+def has_readers():
+    try:
+        r = subprocess.run(["fuser", DEVICE], capture_output=True, text=True, timeout=5)
+        for pid in r.stdout.strip().split():
+            pid = pid.strip()
+            if not pid:
+                continue
+            if int(pid) == os.getpid():
+                continue
+            with cam_lock:
+                if cam_proc and int(pid) == cam_proc.pid:
+                    continue
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def start_camera():
+    stop_idle.set()
+    t = threading.Thread(target=relay_camera, daemon=True)
+    t.start()
+    return t
+
+
+def stop_camera():
+    with cam_lock:
+        if cam_proc:
+            cam_proc.terminate()
+            try:
+                cam_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                cam_proc.kill()
+    stop_idle.clear()
+    t = threading.Thread(target=write_idle, daemon=True)
+    t.start()
+    return t
+
+
+def shutdown(sig, frame):
+    stop_idle.set()
+    with cam_lock:
+        if cam_proc:
+            cam_proc.terminate()
+    os.close(dev)
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, shutdown)
+signal.signal(signal.SIGINT, shutdown)
+
+# Start idle
+idle_thread = threading.Thread(target=write_idle, daemon=True)
+idle_thread.start()
+
+active = False
+idle_count = 0
+
+while True:
+    if has_readers():
+        idle_count = 0
+        if not active:
+            start_camera()
+            active = True
+    else:
+        if active:
+            idle_count += 1
+            if idle_count >= STOP_DELAY // POLL:
+                stop_camera()
+                active = False
+                idle_count = 0
+    time.sleep(POLL)
