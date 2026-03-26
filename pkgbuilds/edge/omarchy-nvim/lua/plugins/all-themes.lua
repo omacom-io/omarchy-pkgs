@@ -84,7 +84,12 @@ return {
 		priority = 1000,
 	},
 	{
-		"xero/miasma.nvim",
+		"OldJobobo/miasma.nvim",
+		lazy = true,
+		priority = 1000,
+	},
+	{
+		"omacom-io/lumon.nvim",
 		lazy = true,
 		priority = 1000,
 	},
