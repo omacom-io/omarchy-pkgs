@@ -1,3 +1,52 @@
+_print_group_help() {
+  echo "    Ensure your user is in the 'render' and 'video' groups:"
+  echo "      sudo usermod -aG render,video \$USER"
+  echo "    Then log out and back in for group changes to take effect."
+}
+
+_configure_user_groups() {
+  local target_user="${SUDO_USER:-}"
+  local group
+
+  echo ">>> Configuring user access..."
+
+  if [ -z "$target_user" ] || [ "$target_user" = "root" ]; then
+    echo "    Could not detect a non-root user for automatic group setup."
+    _print_group_help
+    return
+  fi
+
+  if ! id "$target_user" >/dev/null 2>&1; then
+    echo "    Could not find user '$target_user' for automatic group setup."
+    _print_group_help
+    return
+  fi
+
+  for group in render video; do
+    if ! getent group "$group" >/dev/null 2>&1; then
+      echo "    Group '$group' is not available on this system."
+      _print_group_help
+      return
+    fi
+  done
+
+  if usermod -aG render,video "$target_user" 2>/dev/null; then
+    echo "    Ensured '$target_user' is in the 'render' and 'video' groups."
+    echo "    Log out and back in for group changes to take effect."
+  else
+    echo "    Failed to update group membership for '$target_user'."
+    _print_group_help
+  fi
+}
+
+_post_message() {
+  local action="$1"
+
+  echo ""
+  echo ">>> Intel NPU driver ${action}."
+  _configure_user_groups
+}
+
 post_install() {
   echo ">>> Reloading udev rules..."
   udevadm control --reload-rules 2>/dev/null || true
@@ -6,15 +55,18 @@ post_install() {
   echo ">>> Loading intel_vpu kernel module..."
   modprobe intel_vpu 2>/dev/null || echo "    Failed to load intel_vpu (may require reboot)"
 
-  echo ""
-  echo ">>> Intel NPU driver installed."
-  echo "    Ensure your user is in the 'render' and 'video' groups:"
-  echo "      sudo usermod -aG render,video \$USER"
-  echo "    Then log out and back in for group changes to take effect."
+  _post_message "installed"
 }
 
 post_upgrade() {
-  post_install
+  echo ">>> Reloading udev rules..."
+  udevadm control --reload-rules 2>/dev/null || true
+  udevadm trigger 2>/dev/null || true
+
+  echo ">>> Loading intel_vpu kernel module..."
+  modprobe intel_vpu 2>/dev/null || echo "    Failed to load intel_vpu (may require reboot)"
+
+  _post_message "upgraded"
 }
 
 post_remove() {
