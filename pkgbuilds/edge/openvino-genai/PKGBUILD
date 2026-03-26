@@ -7,13 +7,13 @@ pkgdesc="Intel OpenVINO GenAI runtime and tools for generative AI inference"
 arch=('x86_64')
 url="https://docs.openvino.ai/"
 license=('Apache-2.0')
-depends=('glibc' 'gcc-libs')
+depends=('glibc' 'gcc-libs' 'level-zero-loader' 'intel-compute-runtime')
 options=('!strip')
 _srcname=openvino_genai_ubuntu24_${pkgver}_x86_64
 source=("${_srcname}.tar.gz::https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/2026.0/linux/${_srcname}.tar.gz"
         'openvino-genai.sh')
 sha256sums=('d4804ac4b0107806146a44f5fca5622c69da6001a6b4f09174079bfac1450dbc'
-            'a6da51dd06cfe7df4069aecc6c2403048dbe643eace72ca598c2c67288a03eab')
+            '3e8055eaf3613742f5785f75e3225b882f4ba620d9971f0e00922a20679df886')
 
 package() {
   install -d "${pkgdir}/opt/intel"
