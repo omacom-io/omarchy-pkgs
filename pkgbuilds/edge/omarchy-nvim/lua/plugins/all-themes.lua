@@ -89,6 +89,11 @@ return {
 		priority = 1000,
 	},
 	{
+		"OldJobobo/retro-82.nvim",
+		lazy = true,
+		priority = 1000,
+	},
+	{
 		"omacom-io/lumon.nvim",
 		lazy = true,
 		priority = 1000,
