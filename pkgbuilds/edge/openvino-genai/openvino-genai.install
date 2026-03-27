@@ -1,0 +1,8 @@
+post_install() {
+  echo ">>> To activate OpenVINO GenAI environment variables, log out and log back in."
+  echo ">>> Or source it manually: source /etc/profile.d/openvino-genai.sh"
+}
+
+post_upgrade() {
+  post_install
+}
