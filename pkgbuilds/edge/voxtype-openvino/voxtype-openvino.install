@@ -1,0 +1,33 @@
+post_install() {
+    echo ""
+    echo "==> Voxtype (OpenVINO/NPU) Post-installation Steps:"
+    echo ""
+    echo "    Using OpenVINO build with Intel NPU support."
+    echo ""
+    echo "    1. Add your user to the 'input' group:"
+    echo "       sudo usermod -aG input \$USER"
+    echo ""
+    echo "    2. Log out and back in for group changes to take effect"
+    echo ""
+    echo "    3. Download a model:"
+    echo "       voxtype setup model"
+    echo ""
+    echo "    4. Start voxtype:"
+    echo "       systemctl --user enable --now voxtype"
+    echo ""
+}
+
+post_upgrade() {
+    echo ""
+    echo "==> Voxtype (OpenVINO/NPU) upgraded to 0.6.4"
+    echo ""
+    echo "    Restart the daemon to apply updates:"
+    echo "      systemctl --user restart voxtype"
+    echo ""
+}
+
+post_remove() {
+    echo ""
+    echo "==> Voxtype (OpenVINO/NPU) removed."
+    echo ""
+}

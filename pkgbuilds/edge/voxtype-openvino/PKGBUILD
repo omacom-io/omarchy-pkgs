@@ -1,0 +1,75 @@
+# Maintainer: Jacob Mink
+pkgname=voxtype-openvino
+pkgver=0.6.4
+pkgrel=1
+pkgdesc="Push-to-talk voice-to-text for Linux (OpenVINO/NPU build)"
+arch=('x86_64')
+url="https://voxtype.io"
+license=('MIT')
+depends=(
+    'alsa-lib'
+    'curl'
+    'gcc-libs'
+    'glibc'
+    'intel-npu-driver'
+    'openvino-genai'
+)
+optdepends=(
+    'wtype: keyboard simulation for Wayland (recommended, best CJK support)'
+    'dotool: keyboard simulation with layout support (KDE/GNOME compatible)'
+    'ydotool: keyboard simulation fallback (X11/TTY support)'
+    'wl-clipboard: clipboard support'
+    'libnotify: desktop notifications'
+    'pipewire: audio server (recommended)'
+    'pipewire-alsa: ALSA compatibility for PipeWire (required if using PipeWire)'
+    'pulseaudio: audio server (alternative to PipeWire)'
+    'ollama: local AI summarization for meeting mode'
+)
+provides=('voxtype')
+conflicts=('voxtype' 'voxtype-bin')
+backup=('etc/voxtype/config.toml')
+install=voxtype-openvino.install
+# Place the voxtype binary in this directory before building:
+#   cp /path/to/voxtype/target/release/voxtype pkgbuilds/edge/voxtype-openvino/voxtype
+source=(
+    "voxtype"
+    "config-$pkgver.toml::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/config/default.toml"
+    "voxtype-$pkgver.service::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/systemd/voxtype.service"
+    "voxtype-$pkgver.bash::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/completions/voxtype.bash"
+    "voxtype-$pkgver.zsh::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/completions/voxtype.zsh"
+    "voxtype-$pkgver.fish::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/completions/voxtype.fish"
+    "LICENSE-$pkgver::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/LICENSE"
+    "README-$pkgver.md::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/README.md"
+)
+sha256sums=(
+    'SKIP'  # voxtype binary (local build)
+    'SKIP'  # config.toml
+    'SKIP'  # voxtype.service
+    'SKIP'  # voxtype.bash
+    'SKIP'  # voxtype.zsh
+    'SKIP'  # voxtype.fish
+    'SKIP'  # LICENSE
+    'SKIP'  # README.md
+)
+
+package() {
+    # Install the single OpenVINO binary
+    install -Dm755 "$srcdir/voxtype" "$pkgdir/usr/bin/voxtype"
+
+    # Install default configuration
+    install -Dm644 "$srcdir/config-$pkgver.toml" "$pkgdir/etc/voxtype/config.toml"
+
+    # Install systemd user service
+    install -Dm644 "$srcdir/voxtype-$pkgver.service" "$pkgdir/usr/lib/systemd/user/voxtype.service"
+
+    # Install documentation
+    install -Dm644 "$srcdir/README-$pkgver.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+    # Install license
+    install -Dm644 "$srcdir/LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    # Install shell completions
+    install -Dm644 "$srcdir/voxtype-$pkgver.bash" "$pkgdir/usr/share/bash-completion/completions/voxtype"
+    install -Dm644 "$srcdir/voxtype-$pkgver.zsh" "$pkgdir/usr/share/zsh/site-functions/_voxtype"
+    install -Dm644 "$srcdir/voxtype-$pkgver.fish" "$pkgdir/usr/share/fish/vendor_completions.d/voxtype.fish"
+}
