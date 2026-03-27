@@ -2,7 +2,7 @@
 
 pkgname=intel-ipu7-camera
 pkgver=1.0.2
-pkgrel=1
+pkgrel=2
 pkgdesc="Intel IPU7 MIPI camera stack for Hurrican/Performance (OV08X40 + hardware ISP)"
 arch=('x86_64')
 url="https://github.com/TsaiGaggery/hurrican_omarchy_enabling"
@@ -11,13 +11,13 @@ depends=(
   'dkms'
   'linux-headers'
   'v4l2loopback-dkms'
+  'v4l2-relayd'
   'gstreamer'
   'gst-plugins-base'
   'gst-plugins-good'
   'gst-plugins-bad'
   'jsoncpp'
   'libdrm'
-  'python'
 )
 makedepends=(
   'git'
@@ -50,20 +50,21 @@ source=(
   "v4l2loopback-modprobe.conf"
   "v4l2loopback-modules-load.conf"
   "camera-init.service"
-  "camera-feed-watch"
-  "camera-feed-watch.service"
   "hide-ipu7-v4l2.conf"
   "disable-libcamera.conf"
+  "71-ipu7-hide-isys.rules"
   "90-ipu7-psys.rules"
   "camera-tmpfiles.conf"
   "ov08x40.yaml"
   "camera-sleep-hook"
+  "v4l2-relayd-ipu7.conf"
+  "v4l2-relayd-ipu7-override.conf"
 )
 sha256sums=(
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-  'SKIP' 'SKIP'
+  'SKIP' 'SKIP' 'SKIP'
 )
 
 prepare() {
@@ -200,10 +201,6 @@ package() {
   # systemd
   install -Dm644 "${srcdir}/camera-init.service" \
     "${pkgdir}/usr/lib/systemd/system/camera-init.service"
-  install -Dm644 "${srcdir}/camera-feed-watch.service" \
-    "${pkgdir}/usr/lib/systemd/user/camera-feed-watch.service"
-  install -Dm755 "${srcdir}/camera-feed-watch" \
-    "${pkgdir}/usr/bin/camera-feed-watch"
 
   # WirePlumber
   install -Dm644 "${srcdir}/hide-ipu7-v4l2.conf" \
@@ -211,9 +208,17 @@ package() {
   install -Dm644 "${srcdir}/disable-libcamera.conf" \
     "${pkgdir}/usr/share/wireplumber/wireplumber.conf.d/disable-libcamera.conf"
 
-  # udev / tmpfiles / libcamera tuning
+  # udev rules
+  install -Dm644 "${srcdir}/71-ipu7-hide-isys.rules" \
+    "${pkgdir}/usr/lib/udev/rules.d/71-ipu7-hide-isys.rules"
   install -Dm644 "${srcdir}/90-ipu7-psys.rules" \
     "${pkgdir}/usr/lib/udev/rules.d/90-ipu7-psys.rules"
+
+  # v4l2-relayd config for IPU7 camera
+  install -Dm644 "${srcdir}/v4l2-relayd-ipu7.conf" \
+    "${pkgdir}/etc/v4l2-relayd.d/ipu7.conf"
+  install -Dm644 "${srcdir}/v4l2-relayd-ipu7-override.conf" \
+    "${pkgdir}/etc/systemd/system/v4l2-relayd@ipu7.service.d/override.conf"
   install -Dm644 "${srcdir}/camera-tmpfiles.conf" \
     "${pkgdir}/usr/lib/tmpfiles.d/camera.conf"
   install -Dm644 "${srcdir}/ov08x40.yaml" \

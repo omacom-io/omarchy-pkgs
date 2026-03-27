@@ -1,52 +1,23 @@
 #!/bin/bash
 
-# Re-probe the IPU7 camera sensor after suspend/hibernate resume.
+# Handle camera service around suspend/resume.
 #
-# The OV08X40 sensor connects through a USB-to-I2C bridge (usbio-bridge).
-# After resume the ipu_bridge software fwnode graph is gone, leaving the
-# sensor driver unable to bind. Removing and rescanning the IPU PCI device
-# triggers a fresh probe that recreates the fwnode graph.
-
-IPU_PCI="0000:00:05.0"
+# v4l2-relayd must be stopped before suspend to avoid GStreamer crashes,
+# then restarted after resume once the camera hardware is ready.
+#
+# The post-resume restart uses systemd-run to avoid blocking the
+# password prompt while waiting for the camera to initialize.
 
 case "$1" in
+  pre)
+    systemctl stop v4l2-relayd@ipu7.service 2>/dev/null || true
+    ;;
   post)
-    (
-      # Wait for the USB-I2C bridge to re-enumerate
-      for i in $(seq 1 15); do
-        if grep -q "OVTI08F4" /sys/bus/i2c/devices/*/name 2>/dev/null; then
-          break
-        fi
-        sleep 1
-      done
-      sleep 1
-
-      # Unload sensor so the IPU device can be cleanly removed
-      modprobe -r ov08x40 2>/dev/null || true
-
-      # Remove and rescan the IPU PCI device to trigger fresh ipu_bridge_init
-      echo 1 > "/sys/bus/pci/devices/$IPU_PCI/remove" 2>/dev/null || true
-      sleep 1
-      echo 1 > /sys/bus/pci/rescan 2>/dev/null || true
-      sleep 3
-
-      # Reload sensor driver
-      modprobe intel_cvs 2>/dev/null || true
-      sleep 2
-      modprobe ov08x40 2>/dev/null || true
-
-      # Restart the camera feed service
-      for uid_dir in /run/user/*; do
-        uid=$(basename "$uid_dir")
-        if [[ -S $uid_dir/bus ]]; then
-          sudo -u "#$uid" env \
-            XDG_RUNTIME_DIR="$uid_dir" \
-            DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
-            systemctl --user restart camera-feed-watch.service 2>/dev/null || true
-        fi
-      done
-    ) &
-    disown
+    systemd-run --no-block --unit=camera-resume bash -c '
+      systemctl restart camera-init.service 2>/dev/null
+      systemctl reset-failed v4l2-relayd@ipu7.service 2>/dev/null || true
+      systemctl start v4l2-relayd@ipu7.service 2>/dev/null || true
+    '
     ;;
 esac
 exit 0
