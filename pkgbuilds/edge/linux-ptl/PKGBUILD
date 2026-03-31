@@ -43,8 +43,9 @@ source=(
   0014-ASoC-SDCA-Limit-values-user-can-write-to-Selected-Mo.patch
   0017-ASoC-SDCA-Fix-NULL-pointer-dereference-in-sdca_jack_.patch
   0018-wifi-iwlwifi-mld-correctly-set-wifi-generation-data.patch
-  0019-drm-i915-psr-accept-early-transport-for-psr2.patch
-  0020-drm-i915-psr-fix-su-granularity-source-for-psr2.patch
+  0019-drm-edid-populate-monitor-range-from-displayid-adaptive-sync.patch
+  0020-drm-i915-psr-accept-early-transport-for-psr2.patch
+  0021-drm-i915-psr-fix-su-granularity-source-for-psr2.patch
   0022-drm-i915-psr-allow-psr-with-vrr-on-ptl.patch
 )
 source_x86_64=(config.x86_64)
@@ -58,7 +59,7 @@ b2sums=('f91cdd0b8727ce50ba286b321e85f394ff7e2eff27cde6e6e85e8abfc627b2b069bb567
         '9632ace64efb38ee784d731ea85aeb285f0c3db486112122c17059c359c490a54c6ef7cd9d1d1cdecc8ae1d43df94536890b83a6671c1166a6b2148308f1baf3'
         'SKIP'
         'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-        'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+        'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 b2sums_x86_64=('0fe195286246b83f0859f79dd2f6c633f5370057aa6afad4525309822ade855f7f6ebcfb01109786313c9331ad61d667b0257ecc7b7f239d2f962c9d34f0b10d')
 
 # https://www.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc
@@ -67,7 +68,7 @@ sha256sums=('466d441a0ea5e04b7023618b7b201bfd60effab225f806fd41ce663484395a1c'
             '96410b474e9b3efc2e03e5bb8e3819f41313e943f2157c215094668200cb069d'
             'SKIP'
             'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
