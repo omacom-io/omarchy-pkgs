@@ -1,6 +1,1 @@
 KERNEL=="ipu7-psys0", MODE="0666", SYMLINK+="ipu-psys0"
-
-# Hide raw IPU7 ISYS capture devices from applications.
-# These are internal ISP nodes that cannot produce frames directly.
-# Camera is provided via v4l2loopback (/dev/video50) instead.
-SUBSYSTEM=="video4linux", ATTR{name}=="Intel IPU7 ISYS Capture *", TAG-="uaccess"
