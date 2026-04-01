@@ -48,7 +48,6 @@ source=(
   "dkms-vision-drivers.conf"
   "camera-deps.conf"
   "v4l2loopback-modprobe.conf"
-  "v4l2loopback-modules-load.conf"
   "camera-init.service"
   "hide-ipu7-v4l2.conf"
   "disable-libcamera.conf"
@@ -64,7 +63,7 @@ sha256sums=(
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-  'SKIP' 'SKIP' 'SKIP'
+  'SKIP' 'SKIP'
 )
 
 prepare() {
@@ -195,8 +194,6 @@ package() {
     "${pkgdir}/usr/lib/modprobe.d/camera-deps.conf"
   install -Dm644 "${srcdir}/v4l2loopback-modprobe.conf" \
     "${pkgdir}/usr/lib/modprobe.d/v4l2loopback-camera.conf"
-  install -Dm644 "${srcdir}/v4l2loopback-modules-load.conf" \
-    "${pkgdir}/usr/lib/modules-load.d/v4l2loopback.conf"
 
   # systemd
   install -Dm644 "${srcdir}/camera-init.service" \
