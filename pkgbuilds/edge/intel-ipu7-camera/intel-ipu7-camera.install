@@ -1,7 +1,11 @@
 _add_pipewire_camera() {
     local conf="$1"
-    if [ -f "$conf" ] && grep -q 'enable-features=' "$conf" && ! grep -q 'PipeWireCamera' "$conf"; then
-        sed -i 's/--enable-features=\([^ ]*\)/--enable-features=\1,PipeWireCamera/' "$conf"
+    if [ -f "$conf" ] && ! grep -q 'PipeWireCamera' "$conf"; then
+        if grep -q 'enable-features=' "$conf"; then
+            sed -i 's/--enable-features=\([^ ]*\)/--enable-features=\1,PipeWireCamera/' "$conf"
+        else
+            echo '--enable-features=PipeWireCamera' >> "$conf"
+        fi
     fi
 }
 
