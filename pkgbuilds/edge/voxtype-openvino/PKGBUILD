@@ -14,6 +14,11 @@ depends=(
     'intel-npu-driver'
     'openvino-genai'
 )
+makedepends=(
+    'git'
+    'cargo'
+    'rust'
+)
 optdepends=(
     'wtype: keyboard simulation for Wayland (recommended, best CJK support)'
     'dotool: keyboard simulation with layout support (KDE/GNOME compatible)'
@@ -29,10 +34,9 @@ provides=('voxtype')
 conflicts=('voxtype' 'voxtype-bin')
 backup=('etc/voxtype/config.toml')
 install=voxtype-openvino.install
-# Place the voxtype binary in this directory before building:
-#   cp /path/to/voxtype/target/release/voxtype pkgbuilds/edge/voxtype-openvino/voxtype
 source=(
-    "voxtype"
+    "voxtype::git+https://github.com/jacob-vincent-mink/voxtype.git#branch=feature/intel-npu"
+    "openvino-rs::git+https://github.com/jacob-vincent-mink/openvino-rs.git#branch=feature/genai"
     "config-$pkgver.toml::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/config/default.toml"
     "voxtype-$pkgver.service::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/systemd/voxtype.service"
     "voxtype-$pkgver.bash::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/completions/voxtype.bash"
@@ -42,7 +46,8 @@ source=(
     "README-$pkgver.md::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/README.md"
 )
 sha256sums=(
-    'SKIP'  # voxtype binary (local build)
+    'SKIP'  # voxtype git
+    'SKIP'  # openvino-rs git
     'SKIP'  # config.toml
     'SKIP'  # voxtype.service
     'SKIP'  # voxtype.bash
@@ -52,9 +57,19 @@ sha256sums=(
     'SKIP'  # README.md
 )
 
+build() {
+    # openvino-rs must be a sibling of voxtype for path dependencies
+    cd "$srcdir/voxtype"
+    cargo build --release --features openvino-whisper
+}
+
 package() {
-    # Install the single OpenVINO binary
-    install -Dm755 "$srcdir/voxtype" "$pkgdir/usr/bin/voxtype"
+    # Install the OpenVINO binary to /usr/lib/voxtype/
+    install -Dm755 "$srcdir/voxtype/target/release/voxtype" "$pkgdir/usr/lib/voxtype/voxtype-openvino"
+
+    # Create symlink (updated in .install file)
+    mkdir -p "$pkgdir/usr/bin"
+    ln -sf /usr/lib/voxtype/voxtype-openvino "$pkgdir/usr/bin/voxtype"
 
     # Install default configuration
     install -Dm644 "$srcdir/config-$pkgver.toml" "$pkgdir/etc/voxtype/config.toml"

@@ -1,1 +1,6 @@
-voxtype
+*
+!.nvchecker.toml
+!.gitignore
+!*.install
+!PKGBUILD
+!.SRCINFO

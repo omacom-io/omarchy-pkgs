@@ -1,8 +1,38 @@
+_detect_npu() {
+    # Detect Intel NPU for acceleration
+    NPU_DETECTED=""
+    if ls /dev/accel/* >/dev/null 2>&1; then
+        if command -v lspci >/dev/null 2>&1; then
+            NPU_INFO=$(lspci 2>/dev/null | grep -i 'npu\|ai boost' | head -1 | sed 's/.*: //')
+            if [ -n "$NPU_INFO" ]; then
+                NPU_DETECTED="$NPU_INFO"
+            else
+                NPU_DETECTED="NPU detected (install pciutils for details)"
+            fi
+        else
+            NPU_DETECTED="NPU detected (install pciutils for details)"
+        fi
+    fi
+
+    if [ -n "$NPU_DETECTED" ]; then
+        echo ""
+        echo "    NPU detected: $NPU_DETECTED"
+    else
+        echo ""
+        echo "    WARNING: No Intel NPU detected."
+        echo "    This package requires an Intel NPU (intel-npu-driver)."
+    fi
+}
+
 post_install() {
     echo ""
     echo "==> Voxtype (OpenVINO/NPU) Post-installation Steps:"
     echo ""
+
     echo "    Using OpenVINO build with Intel NPU support."
+
+    _detect_npu
+
     echo ""
     echo "    1. Add your user to the 'input' group:"
     echo "       sudo usermod -aG input \$USER"
@@ -15,11 +45,24 @@ post_install() {
     echo "    4. Start voxtype:"
     echo "       systemctl --user enable --now voxtype"
     echo ""
+    echo "    Optional: Configure NPU acceleration:"
+    echo "       voxtype setup npu --enable"
+    echo ""
 }
 
 post_upgrade() {
     echo ""
     echo "==> Voxtype (OpenVINO/NPU) upgraded to 0.6.4"
+    echo ""
+
+    echo "    Using OpenVINO build with Intel NPU support."
+
+    _detect_npu
+
+    echo ""
+    echo "    v0.6.4: Clang 22 compatibility, smart auto-submit, CUDA safety."
+    echo "    Fixes build failures on systems with clang 22 / LLVM 22."
+    echo "    Say 'submit' or 'send' to auto-press Enter after dictation."
     echo ""
     echo "    Restart the daemon to apply updates:"
     echo "      systemctl --user restart voxtype"
@@ -27,7 +70,5 @@ post_upgrade() {
 }
 
 post_remove() {
-    echo ""
-    echo "==> Voxtype (OpenVINO/NPU) removed."
-    echo ""
+    rm -f /usr/bin/voxtype
 }
