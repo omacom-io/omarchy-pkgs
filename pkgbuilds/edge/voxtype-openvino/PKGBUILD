@@ -19,6 +19,7 @@ makedepends=(
     'cargo'
     'rust'
     'cmake'
+    'clang'
 )
 optdepends=(
     'wtype: keyboard simulation for Wayland (recommended, best CJK support)'
