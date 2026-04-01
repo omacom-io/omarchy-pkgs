@@ -1,3 +1,5 @@
+-- Neovide handles background rendering differently; skip transparency overrides
+-- to avoid forcing a black background
 if vim.g.neovide then
 	return
 end
