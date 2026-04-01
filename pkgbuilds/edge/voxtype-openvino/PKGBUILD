@@ -62,6 +62,14 @@ sha256sums=(
 build() {
     # openvino-rs must be a sibling of voxtype for path dependencies
     cd "$srcdir/voxtype"
+
+    # Arch's makepkg.conf sets -flto in CFLAGS which makes GCC emit GIMPLE IR
+    # in object files. rust-lld can't read GIMPLE, causing undefined symbols
+    # from ring and sqlite3. Adding -ffat-lto-objects makes GCC emit both
+    # GIMPLE and real object code so rust-lld can link them.
+    export CFLAGS="${CFLAGS} -ffat-lto-objects"
+    export CXXFLAGS="${CXXFLAGS} -ffat-lto-objects"
+
     cargo build --release --features openvino-whisper
 }
 
