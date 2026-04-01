@@ -9,6 +9,7 @@ pkgbase = voxtype-openvino
 	makedepends = git
 	makedepends = cargo
 	makedepends = rust
+	makedepends = cmake
 	depends = alsa-lib
 	depends = curl
 	depends = gcc-libs
