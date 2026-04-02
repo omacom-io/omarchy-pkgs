@@ -86,7 +86,7 @@ package() {
 
     # Install systemd user service with OpenVINO environment baked in
     install -Dm644 "$srcdir/voxtype-$pkgver.service" "$pkgdir/usr/lib/systemd/user/voxtype.service"
-    sed -i '/^\[Service\]/a Environment=LD_LIBRARY_PATH=/opt/intel/openvino_genai/runtime/lib/intel64:/opt/intel/openvino_genai/runtime/3rdparty/tbb/lib\nEnvironment=OPENVINO_INSTALL_DIR=/opt/intel/openvino_genai\nEnvironment=INTEL_OPENVINO_DIR=/opt/intel/openvino_genai' \
+    sed -i '/^\[Service\]/a Environment=OPENVINO_INSTALL_DIR=/opt/intel/openvino_genai\nEnvironment=INTEL_OPENVINO_DIR=/opt/intel/openvino_genai' \
         "$pkgdir/usr/lib/systemd/user/voxtype.service"
 
     # Install documentation
