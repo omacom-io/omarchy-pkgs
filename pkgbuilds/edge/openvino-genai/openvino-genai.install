@@ -1,5 +1,6 @@
 post_install() {
-  echo ">>> To activate OpenVINO GenAI environment variables, log out and log back in."
+  echo ">>> IMPORTANT: Log out and log back in to activate the OpenVINO GenAI environment."
+  echo ">>> This is required for voxtype and other OpenVINO programs to find the libraries."
   echo ">>> Or source it manually: source /etc/profile.d/openvino-genai.sh"
 }
 
