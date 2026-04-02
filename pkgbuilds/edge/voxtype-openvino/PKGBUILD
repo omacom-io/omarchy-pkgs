@@ -1,7 +1,7 @@
 # Maintainer: Jacob Mink
 pkgname=voxtype-openvino
 pkgver=0.6.4
-pkgrel=1
+pkgrel=2
 pkgdesc="Push-to-talk voice-to-text for Linux (OpenVINO/NPU build)"
 arch=('x86_64')
 url="https://voxtype.io"
@@ -84,8 +84,10 @@ package() {
     # Install default configuration
     install -Dm644 "$srcdir/config-$pkgver.toml" "$pkgdir/etc/voxtype/config.toml"
 
-    # Install systemd user service
+    # Install systemd user service with OpenVINO environment baked in
     install -Dm644 "$srcdir/voxtype-$pkgver.service" "$pkgdir/usr/lib/systemd/user/voxtype.service"
+    sed -i '/^\[Service\]/a Environment=LD_LIBRARY_PATH=/opt/intel/openvino_genai/runtime/lib/intel64:/opt/intel/openvino_genai/runtime/3rdparty/tbb/lib\nEnvironment=OPENVINO_INSTALL_DIR=/opt/intel/openvino_genai\nEnvironment=INTEL_OPENVINO_DIR=/opt/intel/openvino_genai' \
+        "$pkgdir/usr/lib/systemd/user/voxtype.service"
 
     # Install documentation
     install -Dm644 "$srcdir/README-$pkgver.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
