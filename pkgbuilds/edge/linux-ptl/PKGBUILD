@@ -45,6 +45,7 @@ source=(
   0018-wifi-iwlwifi-mld-correctly-set-wifi-generation-data.patch
   0019-drm-i915-psr-accept-early-transport-for-psr2.patch
   0020-drm-i915-psr-fix-su-granularity-source-for-psr2.patch
+  0022-drm-i915-psr-allow-psr-with-vrr-on-ptl.patch
 )
 source_x86_64=(config.x86_64)
 validpgpkeys=(
