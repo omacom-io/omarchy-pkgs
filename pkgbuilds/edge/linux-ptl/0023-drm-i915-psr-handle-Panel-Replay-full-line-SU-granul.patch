@@ -1,0 +1,45 @@
+From: Gaggery Tsai <gaggery.tsai@intel.com>
+Date: Thu, 10 Apr 2026 00:00:00 -0700
+Subject: [PATCH] drm/i915/psr: handle Panel Replay full-line SU granularity
+
+Panel Replay SU can report X granularity = 0xFFFF in DPCD, meaning
+"full line granularity" (DP_PANEL_REPLAY_FULL_LINE_GRANULARITY).
+
+Without this, psr2_granularity_check() fails because
+crtc_hdisplay (2880) % 65535 != 0, which prevents Panel Replay
+Selective Update from activating.
+
+Backport the drm-tip handling: when Panel Replay reports 0xFFFF
+for X granularity, substitute crtc_hdisplay so the modulo check
+passes.
+
+Tested on Dell XPS 14 OLED (Panther Lake B0, LGD 2880x1800):
+  Panel Replay SU activates and enters SLEEP state.
+
+Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
+---
+ drivers/gpu/drm/i915/display/intel_psr.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
+--- a/drivers/gpu/drm/i915/display/intel_psr.c
++++ b/drivers/gpu/drm/i915/display/intel_psr.c
+@@ -1321,9 +1321,16 @@ static bool psr2_granularity_check(struct intel_dp *intel_dp,
+ 	const int crtc_hdisplay = crtc_state->hw.adjusted_mode.crtc_hdisplay;
+ 	const int crtc_vdisplay = crtc_state->hw.adjusted_mode.crtc_vdisplay;
+ 	u16 y_granularity = 0;
++	u16 w_granularity = intel_dp->psr.su_w_granularity;
++
++	/*
++	 * Panel Replay SU can report 0xFFFF meaning full-line granularity.
++	 * Substitute crtc_hdisplay so the modulo check passes.
++	 */
++	if (w_granularity == 0xFFFF)
++		w_granularity = crtc_hdisplay;
+
+ 	/* PSR2 HW only send full lines so we only need to validate the width */
+-	if (crtc_hdisplay % intel_dp->psr.su_w_granularity)
++	if (crtc_hdisplay % w_granularity)
+ 		return false;
+
+ 	if (crtc_vdisplay % intel_dp->psr.su_y_granularity)
