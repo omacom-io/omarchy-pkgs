@@ -3,7 +3,7 @@
 pkgname=visual-studio-code-bin
 _pkgname=visual-studio-code
 pkgver=1.115.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Visual Studio Code (vscode): Editor for building and debugging modern web and cloud applications (official binary version)"
 arch=('x86_64' 'aarch64' 'armv7h')
 url="https://code.visualstudio.com/"
@@ -79,5 +79,8 @@ package() {
   cp -r "${srcdir}/$(_pkg)/"* "${pkgdir}/opt/${_pkgname}"
 
   # Launcher
-	install -m755 "${srcdir}/${_pkgname}-bin.sh" "${pkgdir}/usr/bin/code"
+  install -m755 "${srcdir}/${_pkgname}-bin.sh" "${pkgdir}/usr/bin/code"
+
+  # setuid on chrome-sandbox
+  chmod u+s "${pkgdir}/opt/${_pkgname}/chrome-sandbox"
 }
