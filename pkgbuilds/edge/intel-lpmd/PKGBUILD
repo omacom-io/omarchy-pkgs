@@ -1,15 +1,17 @@
 # Maintainer: Norbert Preining <norbert@preining.info>
 pkgname=intel-lpmd
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Intel Low Power Mode Daemon"
 arch=('x86_64')
 url="https://github.com/intel/$pkgname"
 license=('GPL-2.0-or-later')
 makedepends=('git' 'automake' 'autoconf-archive' 'gtk-doc' 'glib2-devel' 'systemd')
 depends=('libxml2-legacy' 'libnl' 'systemd-libs' 'polkit' 'upower')
-source=(git+${url}.git#tag=v${pkgver})
-sha256sums=('23f4c8588cc057c327c6b031c377b03193d62554f3b5a68284582f4e5a35c462')
+source=(git+${url}.git#tag=v${pkgver}
+        intel_lpmd_config_F6_M204.xml)
+sha256sums=('23f4c8588cc057c327c6b031c377b03193d62554f3b5a68284582f4e5a35c462'
+            '1803f9a6eb3ceb069592c5c9cd5a650aedf22a3c1a2c5dce6da80338b7cb4876')
 
 prepare() {
 	cd "$pkgname"
@@ -24,6 +26,7 @@ build() {
 package() {
 	cd "$pkgname"
 	DESTDIR="$pkgdir" make install
+	install -Dm 644 "$srcdir/intel_lpmd_config_F6_M204.xml" "$pkgdir/etc/intel_lpmd/intel_lpmd_config_F6_M204.xml"
 	install -Dm 644 -t "${pkgdir}/usr/share/doc/${pkgname}" "$srcdir/${pkgname}"/README.md
 	install -Dm 644 -t "${pkgdir}/usr/share/doc/${pkgname}" "$srcdir/${pkgname}"/doc/WLT_proxy.md
 }
