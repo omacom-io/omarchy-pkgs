@@ -48,7 +48,7 @@ for Intel Energy Optimizer (LPMD) daemon
 		 1: force on. (Always stay in Low Power Mode)
 		 0: auto. (opportunistic Low Power Mode enter/exit)
 	-->
-	<PowersaverDef>0</PowersaverDef>
+	<PowersaverDef>1</PowersaverDef>
 
 	<!--
 		Use HFI LPM hints

@@ -19,6 +19,6 @@ pkgbase = intel-lpmd
 	source = git+https://github.com/intel/intel-lpmd.git#tag=v0.1.0
 	source = intel_lpmd_config_F6_M204.xml
 	sha256sums = 23f4c8588cc057c327c6b031c377b03193d62554f3b5a68284582f4e5a35c462
-	sha256sums = 1803f9a6eb3ceb069592c5c9cd5a650aedf22a3c1a2c5dce6da80338b7cb4876
+	sha256sums = fca6e1f95985c8e2d92e104f6b129943fc1de9f98a1792888e1fa9c5f50a6867
 
 pkgname = intel-lpmd
