@@ -51,7 +51,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/dis
 @@ -605,7 +605,8 @@
  
  	intel_de_write_dsb(display, dsb,
-		   TRANS_PUSH(display, cpu_transcoder),
+			   TRANS_PUSH(display, cpu_transcoder),
 -			   TRANS_PUSH_EN | TRANS_PUSH_SEND);
 +			   TRANS_PUSH_EN | TRANS_PUSH_SEND |
 +			   (crtc_state->has_panel_replay ? LNL_TRANS_PUSH_PSR_PR_EN : 0));
