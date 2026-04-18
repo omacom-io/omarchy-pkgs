@@ -43,13 +43,13 @@ source=(
   0014-ASoC-SDCA-Limit-values-user-can-write-to-Selected-Mo.patch
   0017-ASoC-SDCA-Fix-NULL-pointer-dereference-in-sdca_jack_.patch
   0018-wifi-iwlwifi-mld-correctly-set-wifi-generation-data.patch
-  0019-drm-edid-populate-monitor-range-from-displayid-adaptive-sync.patch
   0019-drm-i915-psr-accept-early-transport-for-psr2.patch
   0020-drm-i915-psr-fix-su-granularity-source-for-psr2.patch
   0022-drm-i915-psr-allow-psr-with-vrr-on-ptl.patch
   0026-drm-i915-psr-handle-Panel-Replay-full-line-SU-granul.patch
   0027-drm-i915-trans-push-frame-change-for-panel-replay.patch
   0028-drm-i915-psr-exit-Panel-Replay-for-ALPM-lag.patch
+  0029-drm-edid-populate-monitor-range-from-displayid-adaptive-sync.patch
 )
 source_x86_64=(config.x86_64)
 validpgpkeys=(
