@@ -1,0 +1,60 @@
+From: Gaggery Tsai <gaggery.tsai@intel.com>
+Date: Thu, 10 Apr 2026 10:00:00 -0700
+Subject: [PATCH] drm/i915: send TRANS_PUSH Frame Change for Panel Replay cursor updates
+
+Panel Replay Selective Update requires a software-triggered Frame
+Change event via TRANS_PUSH to send dirty regions to the panel.
+Cursor updates (legacy_cursor_update) skip TRANS_PUSH_SEND, so the
+panel never receives cursor position changes under Panel Replay SU.
+
+Fix by sending TRANS_PUSH with LNL_TRANS_PUSH_PSR_PR_EN for cursor
+updates when Panel Replay is active.
+
+Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
+---
+diff --git a/drivers/gpu/drm/i915/display/intel_vrr_regs.h b/drivers/gpu/drm/i915/display/intel_vrr_regs.h
+--- a/drivers/gpu/drm/i915/display/intel_vrr_regs.h
++++ b/drivers/gpu/drm/i915/display/intel_vrr_regs.h
+@@ -97,6 +97,7 @@
+ #define TRANS_PUSH(display, trans)		_MMIO_TRANS2((display), (trans), _TRANS_PUSH_A)
+ #define   TRANS_PUSH_EN				REG_BIT(31)
+ #define   TRANS_PUSH_SEND			REG_BIT(30)
++#define   LNL_TRANS_PUSH_PSR_PR_EN		REG_BIT(16)
+ 
+ #define _TRANS_VRR_VSYNC_A			0x60078
+ #define TRANS_VRR_VSYNC(display, trans)		_MMIO_TRANS2((display), (trans), _TRANS_VRR_VSYNC_A)
+diff --git a/drivers/gpu/drm/i915/display/intel_crtc.c b/drivers/gpu/drm/i915/display/intel_crtc.c
+--- a/drivers/gpu/drm/i915/display/intel_crtc.c
++++ b/drivers/gpu/drm/i915/display/intel_crtc.c
+@@ -732,7 +732,8 @@
+ 	 * which would cause the next frame to terminate already at vmin
+ 	 * vblank start instead of vmax vblank start.
+ 	 */
+-	if (!state->base.legacy_cursor_update)
++	if (!state->base.legacy_cursor_update ||
++	    new_crtc_state->has_panel_replay)
+ 		intel_vrr_send_push(NULL, new_crtc_state);
+ 
+ 	local_irq_enable();
+diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/display/intel_vrr.c
+--- a/drivers/gpu/drm/i915/display/intel_vrr.c
++++ b/drivers/gpu/drm/i915/display/intel_vrr.c
+@@ -597,7 +597,7 @@
+ 	struct intel_display *display = to_intel_display(crtc_state);
+ 	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
+ 
+-	if (!crtc_state->vrr.enable)
++	if (!crtc_state->vrr.enable && !crtc_state->has_panel_replay)
+ 		return;
+ 
+ 	if (dsb)
+@@ -605,7 +605,8 @@
+ 
+ 	intel_de_write_dsb(display, dsb,
+ 			   TRANS_PUSH(display, cpu_transcoder),
+-			   TRANS_PUSH_EN | TRANS_PUSH_SEND);
++			   TRANS_PUSH_EN | TRANS_PUSH_SEND |
++			   (crtc_state->has_panel_replay ? LNL_TRANS_PUSH_PSR_PR_EN : 0));
+ 
+ 	if (dsb)
+ 		intel_dsb_nonpost_end(dsb);
