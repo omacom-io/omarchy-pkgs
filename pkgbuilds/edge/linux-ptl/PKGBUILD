@@ -42,7 +42,6 @@ source=(
   0013-ASoC-SDCA-Add-regmap-defaults-for-specification-defi.patch
   0014-ASoC-SDCA-Limit-values-user-can-write-to-Selected-Mo.patch
   0017-ASoC-SDCA-Fix-NULL-pointer-dereference-in-sdca_jack_.patch
-  0018-wifi-iwlwifi-mld-correctly-set-wifi-generation-data.patch
   0019-drm-i915-psr-accept-early-transport-for-psr2.patch
   0020-drm-i915-psr-fix-su-granularity-source-for-psr2.patch
   0022-drm-i915-psr-allow-psr-with-vrr-on-ptl.patch
@@ -63,7 +62,7 @@ b2sums=('d016cebe33cfd8f43798d52f90c94b81cc61a0914ac3ac663c399cdde2ebf024331c84d
         'SKIP'
         'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
         'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-        'SKIP' 'SKIP' 'SKIP' 'SKIP')
+        'SKIP' 'SKIP' 'SKIP')
 b2sums_x86_64=('9742088ab0381d8196046e42e8acb4ce01ea77461fada77dc90d197e859631e73b06ead4d512f15ab619b33ebad7bca58a10d4506d66916a99c40f9f52708a53')
 
 # https://www.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc
@@ -73,7 +72,7 @@ sha256sums=('ce5c4f1205f9729286b569b037649591555f31ca1e03cc504bd3b70b8e58a8d5'
             'SKIP'
             'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
             'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-            'SKIP' 'SKIP' 'SKIP' 'SKIP')
+            'SKIP' 'SKIP' 'SKIP')
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
