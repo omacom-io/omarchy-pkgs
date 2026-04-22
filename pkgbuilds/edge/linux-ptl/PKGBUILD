@@ -2,8 +2,8 @@
 # Based on Arch Linux linux package by Jan Alexander Steffens (heftig)
 
 pkgbase=linux-ptl
-pkgver=6.19.10.arch1
-pkgrel=3
+pkgver=6.19.12.arch1
+pkgrel=1
 pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, WiFi 7, PSR2, Panel Replay SU)'
 url='https://github.com/archlinux/linux'
 arch=(
@@ -57,9 +57,9 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
   83BC8889351B5DEBBB68416EB8AC08600F108CDF  # Jan Alexander Steffens (heftig)
 )
-b2sums=('f91cdd0b8727ce50ba286b321e85f394ff7e2eff27cde6e6e85e8abfc627b2b069bb5679d890dd33384123c866dc3c1325ad83953a4d08d4db669150cd88cccd'
+b2sums=('d016cebe33cfd8f43798d52f90c94b81cc61a0914ac3ac663c399cdde2ebf024331c84da53813a0d09c1c21419b8a36e97eec092adc1888624625897dc976228'
         'SKIP'
-        '9632ace64efb38ee784d731ea85aeb285f0c3db486112122c17059c359c490a54c6ef7cd9d1d1cdecc8ae1d43df94536890b83a6671c1166a6b2148308f1baf3'
+        '8a84b338e199c9f89fc15bfa34775d717dbd46166341e4c217b4d08bb2f477f5cf76675353cb73a9b758b6493806b5579ceecb300078806abe024a7f63bcb452'
         'SKIP'
         'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
         'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
@@ -67,9 +67,9 @@ b2sums=('f91cdd0b8727ce50ba286b321e85f394ff7e2eff27cde6e6e85e8abfc627b2b069bb567
 b2sums_x86_64=('9742088ab0381d8196046e42e8acb4ce01ea77461fada77dc90d197e859631e73b06ead4d512f15ab619b33ebad7bca58a10d4506d66916a99c40f9f52708a53')
 
 # https://www.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc
-sha256sums=('466d441a0ea5e04b7023618b7b201bfd60effab225f806fd41ce663484395a1c'
+sha256sums=('ce5c4f1205f9729286b569b037649591555f31ca1e03cc504bd3b70b8e58a8d5'
             'SKIP'
-            '96410b474e9b3efc2e03e5bb8e3819f41313e943f2157c215094668200cb069d'
+            '339358b19fd725eb83c72a7fe4894dc444f9243aed431965153c43350ff12b62'
             'SKIP'
             'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
             'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
