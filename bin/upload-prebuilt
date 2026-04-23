@@ -1,0 +1,11 @@
+#!/bin/bash
+# Upload prebuilt packages: sign → promote → update → sync
+
+set -e
+
+SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
+
+"$SCRIPT_DIR/repo" sign "$@"
+"$SCRIPT_DIR/repo" promote "$@"
+"$SCRIPT_DIR/repo" update "$@"
+"$SCRIPT_DIR/repo" sync "$@"
