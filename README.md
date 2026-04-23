@@ -35,7 +35,7 @@ Promote packages from edge build, then sync stable:
 
 ```
 bin/repo migrate
-bin/repo sync --mirror=stable
+bin/repo sync --mirror stable
 ```
 
 ### Complete Workflow
