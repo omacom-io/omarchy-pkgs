@@ -58,7 +58,6 @@ source=(
     "LICENSE-$pkgver::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/LICENSE"
     "README-$pkgver.md::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/README.md"
 )
-validpgpkeys=('7DA2709247D75BC6')
 sha256sums=(
     # Whisper binaries
     '505933791bb9389ef851813c404eefe63b186eba3aa842b2b321a164ecb8a6db'  # voxtype-avx2

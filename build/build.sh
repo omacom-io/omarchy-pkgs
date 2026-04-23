@@ -156,7 +156,14 @@ build_package() {
     echo "    New package (version: $pkgbuild_version)"
   fi
 
-  # Import package-specific PGP keys if they exist
+  # Import PGP keys from PKGBUILD validpgpkeys and keys/pgp/ directory
+  local pgp_keys=$(bash -c 'source PKGBUILD 2>/dev/null; echo "${validpgpkeys[@]}"')
+  if [[ -n "$pgp_keys" ]]; then
+    echo "    Importing PGP keys from validpgpkeys..."
+    for key in $pgp_keys; do
+      gpg --receive-keys "$key" 2>/dev/null && echo "      Received $key" || echo "      Failed to receive $key"
+    done
+  fi
   if [[ -d "keys/pgp" ]]; then
     echo "    Importing package-specific PGP keys..."
     for keyfile in keys/pgp/*.asc; do
