@@ -1,3 +1,9 @@
+-- Neovide handles background rendering differently; skip transparency overrides
+-- to avoid forcing a black background
+if vim.g.neovide then
+	return
+end
+
 -- Make highlight groups transparent while preserving their other attributes
 local function make_transparent(name)
 	local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = name, link = false })
