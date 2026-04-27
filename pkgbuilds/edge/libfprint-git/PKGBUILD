@@ -1,0 +1,87 @@
+# Maintainer: Mikko Nyman <mikko@nyman.xyz>
+# Based on the Arch libfprint package by Jan Alexander Steffens (heftig).
+#
+# Tracks libfprint master to expose the focaltech_moc driver for ASUS
+# laptops with FocalTech MOC (Match-on-Chip) fingerprint sensors. The
+# driver is in master under LGPL but mainline libfprint releases (1.94.x)
+# do not yet ship it. Carries one extra patch adding USB ID 2808:a97a
+# (FocalTech FT9349 ESS, ASUS ExpertBook Ultra B9406CAA) to the driver's
+# id_table[]; the upstream MR is in flight.
+#
+# Once the patch lands and Arch's libfprint catches up, this package can
+# be removed from the OPR repo and Omarchy can install stock libfprint.
+
+pkgname=libfprint-git
+pkgver=1.94.10.r12.gd79f157
+pkgrel=1
+pkgdesc="Library for fingerprint readers (libfprint master with FocalTech FT9349 PID 0xa97a patch)"
+url="https://fprint.freedesktop.org/"
+arch=(x86_64)
+license=(LGPL-2.1-or-later)
+depends=(
+  gcc-libs
+  glib2
+  glibc
+  libgudev
+  libgusb
+  openssl
+  pixman
+)
+makedepends=(
+  git
+  glib2-devel
+  gobject-introspection
+  gtk-doc
+  meson
+  python-cairo
+  python-gobject
+  systemd
+)
+checkdepends=(
+  cairo
+  umockdev
+)
+provides=(libfprint libfprint-2.so)
+conflicts=(libfprint)
+groups=(fprint)
+source=(
+  "git+https://gitlab.freedesktop.org/libfprint/libfprint.git"
+  "focaltech_moc-add-pid-0xA97A.patch"
+)
+b2sums=(
+  'SKIP'
+  'SKIP'
+)
+
+pkgver() {
+  cd libfprint
+  ( set -o pipefail
+    git describe --long --tags --abbrev=7 2>/dev/null \
+      | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' \
+      || printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+  )
+}
+
+prepare() {
+  cd libfprint
+  patch -p1 < "$srcdir/focaltech_moc-add-pid-0xA97A.patch"
+}
+
+build() {
+  local meson_options=(
+    -D drivers=all
+    -D installed-tests=false
+  )
+  arch-meson libfprint build "${meson_options[@]}"
+  meson compile -C build
+}
+
+check() {
+  meson test -C build --print-errorlogs
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+}
+
+# vim:set sw=2 sts=-1 et:
