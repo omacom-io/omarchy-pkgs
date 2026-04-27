@@ -18,7 +18,7 @@ index 8bd93e4..23dac16 100644
 +  { .vid = 0x2808,  .pid = 0xA97A,  },
    { .vid = 0,  .pid = 0,  .driver_data = 0 },   /* terminating entry */
  };
- 
--- 
+
+--
 2.54.0
 

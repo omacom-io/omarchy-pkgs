@@ -74,6 +74,9 @@ build() {
   )
   arch-meson libfprint build "${meson_options[@]}"
   meson compile -C build
+  # Regenerate autosuspend.hwdb from the patched id_table[] so the
+  # udev-hwdb test in check() doesn't fail on the new PID 0xA97A.
+  ninja -C build sync-udev-hwdb
 }
 
 check() {
