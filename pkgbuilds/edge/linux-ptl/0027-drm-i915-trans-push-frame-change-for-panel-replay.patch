@@ -1,32 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gaggery Tsai <gaggery.tsai@intel.com>
 Date: Thu, 10 Apr 2026 10:00:00 -0700
-Subject: [PATCH] drm/i915: send TRANS_PUSH Frame Change for Panel Replay cursor updates
+Subject: [PATCH] drm/i915: send TRANS_PUSH Frame Change for Panel Replay updates
 
-Panel Replay Selective Update requires a software-triggered Frame
-Change event via TRANS_PUSH to send dirty regions to the panel.
-Cursor updates (legacy_cursor_update) skip TRANS_PUSH_SEND, so the
-panel never receives cursor position changes under Panel Replay SU.
+Panel Replay Selective Update requires a software-triggered Frame Change
+event via TRANS_PUSH to send dirty regions to the panel. Cursor updates
+skip the normal TRANS_PUSH_SEND path, so the panel may not receive cursor
+position changes under Panel Replay SU.
 
-Fix by sending TRANS_PUSH with LNL_TRANS_PUSH_PSR_PR_EN for cursor
-updates when Panel Replay is active.
+Send TRANS_PUSH with the Panel Replay bit when Panel Replay is active,
+including legacy cursor updates.
 
 Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
 ---
-diff --git a/drivers/gpu/drm/i915/display/intel_vrr_regs.h b/drivers/gpu/drm/i915/display/intel_vrr_regs.h
---- a/drivers/gpu/drm/i915/display/intel_vrr_regs.h
-+++ b/drivers/gpu/drm/i915/display/intel_vrr_regs.h
-@@ -97,6 +97,7 @@
- #define TRANS_PUSH(display, trans)		_MMIO_TRANS2((display), (trans), _TRANS_PUSH_A)
- #define   TRANS_PUSH_EN				REG_BIT(31)
- #define   TRANS_PUSH_SEND			REG_BIT(30)
-+#define   LNL_TRANS_PUSH_PSR_PR_EN		REG_BIT(16)
- 
- #define _TRANS_VRR_VSYNC_A			0x60078
- #define TRANS_VRR_VSYNC(display, trans)		_MMIO_TRANS2((display), (trans), _TRANS_VRR_VSYNC_A)
+ drivers/gpu/drm/i915/display/intel_crtc.c     | 3 ++-
+ drivers/gpu/drm/i915/display/intel_vrr.c      | 5 +++--
+ drivers/gpu/drm/i915/display/intel_vrr_regs.h | 1 +
+ 3 files changed, 6 insertions(+), 3 deletions(-)
+
 diff --git a/drivers/gpu/drm/i915/display/intel_crtc.c b/drivers/gpu/drm/i915/display/intel_crtc.c
 --- a/drivers/gpu/drm/i915/display/intel_crtc.c
 +++ b/drivers/gpu/drm/i915/display/intel_crtc.c
-@@ -732,7 +732,8 @@
+@@ -747,7 +747,8 @@ void intel_pipe_update_end(struct intel_atomic_state *state,
+ 	 * push to affect the next frame instead of the current frame,
  	 * which would cause the next frame to terminate already at vmin
  	 * vblank start instead of vmax vblank start.
  	 */
@@ -39,7 +35,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_crtc.c b/drivers/gpu/drm/i915/di
 diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/display/intel_vrr.c
 --- a/drivers/gpu/drm/i915/display/intel_vrr.c
 +++ b/drivers/gpu/drm/i915/display/intel_vrr.c
-@@ -597,7 +597,7 @@
+@@ -597,7 +597,7 @@ void intel_vrr_send_push(struct intel_dsb *dsb,
  	struct intel_display *display = to_intel_display(crtc_state);
  	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
  
@@ -48,13 +44,24 @@ diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/dis
  		return;
  
  	if (dsb)
-@@ -605,7 +605,8 @@
+@@ -605,7 +605,8 @@ void intel_vrr_send_push(struct intel_dsb *dsb,
  
  	intel_de_write_dsb(display, dsb,
-			   TRANS_PUSH(display, cpu_transcoder),
+ 			   TRANS_PUSH(display, cpu_transcoder),
 -			   TRANS_PUSH_EN | TRANS_PUSH_SEND);
 +			   TRANS_PUSH_EN | TRANS_PUSH_SEND |
 +			   (crtc_state->has_panel_replay ? LNL_TRANS_PUSH_PSR_PR_EN : 0));
  
  	if (dsb)
  		intel_dsb_nonpost_end(dsb);
+diff --git a/drivers/gpu/drm/i915/display/intel_vrr_regs.h b/drivers/gpu/drm/i915/display/intel_vrr_regs.h
+--- a/drivers/gpu/drm/i915/display/intel_vrr_regs.h
++++ b/drivers/gpu/drm/i915/display/intel_vrr_regs.h
+@@ -163,6 +163,7 @@
+ #define TRANS_PUSH(display, trans)		_MMIO_TRANS2((display), (trans), _TRANS_PUSH_A)
+ #define   TRANS_PUSH_EN				REG_BIT(31)
+ #define   TRANS_PUSH_SEND			REG_BIT(30)
++#define   LNL_TRANS_PUSH_PSR_PR_EN		REG_BIT(16)
+ 
+ #define _TRANS_VRR_VSYNC_A			0x60078
+ #define TRANS_VRR_VSYNC(display, trans)		_MMIO_TRANS2((display), (trans), _TRANS_VRR_VSYNC_A)

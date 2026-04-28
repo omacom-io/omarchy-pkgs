@@ -2,9 +2,9 @@
 # Based on Arch Linux linux package by Jan Alexander Steffens (heftig)
 
 pkgbase=linux-ptl
-pkgver=6.19.14.arch1
+pkgver=7.0.2.arch1
 pkgrel=1
-pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, WiFi 7, PSR2, Panel Replay SU)'
+pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, PSR2, Panel Replay SU)'
 url='https://github.com/archlinux/linux'
 arch=(
   x86_64
@@ -30,21 +30,10 @@ _srctag=v${pkgver%.*}-${pkgver##*.}
 source=(
   https://cdn.kernel.org/pub/linux/kernel/v${pkgver%%.*}.x/${_srcname}.tar.{xz,sign}
   $url/releases/download/$_srctag/linux-$_srctag.patch.zst{,.sig}
-  0001-ASoC-SDCA-functions-Fix-confusing-cleanup.h-syntax.patch
-  0003-ASoC-SDCA-Replace-use-of-system_wq-with-system_dfl_w.patch
-  0004-ASoC-SDCA-Add-SDCA-IRQ-enable-disable-helpers.patch
-  0005-ASoC-SDCA-Add-basic-system-suspend-support.patch
-  0007-ASoC-SDCA-Add-lock-to-serialise-the-Function-initial.patch
-  0008-ASoC-SDCA-Tidy-up-some-memory-allocations.patch
-  0010-ASoC-SDCA-Add-NO_DIRECT_COMPLETE-flag-to-class-drive.patch
-  0012-ASoC-SDCA-Rearrange-FDL-file-messages.patch
-  0013-ASoC-SDCA-Add-regmap-defaults-for-specification-defi.patch
-  0014-ASoC-SDCA-Limit-values-user-can-write-to-Selected-Mo.patch
   0017-ASoC-SDCA-Fix-NULL-pointer-dereference-in-sdca_jack_.patch
   0019-drm-i915-psr-accept-early-transport-for-psr2.patch
-  0020-drm-i915-psr-fix-su-granularity-source-for-psr2.patch
+  0020-drm-i915-alpm-limit-pr-alpm-to-panel-replay.patch
   0022-drm-i915-psr-allow-psr-with-vrr-on-ptl.patch
-  0026-drm-i915-psr-handle-Panel-Replay-full-line-SU-granul.patch
   0027-drm-i915-trans-push-frame-change-for-panel-replay.patch
   0028-drm-i915-psr-exit-Panel-Replay-for-ALPM-lag.patch
   0029-drm-edid-populate-monitor-range-from-displayid-adaptive-sync.patch
@@ -55,23 +44,19 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
   83BC8889351B5DEBBB68416EB8AC08600F108CDF  # Jan Alexander Steffens (heftig)
 )
-b2sums=('64c2a0003d8080f268772d36923ff6ef8b2d55320ea08b77ad39384c98c9a5c1a8e71425470619aa3aa4dda8941f46aa9da364748cfa8fd9f8507a5ddd7ac03a'
+b2sums=('SKIP'
         'SKIP'
-        '6536f9ccb408f89b0a6dc86fdbb09f4229e9e4ea5ed210d118484a18ca8a82a1e1060114877ce7286b721d59587a8a70b5ed4616c4ec4925b0bdf5b25227e6fe'
         'SKIP'
-        'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-        'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-        'SKIP' 'SKIP')
+        'SKIP'
+        'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 b2sums_x86_64=('9742088ab0381d8196046e42e8acb4ce01ea77461fada77dc90d197e859631e73b06ead4d512f15ab619b33ebad7bca58a10d4506d66916a99c40f9f52708a53')
 
-# https://www.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc
-sha256sums=('cde8bf6739be4a0777fedbbba5330b8188c55680c45a922a4dfa289cbec6f185'
+# https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
+sha256sums=('53591a03294527a48ccb0b9e559e922df8a38554745a1206827ca751d2ca7662'
             'SKIP'
-            '2ae741a9e5009d21e1bbbb7a9abeebcc39ec5cdb7cf4cdf52d616a57d262de96'
             'SKIP'
-            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-            'SKIP' 'SKIP')
+            'SKIP'
+            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
