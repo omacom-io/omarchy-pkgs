@@ -2,7 +2,7 @@
 
 pkgname=intel-ipu7-camera
 pkgver=1.0.3
-pkgrel=1
+pkgrel=2
 pkgdesc="Intel IPU7 MIPI camera stack for Hurrican/Performance (OV08X40 + hardware ISP)"
 arch=('x86_64')
 url="https://github.com/TsaiGaggery/hurrican_omarchy_enabling"
@@ -49,6 +49,7 @@ source=(
   "camera-deps.conf"
   "v4l2loopback-modprobe.conf"
   "camera-init.service"
+  "intel-ipu7-camera.service"
   "hide-ipu7-v4l2.conf"
   "disable-libcamera.conf"
   "71-ipu7-hide-isys.rules"
@@ -63,7 +64,7 @@ sha256sums=(
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
   'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-  'SKIP' 'SKIP'
+  'SKIP' 'SKIP' 'SKIP'
 )
 
 prepare() {
@@ -198,6 +199,8 @@ package() {
   # systemd
   install -Dm644 "${srcdir}/camera-init.service" \
     "${pkgdir}/usr/lib/systemd/system/camera-init.service"
+  install -Dm644 "${srcdir}/intel-ipu7-camera.service" \
+    "${pkgdir}/usr/lib/systemd/system/intel-ipu7-camera.service"
 
   # WirePlumber
   install -Dm644 "${srcdir}/hide-ipu7-v4l2.conf" \

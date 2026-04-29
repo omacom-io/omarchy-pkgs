@@ -22,8 +22,8 @@ _install_sleep_hook() {
 post_install() {
     _install_sleep_hook
     systemctl daemon-reload
-    systemctl enable camera-init.service
-    systemctl enable v4l2-relayd@ipu7.service
+    systemctl disable camera-init.service v4l2-relayd@ipu7.service 2>/dev/null || true
+    systemctl enable intel-ipu7-camera.service
     udevadm control --reload-rules 2>/dev/null || true
 
     if [ -n "$SUDO_USER" ]; then
@@ -38,7 +38,8 @@ post_install() {
 post_upgrade() {
     _install_sleep_hook
     systemctl daemon-reload
-    systemctl enable v4l2-relayd@ipu7.service
+    systemctl disable camera-init.service v4l2-relayd@ipu7.service 2>/dev/null || true
+    systemctl enable intel-ipu7-camera.service
     # Disable old camera-feed-watch (replaced by v4l2-relayd)
     systemctl --global disable camera-feed-watch.service 2>/dev/null || true
     udevadm control --reload-rules 2>/dev/null || true
@@ -53,6 +54,7 @@ post_upgrade() {
 pre_remove() {
     systemctl disable v4l2-relayd@ipu7.service 2>/dev/null || true
     systemctl stop v4l2-relayd@ipu7.service 2>/dev/null || true
+    systemctl disable intel-ipu7-camera.service 2>/dev/null || true
     systemctl --global disable camera-feed-watch.service 2>/dev/null || true
     systemctl disable camera-init.service 2>/dev/null || true
     systemctl stop camera-init.service 2>/dev/null || true
