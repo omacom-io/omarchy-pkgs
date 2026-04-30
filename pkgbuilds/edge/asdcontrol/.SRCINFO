@@ -1,5 +1,6 @@
 pkgbase = asdcontrol
 	pkgdesc = Control brightness on Apple Displays connected via USB-C
+	epoch = 1
 	pkgver = 0.6.0
 	pkgrel = 1
 	url = https://github.com/omakasui/asdcontrol

@@ -1,5 +1,6 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=asdcontrol
+epoch=1
 pkgver=0.6.0
 pkgrel=1
 pkgdesc="Control brightness on Apple Displays connected via USB-C"
