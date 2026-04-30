@@ -2,7 +2,7 @@
 
 pkgname=cursor-bin
 pkgver=3.2.16
-pkgrel=1
+pkgrel=2
 pkgdesc='AI-first coding environment'
 arch=('x86_64')
 url="https://www.cursor.com"
@@ -28,6 +28,8 @@ package() {
   bsdtar -xOf ${noextract[0]} data.tar.xz | tar -xJf - -C "$pkgdir" \
     --exclude 'usr/share/cursor/[^r]*' --exclude 'usr/share/cursor/*.pak'
   cd "$pkgdir"
+  # Updates are handled by pacman, not Cursor's bundled updater.
+  sed -i '/^[[:space:]]*"\(backupUpdateUrl\|updateUrl\)":/d' "${_app}/product.json"
   mv usr/share/zsh/{vendor-completions,site-functions}
   ln -sf /usr/bin/node ${_app}/resources/helpers/node
   install -Dm755 "${srcdir}/rg.sh" ${_app}/node_modules/@vscode/ripgrep/bin/rg
