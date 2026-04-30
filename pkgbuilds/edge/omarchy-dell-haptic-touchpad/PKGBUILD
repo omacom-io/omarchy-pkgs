@@ -1,8 +1,8 @@
-# Maintainer: Jacob Vincent-Mink <jacob@vincent-mink.com>
+# Maintainer: Jacob Mink <Jacob[dot]Mink[at]Dell[dot]com>
 
 pkgname=omarchy-dell-haptic-touchpad
 pkgver=0.2.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Configurable Dell XPS haptic touchpad override for Omarchy"
 arch=('any')
 url="https://github.com/jacob-vincent-mink/omarchy-dell-haptic-touchpad"
@@ -11,16 +11,14 @@ depends=('python' 'sudo')
 install=omarchy-dell-haptic-touchpad.install
 options=('!debug')
 source=(
-  'LICENSE'
   'omarchy-haptic-touchpad-user'
   'omarchy-update-dell-haptic.sh'
   'omarchy-dell-haptic-touchpad.install'
   'README.package.md'
 )
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
-  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm755 omarchy-haptic-touchpad-user "${pkgdir}/usr/bin/omarchy-haptic-touchpad-user"
   install -Dm755 omarchy-update-dell-haptic.sh "${pkgdir}/usr/bin/omarchy-update-dell-haptic.sh"
   install -Dm644 README.package.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
