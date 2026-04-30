@@ -1,0 +1,5 @@
+[voxtype-openvino]
+source = "github"
+github = "jacob-vincent-mink/voxtype"
+use_latest_release = true
+prefix = "v"

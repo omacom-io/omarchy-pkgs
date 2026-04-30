@@ -1,0 +1,102 @@
+# Maintainer: Jacob Mink
+pkgname=voxtype-openvino
+pkgver=0.6.4
+pkgrel=2
+pkgdesc="Push-to-talk voice-to-text for Linux (OpenVINO/NPU build)"
+arch=('x86_64')
+url="https://voxtype.io"
+license=('MIT')
+depends=(
+    'alsa-lib'
+    'curl'
+    'gcc-libs'
+    'glibc'
+    'intel-npu-driver'
+    'openvino-genai'
+)
+makedepends=(
+    'git'
+    'cargo'
+    'rust'
+    'cmake'
+    'clang'
+)
+optdepends=(
+    'wtype: keyboard simulation for Wayland (recommended, best CJK support)'
+    'dotool: keyboard simulation with layout support (KDE/GNOME compatible)'
+    'ydotool: keyboard simulation fallback (X11/TTY support)'
+    'wl-clipboard: clipboard support'
+    'libnotify: desktop notifications'
+    'pipewire: audio server (recommended)'
+    'pipewire-alsa: ALSA compatibility for PipeWire (required if using PipeWire)'
+    'pulseaudio: audio server (alternative to PipeWire)'
+    'ollama: local AI summarization for meeting mode'
+)
+provides=('voxtype')
+conflicts=('voxtype' 'voxtype-bin')
+backup=('etc/voxtype/config.toml')
+install=voxtype-openvino.install
+source=(
+    "voxtype::git+https://github.com/jacob-vincent-mink/voxtype.git#branch=feature/intel-npu"
+    "openvino-rs::git+https://github.com/jacob-vincent-mink/openvino-rs.git#branch=feature/genai"
+    "config-$pkgver.toml::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/config/default.toml"
+    "voxtype-$pkgver.service::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/systemd/voxtype.service"
+    "voxtype-$pkgver.bash::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/completions/voxtype.bash"
+    "voxtype-$pkgver.zsh::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/completions/voxtype.zsh"
+    "voxtype-$pkgver.fish::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/completions/voxtype.fish"
+    "LICENSE-$pkgver::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/LICENSE"
+    "README-$pkgver.md::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/README.md"
+)
+sha256sums=(
+    'SKIP'  # voxtype git
+    'SKIP'  # openvino-rs git
+    'SKIP'  # config.toml
+    'SKIP'  # voxtype.service
+    'SKIP'  # voxtype.bash
+    'SKIP'  # voxtype.zsh
+    'SKIP'  # voxtype.fish
+    'SKIP'  # LICENSE
+    'SKIP'  # README.md
+)
+
+build() {
+    # openvino-rs must be a sibling of voxtype for path dependencies
+    cd "$srcdir/voxtype"
+
+    # Arch's makepkg.conf sets -flto in CFLAGS which makes GCC emit GIMPLE IR
+    # in object files. rust-lld can't read GIMPLE, causing undefined symbols
+    # from ring and sqlite3. Adding -ffat-lto-objects makes GCC emit both
+    # GIMPLE and real object code so rust-lld can link them.
+    export CFLAGS="${CFLAGS} -ffat-lto-objects"
+    export CXXFLAGS="${CXXFLAGS} -ffat-lto-objects"
+
+    cargo build --release --features openvino-whisper
+}
+
+package() {
+    # Install the OpenVINO binary to /usr/lib/voxtype/
+    install -Dm755 "$srcdir/voxtype/target/release/voxtype" "$pkgdir/usr/lib/voxtype/voxtype-openvino"
+
+    # Create symlink (updated in .install file)
+    mkdir -p "$pkgdir/usr/bin"
+    ln -sf /usr/lib/voxtype/voxtype-openvino "$pkgdir/usr/bin/voxtype"
+
+    # Install default configuration
+    install -Dm644 "$srcdir/config-$pkgver.toml" "$pkgdir/etc/voxtype/config.toml"
+
+    # Install systemd user service with OpenVINO environment baked in
+    install -Dm644 "$srcdir/voxtype-$pkgver.service" "$pkgdir/usr/lib/systemd/user/voxtype.service"
+    sed -i '/^\[Service\]/a Environment=OPENVINO_INSTALL_DIR=/opt/intel/openvino_genai\nEnvironment=INTEL_OPENVINO_DIR=/opt/intel/openvino_genai' \
+        "$pkgdir/usr/lib/systemd/user/voxtype.service"
+
+    # Install documentation
+    install -Dm644 "$srcdir/README-$pkgver.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+    # Install license
+    install -Dm644 "$srcdir/LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    # Install shell completions
+    install -Dm644 "$srcdir/voxtype-$pkgver.bash" "$pkgdir/usr/share/bash-completion/completions/voxtype"
+    install -Dm644 "$srcdir/voxtype-$pkgver.zsh" "$pkgdir/usr/share/zsh/site-functions/_voxtype"
+    install -Dm644 "$srcdir/voxtype-$pkgver.fish" "$pkgdir/usr/share/fish/vendor_completions.d/voxtype.fish"
+}

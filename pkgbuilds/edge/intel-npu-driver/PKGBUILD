@@ -1,0 +1,78 @@
+# Maintainer: Omarchy <packages@omarchy.org>
+# Contributor: Melvin Redondo-Tanis <melvin@redondotanis.com>
+
+pkgname=intel-npu-driver
+pkgver=1.30.0.20260311_22963593310
+pkgrel=4
+_main_ver=$(echo $pkgver | cut -d'.' -f1-3)
+pkgdesc="Intel(R) NPU (Neural Processing Unit) Driver with Arch Linux library paths and module autoloading"
+arch=('x86_64')
+url="https://github.com/intel/linux-npu-driver"
+license=('MIT')
+depends=('glibc' 'gcc-libs' 'openssl' 'onetbb' 'level-zero-loader' 'intel-compute-runtime' 'ocl-icd')
+makedepends=('chrpath')
+optdepends=('level-zero-headers')
+provides=('intel-npu-driver-bin' 'intel-driver-compiler-npu' 'intel-fw-npu' 'intel-level-zero-npu')
+conflicts=('intel-npu-driver-bin')
+install=intel-npu-driver.install
+source=(
+  "linux-npu-driver-v${pkgver//_/-}-ubuntu2404.tar.gz::https://github.com/intel/linux-npu-driver/releases/download/v${_main_ver}/linux-npu-driver-v${pkgver//_/-}-ubuntu2404.tar.gz"
+  "LICENSE.md::https://raw.githubusercontent.com/intel/linux-npu-driver/main/LICENSE.md"
+)
+sha256sums=(
+  'f1a948c9345d9c6518110d67e115f1429ec955b23766a31a95c8adef5cfd939a'
+  '451963b6682694730dbe4889fff2ef1c20def68992e2594880c15a28e6c87be5'
+)
+
+prepare() {
+  cd "$srcdir"
+  bsdtar -xf "linux-npu-driver-v${pkgver//_/-}-ubuntu2404.tar.gz"
+
+  mkdir -p intel-driver-compiler-npu intel-fw-npu intel-level-zero-npu
+
+  local _base="${pkgver//_/-}"
+  local _deb_suffix="ubuntu24.04_amd64"
+
+  bsdtar -xf "intel-driver-compiler-npu_${_base}~${_deb_suffix}.deb" -C intel-driver-compiler-npu
+  bsdtar -xf "intel-fw-npu_${_base}~${_deb_suffix}.deb" -C intel-fw-npu
+  chmod 755 -R intel-fw-npu
+  bsdtar -xf "intel-level-zero-npu_${_base}~${_deb_suffix}.deb" -C intel-level-zero-npu
+}
+
+package() {
+  cd "$srcdir"
+
+  # Install firmware
+  bsdtar -xf intel-fw-npu/data.tar.gz -C "${pkgdir}/"
+  mv "${pkgdir}/lib" "${pkgdir}/usr/"
+
+  # Install driver compiler and level-zero NPU plugin
+  bsdtar -xf intel-driver-compiler-npu/data.tar.gz -C "${pkgdir}/"
+  bsdtar -xf intel-level-zero-npu/data.tar.gz -C "${pkgdir}/"
+
+  # Fix rpath on compiler library
+  chrpath --delete "$pkgdir/usr/lib/${CARCH}-linux-gnu/libnpu_driver_compiler.so"
+
+  # Create symlinks from Ubuntu multiarch path to standard Arch path
+  local _ubuntu_libdir="${pkgdir}/usr/lib/${CARCH}-linux-gnu"
+  if [[ -d "$_ubuntu_libdir" ]]; then
+    for lib in "$_ubuntu_libdir"/*.so*; do
+      ln -sf "${CARCH}-linux-gnu/$(basename "$lib")" "${pkgdir}/usr/lib/$(basename "$lib")"
+    done
+  fi
+
+  # License
+  install -Dm644 LICENSE.md "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.md"
+
+  # udev rule for NPU device access
+  install -dm755 "${pkgdir}/usr/lib/udev/rules.d"
+  echo 'SUBSYSTEM=="accel", KERNEL=="accel*", GROUP="render", MODE="0660", TAG+="uaccess"' \
+    > "${pkgdir}/usr/lib/udev/rules.d/99-intel-npu.rules"
+
+  # Auto-load intel_vpu kernel module at boot
+  install -dm755 "${pkgdir}/usr/lib/modules-load.d"
+  echo "intel_vpu" > "${pkgdir}/usr/lib/modules-load.d/intel-npu.conf"
+
+  # Ensure firmware is world-readable
+  chmod -R a+r "${pkgdir}/usr/lib/firmware/updates/intel/vpu"
+}

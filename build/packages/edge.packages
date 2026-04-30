@@ -42,6 +42,8 @@ linux-mainline-panther-lake
 
 # Drivers
 intel-lpmd
+intel-npu-driver
+openvino-genai
 v4l2-relayd
 nvidia-580xx-utils
 lib32-nvidia-580xx-utils
