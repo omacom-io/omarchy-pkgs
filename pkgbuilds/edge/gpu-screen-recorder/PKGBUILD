@@ -2,7 +2,7 @@
 
 pkgname=gpu-screen-recorder
 pkgver=5.12.3
-pkgrel=1
+pkgrel=2
 pkgdesc='A shadowplay-like screen recorder for Linux. The fastest screen recorder for Linux'
 arch=('x86_64')
 url="https://git.dec05eba.com/gpu-screen-recorder"
@@ -43,7 +43,7 @@ install="${pkgname}.install" # setcap cap_sys_admin (gsr-kms-server)
 
 build() {
   cd "$srcdir"
-  arch-meson build -Dsystemd=true --buildtype=release -Dstrip=true
+  arch-meson build -Dsystemd=true -Dnvidia_suspend_fix=false --buildtype=release -Dstrip=true
   meson compile -C build
 }
 
