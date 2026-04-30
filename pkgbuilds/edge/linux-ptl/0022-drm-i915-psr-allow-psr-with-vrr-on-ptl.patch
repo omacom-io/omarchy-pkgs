@@ -21,7 +21,7 @@ Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
 diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
 --- a/drivers/gpu/drm/i915/display/intel_psr.c
 +++ b/drivers/gpu/drm/i915/display/intel_psr.c
-@@ -1712,12 +1712,6 @@ static bool _psr_compute_config(struct intel_dp *intel_dp,
+@@ -1708,13 +1708,7 @@ static bool _psr_compute_config(struct intel_dp *intel_dp,
  	if (!CAN_PSR(intel_dp) || !display->params.enable_psr)
  		return false;
 
@@ -31,6 +31,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/dis
 -	if (crtc_state->vrr.enable)
 -		return false;
 -
- 	entry_setup_frames = intel_psr_entry_setup_frames(intel_dp, adjusted_mode);
+ 	entry_setup_frames = intel_psr_entry_setup_frames(intel_dp, conn_state, adjusted_mode);
+
  	if (entry_setup_frames >= 0) {
- 		intel_dp->psr.entry_setup_frames = entry_setup_frames;
+		crtc_state->entry_setup_frames = entry_setup_frames;

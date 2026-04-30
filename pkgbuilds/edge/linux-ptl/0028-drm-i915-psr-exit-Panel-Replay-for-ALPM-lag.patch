@@ -61,19 +61,19 @@ Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
  		     enum fb_op_origin origin);
 --- a/drivers/gpu/drm/i915/display/intel_psr.c
 +++ b/drivers/gpu/drm/i915/display/intel_psr.c
-@@ -1217,6 +1217,8 @@ static void tgl_psr2_enable_dc3co(struct intel_dp *intel_dp)
+@@ -1189,6 +1189,8 @@ static void tgl_psr2_disable_dc3co(struct intel_dp *intel_dp)
+ 	intel_display_power_set_target_dc_state(display, DC_STATE_EN_UPTO_DC6);
  	psr2_program_idle_frames(intel_dp, psr_compute_idle_frames(intel_dp));
  }
-
-+static void intel_psr_activate(struct intel_dp *intel_dp);
 +
++static void intel_psr_activate(struct intel_dp *intel_dp);
+ 
  static void tgl_dc3co_disable_work(struct work_struct *work)
  {
- 	struct intel_dp *intel_dp =
-@@ -1227,6 +1229,13 @@ static void tgl_dc3co_disable_work(struct work_struct *work)
+@@ -1203,6 +1205,13 @@ static void tgl_dc3co_disable_work(struct work_struct *work)
  	if (delayed_work_pending(&intel_dp->psr.dc3co_work))
  		goto unlock;
-
+ 
 +	/* Panel Replay ALPM cursor-lag workaround re-activation path. */
 +	if (intel_dp->psr.panel_replay_enabled &&
 +	    intel_dp->psr.enabled && !intel_dp->psr.active) {
@@ -84,7 +84,7 @@ Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
  	tgl_psr2_disable_dc3co(intel_dp);
  unlock:
  	mutex_unlock(&intel_dp->psr.lock);
-@@ -4593,2 +4593,29 @@ u8 intel_psr_needed_vblank_count_for_frontbuffer_flush(struct intel_display *dis
+@@ -4615,2 +4624,29 @@ int intel_psr_min_guardband(struct intel_crtc_state *crtc_state)
  	return psr_min_guardband;
  }
 +
