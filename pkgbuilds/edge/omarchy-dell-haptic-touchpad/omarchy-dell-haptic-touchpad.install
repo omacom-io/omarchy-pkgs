@@ -19,7 +19,9 @@ _resolve_target_user() {
     return 0
   fi
 
-  awk -F: '$3 >= 1000 && $3 < 60000 && $1 != "nobody" { print $1; exit }' /etc/passwd
+  if command -v loginctl >/dev/null 2>&1; then
+    loginctl list-users --no-legend 2>/dev/null | awk '$2 != "root" && $4 == "active" { print $2; exit }'
+  fi
 }
 
 _user_home() {
