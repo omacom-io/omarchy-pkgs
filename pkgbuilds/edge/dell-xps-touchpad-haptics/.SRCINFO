@@ -1,7 +1,7 @@
 pkgbase = dell-xps-touchpad-haptics
 	pkgdesc = Synaptics haptic touchpad presets for Dell XPS on Omarchy
 	pkgver = 1.0.0
-	pkgrel = 2
+	pkgrel = 3
 	url = https://github.com/omacom-io/omarchy-pkgs
 	install = dell-xps-touchpad-haptics.install
 	arch = x86_64

@@ -15,7 +15,7 @@ What the pacman install hook does:
 
 - picks a desktop user and writes `/etc/dell-xps-touchpad-haptics.env`
 - creates `~/.config/omarchy/dell-haptic.conf` if needed
-- enables the service and restarts it when possible
+- enables the service and restarts it when a running systemd manager is available
 
 Usage:
 
@@ -35,6 +35,6 @@ Preset levels:
 Debugging:
 
 - level changes are logged by the service when it notices the config change and
-  verifies the HID gain readback
+  attempts HID gain readback
 - set `DELL_XPS_TOUCHPAD_HAPTICS_DEBUG=1` in `/etc/dell-xps-touchpad-haptics.env`
   to log each press and release report to `journalctl -u dell-xps-touchpad-haptics.service`

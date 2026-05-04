@@ -4,6 +4,26 @@ _env_path="/etc/dell-xps-touchpad-haptics.env"
 _legacy_env_path="/etc/omarchy-dell-haptic-touchpad.env"
 _legacy_override_dir="/etc/systemd/system/dell-xps-haptic-touchpad.service.d"
 
+_existing_home() {
+  local line value
+
+  [[ -f $_env_path ]] || return 0
+
+  while IFS= read -r line; do
+    line=${line#${line%%[![:space:]]*}}
+    line=${line%${line##*[![:space:]]}}
+    [[ -z $line || ${line:0:1} == "#" || $line != *=* ]] && continue
+
+    if [[ ${line%%=*} == "DELL_XPS_TOUCHPAD_HAPTICS_HOME" ]]; then
+      value=${line#*=}
+      value=${value#${value%%[![:space:]]*}}
+      value=${value%${value##*[![:space:]]}}
+      printf '%s\n' "$value"
+      return 0
+    fi
+  done < "$_env_path"
+}
+
 _resolve_target_user() {
   if [[ -n ${OMARCHY_HAPTIC_USER:-} && ${OMARCHY_HAPTIC_USER} != "root" ]]; then
     printf '%s\n' "$OMARCHY_HAPTIC_USER"
@@ -74,20 +94,49 @@ _write_env_file() {
   rm -f "$tmpfile"
 }
 
+_systemd_runtime_available() {
+  [[ -d /run/systemd/system ]]
+}
+
+_udev_runtime_available() {
+  [[ -S /run/udev/control ]]
+}
+
+_service_unit_present() {
+  [[ -f /usr/lib/systemd/system/$_service_name ]]
+}
+
+_reload_runtime_state() {
+  if _systemd_runtime_available && ! systemctl daemon-reload; then
+    echo ":: Failed to reload the systemd manager for ${_service_name}." >&2
+    return 1
+  fi
+
+  if _udev_runtime_available && ! udevadm control --reload-rules; then
+    echo ":: Failed to reload udev rules for ${_service_name}." >&2
+    return 1
+  fi
+}
+
 _ensure_user_config() {
   local user=$1
   local home=$2
   local config_dir="$home/.config/omarchy"
   local config_path="$config_dir/dell-haptic.conf"
 
-  if [[ ! -f $config_path ]]; then
-    env HOME="$home" USER="$user" LOGNAME="$user" \
-      /usr/bin/dell-xps-touchpad-haptics set "$_default_level"
+  if [[ ! -f $config_path ]] && ! env HOME="$home" USER="$user" LOGNAME="$user" \
+    /usr/bin/dell-xps-touchpad-haptics set "$_default_level"; then
+    echo ":: Failed to create ${config_path} for user '$user'." >&2
+    return 1
   fi
 
-  chown "$user:$user" "$home/.config" 2>/dev/null || true
-  chown "$user:$user" "$config_dir" 2>/dev/null || true
-  chown "$user:$user" "$config_path" 2>/dev/null || true
+  if [[ -f $config_path ]]; then
+    chown "$user:$user" "$home/.config" 2>/dev/null || true
+    chown "$user:$user" "$config_dir" 2>/dev/null || true
+    chown "$user:$user" "$config_path" 2>/dev/null || true
+  fi
+
+  return 0
 }
 
 _reset_trackpad() {
@@ -101,33 +150,83 @@ _cleanup_legacy_state() {
   rmdir "$_legacy_override_dir" 2>/dev/null || true
 }
 
-_configure_package() {
-  local user home debug_value
+_enable_service() {
+  if ! systemctl enable "$_service_name" >/dev/null; then
+    echo ":: Failed to enable ${_service_name}." >&2
+    return 1
+  fi
+}
 
-  _cleanup_legacy_state
-  systemctl daemon-reload
-  udevadm control --reload-rules 2>/dev/null || true
-
-  user=$(_resolve_target_user)
-  if [[ -z $user ]]; then
-    echo ":: No desktop user detected for ${_service_name}."
-    echo ":: Reinstall the package after logging in as your desktop user to finish setup."
+_start_service_if_possible() {
+  if ! _systemd_runtime_available; then
+    echo ":: ${_service_name} enabled; it will start on next boot."
     return 0
   fi
 
-  home=$(_user_home "$user")
+  if ! systemctl restart "$_service_name" >/dev/null; then
+    echo ":: Failed to start ${_service_name}." >&2
+    return 1
+  fi
+}
+
+_configure_package() {
+  local user=""
+  local home=""
+  local debug_value
+  local config_path=""
+
+  _cleanup_legacy_state
+
+  if ! _service_unit_present; then
+    echo ":: Required unit file for ${_service_name} was not installed." >&2
+    return 1
+  fi
+
+  if ! _reload_runtime_state; then
+    return 1
+  fi
+
+  user=$(_resolve_target_user)
+  if [[ -n $user ]]; then
+    home=$(_user_home "$user")
+  fi
+
   if [[ -z $home || ! -d $home ]]; then
-    echo ":: Could not determine a usable home directory for user '$user'."
-    echo ":: Reinstall the package after logging in as your desktop user to finish setup."
-    return 0
+    home=$(_existing_home)
+  fi
+
+  if [[ -z $home || ! -d $home ]]; then
+    echo ":: Could not determine a usable home directory for ${_service_name}." >&2
+    echo ":: Reinstall the package after logging in as your desktop user to finish setup." >&2
+    return 1
   fi
 
   debug_value=$(_debug_value)
   _write_env_file "$home" "$debug_value"
-  _ensure_user_config "$user" "$home"
-  systemctl enable "$_service_name" >/dev/null 2>&1 || true
+
+  if [[ -n $user ]]; then
+    if ! _ensure_user_config "$user" "$home"; then
+      return 1
+    fi
+  else
+    config_path="$home/.config/omarchy/dell-haptic.conf"
+    if [[ ! -f $config_path ]]; then
+      echo ":: Could not seed ${config_path} because no desktop user could be identified." >&2
+      return 1
+    fi
+  fi
+
+  if ! _enable_service; then
+    return 1
+  fi
+
   _reset_trackpad
-  systemctl restart "$_service_name" 2>/dev/null || true
+
+  if ! _start_service_if_possible; then
+    return 1
+  fi
+
+  return 0
 }
 
 post_install() {
@@ -145,6 +244,5 @@ pre_remove() {
 
 post_remove() {
   rm -f "$_env_path"
-  systemctl daemon-reload
-  udevadm control --reload-rules 2>/dev/null || true
+  _reload_runtime_state || true
 }
