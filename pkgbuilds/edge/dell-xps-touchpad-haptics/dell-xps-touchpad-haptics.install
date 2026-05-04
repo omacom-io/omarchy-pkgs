@@ -1,0 +1,150 @@
+_service_name="dell-xps-touchpad-haptics.service"
+_default_level="high"
+_env_path="/etc/dell-xps-touchpad-haptics.env"
+_legacy_env_path="/etc/omarchy-dell-haptic-touchpad.env"
+_legacy_override_dir="/etc/systemd/system/dell-xps-haptic-touchpad.service.d"
+
+_resolve_target_user() {
+  if [[ -n ${OMARCHY_HAPTIC_USER:-} && ${OMARCHY_HAPTIC_USER} != "root" ]]; then
+    printf '%s\n' "$OMARCHY_HAPTIC_USER"
+    return 0
+  fi
+
+  if [[ -n ${SUDO_USER:-} && ${SUDO_USER} != "root" ]]; then
+    printf '%s\n' "$SUDO_USER"
+    return 0
+  fi
+
+  if command -v logname >/dev/null 2>&1; then
+    local login_name
+    login_name=$(logname 2>/dev/null || true)
+    if [[ -n $login_name && $login_name != "root" ]]; then
+      printf '%s\n' "$login_name"
+      return 0
+    fi
+  fi
+
+  if command -v loginctl >/dev/null 2>&1; then
+    local active_user
+    active_user=$(loginctl list-users --no-legend 2>/dev/null | awk '$2 != "root" && $4 == "active" { print $2; exit }')
+    if [[ -n $active_user ]]; then
+      printf '%s\n' "$active_user"
+      return 0
+    fi
+  fi
+
+  getent passwd | awk -F: '$3 >= 1000 && $1 != "nobody" && $7 !~ /(nologin|false)$/ { print $1; exit }'
+}
+
+_user_home() {
+  getent passwd "$1" | cut -d: -f6
+}
+
+_debug_value() {
+  local line value
+
+  [[ -f $_env_path ]] || return 0
+
+  while IFS= read -r line; do
+    line=${line#${line%%[![:space:]]*}}
+    line=${line%${line##*[![:space:]]}}
+    [[ -z $line || ${line:0:1} == "#" || $line != *=* ]] && continue
+
+    if [[ ${line%%=*} == "DELL_XPS_TOUCHPAD_HAPTICS_DEBUG" ]]; then
+      value=${line#*=}
+      value=${value#${value%%[![:space:]]*}}
+      value=${value%${value##*[![:space:]]}}
+      printf '%s\n' "$value"
+      return 0
+    fi
+  done < "$_env_path"
+}
+
+_write_env_file() {
+  local home=$1
+  local debug_value=$2
+  local tmpfile
+
+  tmpfile=$(mktemp)
+  printf 'DELL_XPS_TOUCHPAD_HAPTICS_HOME=%s\n' "$home" >"$tmpfile"
+  if [[ -n $debug_value ]]; then
+    printf 'DELL_XPS_TOUCHPAD_HAPTICS_DEBUG=%s\n' "$debug_value" >>"$tmpfile"
+  fi
+  install -D -m 644 "$tmpfile" "$_env_path"
+  rm -f "$tmpfile"
+}
+
+_ensure_user_config() {
+  local user=$1
+  local home=$2
+  local config_dir="$home/.config/omarchy"
+  local config_path="$config_dir/dell-haptic.conf"
+
+  if [[ ! -f $config_path ]]; then
+    env HOME="$home" USER="$user" LOGNAME="$user" \
+      /usr/bin/dell-xps-touchpad-haptics set "$_default_level"
+  fi
+
+  chown "$user:$user" "$home/.config" 2>/dev/null || true
+  chown "$user:$user" "$config_dir" 2>/dev/null || true
+  chown "$user:$user" "$config_path" 2>/dev/null || true
+}
+
+_reset_trackpad() {
+  if command -v omarchy-restart-trackpad >/dev/null 2>&1; then
+    omarchy-restart-trackpad 2>/dev/null || true
+  fi
+}
+
+_cleanup_legacy_state() {
+  rm -f "$_legacy_env_path" "$_legacy_override_dir/override.conf"
+  rmdir "$_legacy_override_dir" 2>/dev/null || true
+}
+
+_configure_package() {
+  local user home debug_value
+
+  _cleanup_legacy_state
+  systemctl daemon-reload
+  udevadm control --reload-rules 2>/dev/null || true
+
+  user=$(_resolve_target_user)
+  if [[ -z $user ]]; then
+    echo ":: No desktop user detected for ${_service_name}."
+    echo ":: Reinstall the package after logging in as your desktop user to finish setup."
+    return 0
+  fi
+
+  home=$(_user_home "$user")
+  if [[ -z $home || ! -d $home ]]; then
+    echo ":: Could not determine a usable home directory for user '$user'."
+    echo ":: Reinstall the package after logging in as your desktop user to finish setup."
+    return 0
+  fi
+
+  debug_value=$(_debug_value)
+  _write_env_file "$home" "$debug_value"
+  _ensure_user_config "$user" "$home"
+  systemctl enable "$_service_name" >/dev/null 2>&1 || true
+  _reset_trackpad
+  systemctl restart "$_service_name" 2>/dev/null || true
+}
+
+post_install() {
+  _configure_package
+}
+
+post_upgrade() {
+  _configure_package
+}
+
+pre_remove() {
+  systemctl disable "$_service_name" 2>/dev/null || true
+  systemctl stop "$_service_name" 2>/dev/null || true
+}
+
+post_remove() {
+  rm -f "$_env_path"
+  systemctl daemon-reload
+  udevadm control --reload-rules 2>/dev/null || true
+}
