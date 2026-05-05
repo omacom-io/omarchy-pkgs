@@ -1,0 +1,45 @@
+# Maintainer: Spencer Bull <spencer.bull@dell.com>
+pkgname=omarchy-battery-policy
+pkgver=1.0.0
+pkgrel=2
+pkgdesc="Battery charging policy management for Omarchy"
+arch=('any')
+url="https://github.com/basecamp/omarchy"
+license=('MIT')
+depends=('bash' 'gum')
+install=omarchy-battery-policy.install
+source=(
+  'omarchy-battery-policy-provider'
+  'omarchy-battery-policy-provider-dell-sysman'
+  'omarchy-battery-policy-provider-power-supply'
+  'omarchy-battery-policy-available'
+  'omarchy-battery-policy-list'
+  'omarchy-battery-policy-status'
+  'omarchy-battery-policy-set'
+  'omarchy-battery-policy-set-custom'
+  'omarchy-setup-battery-policy'
+  'omarchy-battery-policy.sudoers'
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  local scripts=(
+    omarchy-battery-policy-provider
+    omarchy-battery-policy-provider-dell-sysman
+    omarchy-battery-policy-provider-power-supply
+    omarchy-battery-policy-available
+    omarchy-battery-policy-list
+    omarchy-battery-policy-status
+    omarchy-battery-policy-set
+    omarchy-battery-policy-set-custom
+    omarchy-setup-battery-policy
+  )
+
+  install -dm755 "$pkgdir/usr/bin"
+  for script in "${scripts[@]}"; do
+    install -m755 "$srcdir/$script" "$pkgdir/usr/bin/$script"
+  done
+
+  install -dm750 "$pkgdir/etc/sudoers.d"
+  install -m440 "$srcdir/omarchy-battery-policy.sudoers" "$pkgdir/etc/sudoers.d/omarchy-battery-policy"
+}

@@ -1,0 +1,18 @@
+# omarchy-battery-policy: passwordless access to battery charging controls
+
+# Dell firmware attributes (dell-sysman provider) — reads
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/dd if=/sys/class/firmware-attributes/dell-wmi-sysman/attributes/PrimaryBattChargeCfg/current_value bs=128 count=1 status=none
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/dd if=/sys/class/firmware-attributes/dell-wmi-sysman/attributes/CustomChargeStart/current_value bs=128 count=1 status=none
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/dd if=/sys/class/firmware-attributes/dell-wmi-sysman/attributes/CustomChargeStop/current_value bs=128 count=1 status=none
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/dd if=/sys/class/firmware-attributes/dell-wmi-sysman/attributes/AdvBatteryChargeCfg/current_value bs=128 count=1 status=none
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/dd if=/sys/class/firmware-attributes/dell-wmi-sysman/attributes/PeakShiftCfg/current_value bs=128 count=1 status=none
+
+# Dell firmware attributes (dell-sysman provider) — writes
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/firmware-attributes/dell-wmi-sysman/attributes/PrimaryBattChargeCfg/current_value
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/firmware-attributes/dell-wmi-sysman/attributes/CustomChargeStart/current_value
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/firmware-attributes/dell-wmi-sysman/attributes/CustomChargeStop/current_value
+
+# Linux power_supply interface (power-supply provider) — writes
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/power_supply/*/charge_types
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/power_supply/*/charge_control_start_threshold
+%wheel ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/power_supply/*/charge_control_end_threshold

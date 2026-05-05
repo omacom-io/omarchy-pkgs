@@ -1,0 +1,19 @@
+#!/bin/bash
+
+show_help() {
+  cat <<'EOF'
+Usage: omarchy-battery-policy-list [--help]
+
+List available battery charging policies as id|Label lines.
+EOF
+}
+
+case "$1" in
+-h | --help)
+  show_help
+  exit 0
+  ;;
+esac
+
+provider=$(omarchy-battery-policy-provider) || exit 1
+omarchy-battery-policy-provider-$provider list

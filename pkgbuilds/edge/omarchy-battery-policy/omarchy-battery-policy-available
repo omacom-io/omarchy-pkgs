@@ -1,0 +1,18 @@
+#!/bin/bash
+
+show_help() {
+  cat <<'EOF'
+Usage: omarchy-battery-policy-available [--help]
+
+Exit successfully when battery charging controls are available.
+EOF
+}
+
+case "$1" in
+-h | --help)
+  show_help
+  exit 0
+  ;;
+esac
+
+omarchy-battery-policy-provider >/dev/null 2>&1

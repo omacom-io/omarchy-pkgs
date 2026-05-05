@@ -1,0 +1,19 @@
+#!/bin/bash
+
+show_help() {
+  cat <<'EOF'
+Usage: omarchy-battery-policy-status [--help]
+
+Print battery charging status as key=value lines.
+EOF
+}
+
+case "$1" in
+-h | --help)
+  show_help
+  exit 0
+  ;;
+esac
+
+provider=$(omarchy-battery-policy-provider) || exit 1
+omarchy-battery-policy-provider-$provider status

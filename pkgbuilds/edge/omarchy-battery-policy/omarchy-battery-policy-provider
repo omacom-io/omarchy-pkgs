@@ -1,0 +1,36 @@
+#!/bin/bash
+
+BATTERY_POLICY_PROVIDERS=(
+  dell-sysman
+  power-supply
+)
+
+show_help() {
+  cat <<'EOF'
+Usage: omarchy-battery-policy-provider [--help]
+
+Print the first available battery policy provider.
+
+Providers are checked in priority order:
+  dell-sysman
+  power-supply
+EOF
+}
+
+case "$1" in
+-h | --help)
+  show_help
+  exit 0
+  ;;
+esac
+
+# Add a new provider by creating bin/omarchy-battery-policy-provider-<name>
+# with a probe subcommand, then append <name> here in priority order.
+for provider in "${BATTERY_POLICY_PROVIDERS[@]}"; do
+  if omarchy-battery-policy-provider-$provider probe >/dev/null 2>&1; then
+    printf '%s\n' "$provider"
+    exit 0
+  fi
+done
+
+exit 1

@@ -1,0 +1,33 @@
+#!/bin/bash
+
+show_help() {
+  cat <<'EOF'
+Usage: omarchy-battery-policy-set <policy>
+
+Set a built-in battery charging policy.
+
+Common policies:
+  adaptive       Auto-tune charging to usage
+  standard       Charge normally to full capacity
+  fast           Prioritize faster charging
+  custom         Use stored custom thresholds
+  primarily-ac   Optimize for mostly plugged-in use
+
+Run omarchy-battery-policy-list to see policies available on this machine.
+EOF
+}
+
+case "$1" in
+-h | --help)
+  show_help
+  exit 0
+  ;;
+esac
+
+if [[ -z $1 ]]; then
+  show_help >&2
+  exit 1
+fi
+
+provider=$(omarchy-battery-policy-provider) || exit 1
+omarchy-battery-policy-provider-$provider set "$1"

@@ -1,0 +1,31 @@
+#!/bin/bash
+
+show_help() {
+  cat <<'EOF'
+Usage: omarchy-battery-policy-set-custom <start> <end>
+
+Set custom battery charge thresholds.
+
+Arguments:
+  start   Percentage where charging should resume
+  end     Percentage where charging should stop
+
+Example:
+  omarchy-battery-policy-set-custom 75 80
+EOF
+}
+
+case "$1" in
+-h | --help)
+  show_help
+  exit 0
+  ;;
+esac
+
+if [[ -z $1 || -z $2 ]]; then
+  show_help >&2
+  exit 1
+fi
+
+provider=$(omarchy-battery-policy-provider) || exit 1
+omarchy-battery-policy-provider-$provider set-custom "$1" "$2"
