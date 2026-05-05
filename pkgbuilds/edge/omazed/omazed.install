@@ -1,0 +1,44 @@
+post_install() {
+    echo ""
+    echo "==> Omazed installed successfully!"
+    echo ""
+    echo "🚀 To complete setup, run:"
+    echo "   omazed setup"
+    echo ""
+    echo "   This will:"
+    echo "   • Set up omarchy hook integration (or systemd fallback)"
+    echo "   • Set the Zed theme once on first run"
+    echo ""
+    echo "Then change your Omarchy theme and watch Zed follow along!"
+    echo ""
+}
+
+post_upgrade() {
+    echo ""
+    echo "==> Omazed updated to $(pacman -Q omazed | cut -d' ' -f2)"
+    echo ""
+    echo "   Complete the update!"
+    echo ""
+    echo "   To complete this update, run:"
+    echo ""
+    echo "   omazed setup"
+    echo ""
+    echo "   This will:"
+    echo "   • Set the Zed theme once on first run"
+    echo "   • Migrate to omarchy hooks automatically"
+    echo ""
+    echo "If your wish to remove the old bundled themes then run:"
+    echo "rm -f ~/.config/zed/themes/{catppuccin,catppuccin-latte,everforest,flexoki-light,gruvbox,kanagawa,matte-black,nord,osaka-jade,ristretto,rose-pine,tokyo-night,ethereal,hackerman}.json"
+    echo ""
+}
+
+post_remove() {
+    echo ""
+    echo "==> Omazed removed."
+    echo ""
+    echo "Preserved files:"
+    echo "   • Generated theme at ~/.config/zed/themes/omazed.json (preserved)"
+    echo ""
+    echo "Thank you for using Omazed!"
+    echo ""
+}
