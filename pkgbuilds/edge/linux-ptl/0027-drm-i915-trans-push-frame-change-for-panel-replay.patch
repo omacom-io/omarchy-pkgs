@@ -1,17 +1,17 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Gaggery Tsai <gaggery.tsai@intel.com>
 Date: Tue, 28 Apr 2026 16:10:00 -0500
-Subject: [PATCH] drm/i915: use TRANS_PUSH frame changes for PSR/Panel Replay
+Subject: [PATCH] drm/i915: use TRANS_PUSH frame changes for Panel Replay
 
 Panel Replay Selective Update requires a software-triggered Frame Change
 event via TRANS_PUSH to send dirty regions to the panel. Cursor updates
 can skip the normal VRR push path, so the panel may not receive cursor
 position changes under Panel Replay SU.
 
-Backport the upstream TRANS_PUSH frame-change flow for display 20+:
-program the PSR/PR frame-change bit when PSR is enabled, skip the old
-CURSURFLIVE frame-change path on platforms using TRANS_PUSH, and send a
-push for legacy cursor updates when PSR/Panel Replay uses TRANS_PUSH.
+Backport the upstream TRANS_PUSH frame-change flow for display 20+,
+but keep it limited to Panel Replay for linux-ptl. Plain PSR2 must keep
+using the old CURSURFLIVE frame-change path so systems still boot when
+Panel Replay is disabled with xe.enable_panel_replay=0.
 
 Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
 ---
@@ -57,7 +57,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/dis
  
  	intel_alpm_configure(intel_dp, crtc_state);
 +
-+	if (HAS_PSR_TRANS_PUSH_FRAME_CHANGE(display))
++	if (intel_psr_use_trans_push(crtc_state))
 +		intel_vrr_psr_frame_change_enable(crtc_state);
  }
  
@@ -87,7 +87,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/dis
 +{
 +	struct intel_display *display = to_intel_display(crtc_state);
 +
-+	return HAS_PSR_TRANS_PUSH_FRAME_CHANGE(display) && crtc_state->has_psr;
++	return HAS_PSR_TRANS_PUSH_FRAME_CHANGE(display) && crtc_state->has_panel_replay;
 +}
 diff --git a/drivers/gpu/drm/i915/display/intel_psr.h b/drivers/gpu/drm/i915/display/intel_psr.h
 --- a/drivers/gpu/drm/i915/display/intel_psr.h
@@ -119,7 +119,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/dis
 +	if (send_push)
 +		trans_vrr_push |= TRANS_PUSH_SEND;
 +
-+	if (HAS_PSR_TRANS_PUSH_FRAME_CHANGE(display))
++	if (intel_psr_use_trans_push(crtc_state))
 +		trans_vrr_push |= LNL_TRANS_PUSH_PSR_PR_EN;
 +
 +	return trans_vrr_push;

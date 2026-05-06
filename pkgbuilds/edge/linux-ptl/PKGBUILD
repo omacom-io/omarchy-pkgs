@@ -3,7 +3,7 @@
 
 pkgbase=linux-ptl
 pkgver=7.0.3.arch1
-pkgrel=1
+pkgrel=2
 pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, PSR2, Panel Replay SU)'
 url='https://github.com/archlinux/linux'
 arch=(
