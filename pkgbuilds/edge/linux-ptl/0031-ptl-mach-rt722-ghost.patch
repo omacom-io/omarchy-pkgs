@@ -1,0 +1,106 @@
+diff --git a/sound/soc/intel/common/soc-acpi-intel-ptl-match.c b/sound/soc/intel/common/soc-acpi-intel-ptl-match.c
+index 3b7818355ff645..b4458c33c4a89d 100644
+--- a/sound/soc/intel/common/soc-acpi-intel-ptl-match.c
++++ b/sound/soc/intel/common/soc-acpi-intel-ptl-match.c
+@@ -211,6 +211,25 @@ static const struct snd_soc_acpi_adr_device cs42l43_2_adr[] = {
+ 	}
+ };
+ 
++static const struct snd_soc_acpi_adr_device cs42l43_3_agg_rt722_ghost_adr[] = {
++	{
++		.adr = 0x00033001FA424301ull,
++		.num_endpoints = ARRAY_SIZE(cs42l43_amp_spkagg_endpoints),
++		.endpoints = cs42l43_amp_spkagg_endpoints,
++		.name_prefix = "cs42l43"
++	},
++	/*
++	 * To handle cases where the ALC722 codec is listed in the BIOS while the
++	 * hardware is not physically present.
++	 */
++	{
++		.adr = 0x000330025d072201ull, /* Ghost ALC722 */
++		.num_endpoints = 0,
++		.endpoints = NULL,
++		.name_prefix = "ghost"
++	}
++};
++
+ static const struct snd_soc_acpi_adr_device cs42l43_3_agg_adr[] = {
+ 	{
+ 		.adr = 0x00033001FA424301ull,
+@@ -235,6 +254,36 @@ static const struct snd_soc_acpi_adr_device cs35l56_2_lr_adr[] = {
+ 	}
+ };
+ 
++static const struct snd_soc_acpi_adr_device cs35l56_2_2amp_adr[] = {
++	{
++		.adr = 0x00023001fa355601ull,
++		.num_endpoints = 1,
++		.endpoints = &spk_1_endpoint,
++		.name_prefix = "AMP1"
++	},
++	{
++		.adr = 0x00023101fa355601ull,
++		.num_endpoints = 1,
++		.endpoints = &spk_2_endpoint,
++		.name_prefix = "AMP2"
++	}
++};
++
++static const struct snd_soc_acpi_adr_device cs35l56_1_2amp_adr[] = {
++	{
++		.adr = 0x00013201fa355601ull,
++		.num_endpoints = 1,
++		.endpoints = &spk_3_endpoint,
++		.name_prefix = "AMP3"
++	},
++	{
++		.adr = 0x00013301fa355601ull,
++		.num_endpoints = 1,
++		.endpoints = &spk_4_endpoint,
++		.name_prefix = "AMP4"
++	}
++};
++
+ static const struct snd_soc_acpi_adr_device cs35l56_1_3amp_adr[] = {
+ 	{
+ 		.adr = 0x00013001fa355601ull,
+@@ -394,6 +443,25 @@ static const struct snd_soc_acpi_adr_device rt1320_3_group2_adr[] = {
+ 	}
+ };
+ 
++static const struct snd_soc_acpi_link_adr ptl_cs42l43_agg_l3_cs35l56_l12_ghost_rt722[] = {
++	{
++		.mask = BIT(3),
++		.num_adr = ARRAY_SIZE(cs42l43_3_agg_rt722_ghost_adr),
++		.adr_d = cs42l43_3_agg_rt722_ghost_adr,
++	},
++	{
++		.mask = BIT(2),
++		.num_adr = ARRAY_SIZE(cs35l56_2_2amp_adr),
++		.adr_d = cs35l56_2_2amp_adr,
++	},
++	{
++		.mask = BIT(1),
++		.num_adr = ARRAY_SIZE(cs35l56_1_2amp_adr),
++		.adr_d = cs35l56_1_2amp_adr,
++	},
++	{}
++};
++
+ static const struct snd_soc_acpi_link_adr ptl_cs42l43_agg_l3_cs35l56_l2[] = {
+ 	{
+ 		.mask = BIT(3),
+@@ -584,6 +652,12 @@ struct snd_soc_acpi_mach snd_soc_acpi_intel_ptl_sdw_machines[] = {
+ 		.drv_name = "sof_sdw",
+ 		.sof_tplg_filename = "sof-ptl-cs42l43-l2-cs35l56x6-l13.tplg",
+ 	},
++	{
++		.link_mask = BIT(1) | BIT(2) | BIT(3),
++		.links = ptl_cs42l43_agg_l3_cs35l56_l12_ghost_rt722,
++		.drv_name = "sof_sdw",
++		.sof_tplg_filename = "sof-ptl-cs42l43-agg-l3-cs35l56-l2.tplg",
++	},
+ 	{
+ 		.link_mask = BIT(0) | BIT(2) | BIT(3),
+ 		.links = ptl_rt722_l0_rt1320_l23,
