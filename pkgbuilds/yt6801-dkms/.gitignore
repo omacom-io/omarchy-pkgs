@@ -3,3 +3,5 @@
 
 pkg/
 src/
+!.omarchy/
+!.omarchy/**
