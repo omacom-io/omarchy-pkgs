@@ -2,3 +2,5 @@
 /pkg/
 /*.tar.*
 /macbook12-spi-driver/
+!.omarchy/
+!.omarchy/**
