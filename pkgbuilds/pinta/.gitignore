@@ -3,3 +3,5 @@
 !.nvchecker.toml
 !PKGBUILD
 !.SRCINFO
+!.omarchy/
+!.omarchy/**
