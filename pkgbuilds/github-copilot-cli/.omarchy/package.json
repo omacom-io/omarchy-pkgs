@@ -1,4 +1,5 @@
 {
   "source": "aur",
-  "release_ring": "fast"
+  "release_ring": "fast",
+  "upstream_commit": "338fd00b6cf7bd445bc94d6b0d75d64015aa5f81"
 }
