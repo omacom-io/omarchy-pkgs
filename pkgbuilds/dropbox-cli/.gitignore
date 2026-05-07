@@ -5,3 +5,5 @@ dropbox-cli-*.log
 PKGBUILD-namcap.log
 pkg/
 src/
+!.omarchy/
+!.omarchy/**
