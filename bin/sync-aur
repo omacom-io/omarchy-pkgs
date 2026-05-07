@@ -89,7 +89,7 @@ sync_package() {
     cp -r "$package"/* "$TARGET_DIR/$package/" 2>/dev/null || true
     cp -r "$package"/.* "$TARGET_DIR/$package/" 2>/dev/null || true
     
-    # Remove .git from destination
+    # Remove the cloned git metadata from destination
     rm -rf "$TARGET_DIR/$package/.git"
     
     SYNCED_PACKAGES+=("$package")
@@ -141,8 +141,6 @@ for package in "${SYNCED_PACKAGES[@]}"; do
   [[ -f "$override_file" ]] || continue
 
   pkgbuild="$TARGET_DIR/$package/PKGBUILD"
-  srcinfo="$TARGET_DIR/$package/.SRCINFO"
-  gitignore="$TARGET_DIR/$package/.gitignore"
   current_pkgver=$(grep -m1 '^pkgver=' "$pkgbuild" | cut -d= -f2)
   matched=false
 
@@ -151,11 +149,6 @@ for package in "${SYNCED_PACKAGES[@]}"; do
     if [[ "$current_pkgver" == "$ver" ]]; then
       print_info "Applying pkgrel override for $package: pkgver=$ver -> pkgrel=$rel"
       sed -i "s/^pkgrel=.*/pkgrel=$rel/" "$pkgbuild"
-      sed -i "s/pkgrel = .*/pkgrel = $rel/" "$srcinfo"
-      # Ensure .gitignore tracks the override file (AUR may have overwritten it)
-      if [[ -f "$gitignore" ]] && ! grep -q '^!pkgrel.override$' "$gitignore"; then
-        echo '!pkgrel.override' >> "$gitignore"
-      fi
       matched=true
       break
     fi
@@ -165,6 +158,11 @@ for package in "${SYNCED_PACKAGES[@]}"; do
     print_info "Removing stale pkgrel.override for $package (no match for pkgver=$current_pkgver)"
     rm "$override_file"
   fi
+done
+
+# Drop AUR metadata files after patches/overrides have been applied.
+for package in "${SYNCED_PACKAGES[@]}"; do
+  rm -f "$TARGET_DIR/$package/.SRCINFO" "$TARGET_DIR/$package/.gitignore"
 done
 
 echo ""
