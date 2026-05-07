@@ -2,3 +2,5 @@
 /src
 *.zip
 *.tar.xz
+!.omarchy/
+!.omarchy/**
