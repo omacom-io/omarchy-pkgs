@@ -4,3 +4,5 @@
 !*.install
 !PKGBUILD
 !.SRCINFO
+!.omarchy/
+!.omarchy/**
