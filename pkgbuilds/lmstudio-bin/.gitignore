@@ -7,3 +7,5 @@ src/
 squashfs-root/
 __pycache__/
 *.pkg.tar.zst
+!.omarchy/
+!.omarchy/**
