@@ -4,4 +4,5 @@
 /pkg
 /src
 /yay
-!pkgrel.override
+!.omarchy/
+!.omarchy/**
