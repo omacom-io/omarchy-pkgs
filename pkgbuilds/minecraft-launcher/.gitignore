@@ -3,3 +3,5 @@
 /*.svg
 /src/
 /pkg/
+!.omarchy/
+!.omarchy/**
