@@ -18,3 +18,5 @@ pkg/cursor-bin/usr/share/applications/cursor.desktop
 pkg/cursor-bin/usr/share/icons/hicolor/512x512/apps/cursor.png
 
 src/cursor.png
+!.omarchy/
+!.omarchy/**
