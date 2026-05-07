@@ -5,3 +5,5 @@
 # actual package
 !PKGBUILD
 !.SRCINFO
+!.omarchy/
+!.omarchy/**
