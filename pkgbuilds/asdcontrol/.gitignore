@@ -25,3 +25,5 @@ pkg/
 
 # Git clones
 asdcontrol/
+!.omarchy/
+!.omarchy/**
