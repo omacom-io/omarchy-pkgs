@@ -8,3 +8,5 @@ src/
 
 # source files
 *.zip
+!.omarchy/
+!.omarchy/**
