@@ -3,3 +3,5 @@
 *.pkg.tar.zst.sig
 pkg/
 src/
+!.omarchy/
+!.omarchy/**
