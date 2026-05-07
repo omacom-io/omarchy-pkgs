@@ -13,3 +13,5 @@ starter/
 # Makepkg files
 *.log
 *.sig
+!.omarchy/
+!.omarchy/**
