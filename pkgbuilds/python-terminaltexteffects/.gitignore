@@ -4,4 +4,5 @@
 !.SRCINFO
 !.gitignore
 !.nvchecker.toml
-!pkgrel.override
+!.omarchy/
+!.omarchy/**
