@@ -1,0 +1,30 @@
+# Maintainer: Omarchy <packages@omarchy.org>
+
+pkgname=openvino-genai
+pkgver=2026.0.0.0
+pkgrel=5
+pkgdesc="Intel OpenVINO GenAI runtime and tools for generative AI inference"
+arch=('x86_64')
+url="https://docs.openvino.ai/"
+license=('Apache-2.0')
+depends=('glibc' 'gcc-libs' 'level-zero-loader' 'intel-compute-runtime' 'ocl-icd')
+install=openvino-genai.install
+options=('!strip')
+_srcname=openvino_genai_ubuntu24_${pkgver}_x86_64
+source=("${_srcname}.tar.gz::https://storage.openvinotoolkit.org/repositories/openvino_genai/packages/2026.0/linux/${_srcname}.tar.gz"
+        'openvino-genai.sh'
+        'openvino-genai.conf')
+sha256sums=('d4804ac4b0107806146a44f5fca5622c69da6001a6b4f09174079bfac1450dbc'
+            'f18266e633cddeda76be7abe33b92e85557b1684b6b26feb90464676ae1eb2ad'
+            'SKIP')
+
+package() {
+  install -d "${pkgdir}/opt/intel"
+  cp -a "${srcdir}/${_srcname}" "${pkgdir}/opt/intel/openvino_genai_${pkgver}"
+  ln -s "openvino_genai_${pkgver}" "${pkgdir}/opt/intel/openvino_genai"
+
+  install -Dm644 "${srcdir}/openvino-genai.sh" "${pkgdir}/etc/profile.d/openvino-genai.sh"
+  install -Dm644 "${srcdir}/openvino-genai.conf" "${pkgdir}/etc/ld.so.conf.d/openvino-genai.conf"
+  install -Dm644 "${srcdir}/${_srcname}/docs/licensing/LICENSE-GENAI" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "${srcdir}/${_srcname}/docs/licensing/third-party-programs-genai.txt" "${pkgdir}/usr/share/licenses/${pkgname}/third-party-programs-genai.txt"
+}
