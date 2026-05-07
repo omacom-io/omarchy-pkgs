@@ -69,8 +69,46 @@ if [[ ! -f "$PACKAGES_FILE" ]]; then
 fi
 
 SYNCED=0
+SKIPPED=0
 FAILED=0
 SYNCED_PACKAGES=()
+
+get_pkgbuild_field() {
+  local package_dir="$1"
+  local field="$2"
+
+  if [[ -f "$package_dir/.SRCINFO" ]]; then
+    awk -F' = ' -v field="$field" '$1 ~ "^[[:space:]]*" field "$" { print $2; exit }' "$package_dir/.SRCINFO"
+    return
+  fi
+
+  if [[ -f "$package_dir/PKGBUILD" ]]; then
+    grep -m1 "^${field}=" "$package_dir/PKGBUILD" | cut -d= -f2- | tr -d '"'\'''
+  fi
+}
+
+should_skip_existing_higher_pkgrel() {
+  local package="$1"
+  local aur_dir="$2"
+  local local_dir="$TARGET_DIR/$package"
+
+  [[ -d "$local_dir" ]] || return 1
+
+  local aur_pkgver local_pkgver aur_pkgrel local_pkgrel
+  aur_pkgver=$(get_pkgbuild_field "$aur_dir" pkgver)
+  local_pkgver=$(get_pkgbuild_field "$local_dir" pkgver)
+  aur_pkgrel=$(get_pkgbuild_field "$aur_dir" pkgrel)
+  local_pkgrel=$(get_pkgbuild_field "$local_dir" pkgrel)
+
+  [[ -n "$aur_pkgver" && -n "$local_pkgver" && "$aur_pkgver" == "$local_pkgver" ]] || return 1
+  [[ -n "$aur_pkgrel" && -n "$local_pkgrel" ]] || return 1
+
+  if vercmp "$local_pkgrel" "$aur_pkgrel" >/dev/null 2>&1; then
+    [[ $(vercmp "$local_pkgrel" "$aur_pkgrel") -gt 0 ]]
+  else
+    [[ "$local_pkgrel" > "$aur_pkgrel" ]]
+  fi
+}
 
 # Function to sync a package from AUR
 sync_package() {
@@ -82,6 +120,12 @@ sync_package() {
   rm -rf "$package"
   
   if git clone "https://aur.archlinux.org/${package}.git" 2>/dev/null; then
+    if should_skip_existing_higher_pkgrel "$package" "$TEMP_DIR/$package"; then
+      print_info "Skipping $package: local pkgver matches AUR and local pkgrel is higher"
+      ((SKIPPED++))
+      return
+    fi
+
     # Create target directory if it doesn't exist
     mkdir -p "$TARGET_DIR/$package"
     
@@ -171,4 +215,5 @@ echo ""
 print_success "Sync complete! (tier: $TIER)"
 echo "  Target: $TARGET_DIR"
 echo "  Synced: $SYNCED"
+echo "  Skipped: $SKIPPED"
 echo "  Failed: $FAILED"
