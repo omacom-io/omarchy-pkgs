@@ -1,6 +1,0 @@
-*.zst
-*.tar.gz
-pkg/*
-src/*
-!.omarchy/
-!.omarchy/**

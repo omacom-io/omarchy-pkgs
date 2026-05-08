@@ -1,9 +1,0 @@
-*
-# dev tools
-!.gitignore
-!.nvchecker.toml
-# actual package
-!PKGBUILD
-!.SRCINFO
-!.omarchy/
-!.omarchy/**

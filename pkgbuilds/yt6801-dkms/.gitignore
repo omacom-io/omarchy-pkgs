@@ -1,7 +1,0 @@
-*.tar.*
-*.zip
-
-pkg/
-src/
-!.omarchy/
-!.omarchy/**

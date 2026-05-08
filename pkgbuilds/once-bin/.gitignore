@@ -1,8 +1,0 @@
-*
-!.gitignore
-!.SRCINFO
-!PKGBUILD
-!once-background.service
-!once.install
-!.omarchy/
-!.omarchy/**

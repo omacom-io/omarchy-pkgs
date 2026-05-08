@@ -24,7 +24,7 @@ The AUR PKGBUILD only supports x86_64.
 3. Keeps the AUR x86_64 checksums
 4. Downloads and calculates current aarch64 checksums during sync
 5. Uses `${_archdir}` for source directory names instead of hardcoded `.x64`
-6. Updates `.SRCINFO` to match the rewritten PKGBUILD
+6. Omarchy sync drops AUR-only `.SRCINFO` after rewriting the PKGBUILD
 
 ## Testing
 

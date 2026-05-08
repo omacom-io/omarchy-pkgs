@@ -1,4 +1,0 @@
-*.in
-.xml
-!.omarchy/
-!.omarchy/**

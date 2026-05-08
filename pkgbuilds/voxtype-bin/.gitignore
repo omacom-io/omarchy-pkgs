@@ -1,8 +1,0 @@
-*
-!.nvchecker.toml
-!.gitignore
-!*.install
-!PKGBUILD
-!.SRCINFO
-!.omarchy/
-!.omarchy/**

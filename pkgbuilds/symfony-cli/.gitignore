@@ -1,6 +1,0 @@
-pkg/
-src/
-symfony*
-!symfony-cli.install
-!.omarchy/
-!.omarchy/**

@@ -1,7 +1,0 @@
-/*.zst
-/*.gz
-/*.svg
-/src/
-/pkg/
-!.omarchy/
-!.omarchy/**
