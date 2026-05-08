@@ -9,13 +9,9 @@ source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/docker-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 
-# Create directories if they don't exist
-mkdir -p "$BUILD_OUTPUT_DIR" "$REPO_DIR" "$SRC_DIR"
+print_header "Omarchy Package Builder"
 
-print_header "Omarchy AUR Package Builder"
-
-# Check Docker is available
-check_docker
+DRY_RUN=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -43,6 +39,10 @@ while [[ $# -gt 0 ]]; do
     done
     PACKAGES="${PACKAGES# }"
     ;;
+  --dry-run)
+    DRY_RUN=true
+    shift
+    ;;
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
@@ -50,14 +50,15 @@ while [[ $# -gt 0 ]]; do
     echo "  --arch <arch>        Target architecture (x86_64 or aarch64, default: x86_64)"
     echo "  --mirror <mirror>    Mirror to use (edge or stable, default: edge)"
     echo "  --package <names>    Build only the specified package(s) (space-separated)"
+    echo "  --dry-run           Show what would build without running makepkg"
     echo "  -h, --help           Show this help message"
     echo ""
-    echo "This script builds packages from pkgbuilds/ directories based on mirror:"
-    echo "  --mirror edge:   builds from pkgbuilds/edge/ + pkgbuilds/shared/"
-    echo "  --mirror stable: builds from pkgbuilds/shared/ only (edge pkgs promoted via 'repo migrate')"
+    echo "This script builds packages from pkgbuilds/ based on .omarchy/package.json:"
+    echo "  --mirror edge:   builds all packages"
+    echo "  --mirror stable: builds packages with release_ring=fast only"
     echo ""
     echo "Or build specific packages with --package:"
-    echo "  Package names should match directories in the relevant pkgbuilds/ tier"
+    echo "  Package names should match directories in pkgbuilds/"
     echo ""
     echo "Examples:"
     echo "  $0 --arch aarch64"
@@ -79,6 +80,27 @@ print_info "Target architecture: $ARCH"
 print_info "Mirror: $MIRROR"
 print_info "Build workspace: $BUILD_OUTPUT_DIR"
 print_info "Final output: $REPO_DIR"
+
+if [[ "$DRY_RUN" == true ]]; then
+  print_warning "DRY RUN MODE - build plan only; no Docker or makepkg will run"
+  ARCH="$ARCH" \
+    MIRROR="$MIRROR" \
+    PACKAGES="$PACKAGES" \
+    DRY_RUN=true \
+    PKGBUILDS_DIR="$PKGBUILDS_DIR" \
+    BUILD_OUTPUT_DIR="$BUILD_OUTPUT_DIR" \
+    FINAL_OUTPUT_DIR="$REPO_DIR" \
+    HELPERS_DIR="$BUILD_ROOT/helpers" \
+    SRC_DIR="$SRC_DIR" \
+    "$BUILD_ROOT/build/build.sh"
+  exit $?
+fi
+
+# Create directories if they don't exist
+mkdir -p "$BUILD_OUTPUT_DIR" "$REPO_DIR" "$SRC_DIR"
+
+# Check Docker is available
+check_docker
 
 # Setup QEMU for aarch64 builds on x86_64 hosts
 if [[ "$(uname -m)" == "x86_64" && "$ARCH" == "aarch64" ]]; then
@@ -104,7 +126,7 @@ fi
 # Build/update the Docker image
 build_docker_image "$BUILD_DIR" "$ARCH" "$MIRROR"
 
-print_info "Running AUR package build..."
+print_info "Running package build..."
 
 # Create output directories if they don't exist
 mkdir -p "$BUILD_OUTPUT_DIR"
@@ -123,6 +145,7 @@ DOCKER_ARGS=(
   -v "$BUILD_ROOT/build-output:/build-output"
   -v "$BUILD_ROOT/pkgs.omarchy.org:/pkgs.omarchy.org"
   -v "$BUILD_DIR:/build:ro"
+  -v "$BUILD_ROOT/helpers:/helpers:ro"
   -v "$BUILD_ROOT/pkgbuilds:/pkgbuilds:ro"
 )
 
@@ -137,8 +160,8 @@ BUILD_RESULT=$?
 # Summary
 echo ""
 if [[ $BUILD_RESULT -eq 0 ]]; then
-  print_success "AUR build completed successfully!"
+  print_success "Build completed successfully!"
 else
-  print_warning "Some AUR packages failed (see details above)"
+  print_warning "Some packages failed (see details above)"
   exit $BUILD_RESULT
 fi
