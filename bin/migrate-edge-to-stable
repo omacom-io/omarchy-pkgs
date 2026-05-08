@@ -1,5 +1,5 @@
 #!/bin/bash
-# Migrate package files from edge repo to stable repo without overwriting
+# Promote tested edge package artifacts into stable without overwriting
 
 set -e
 
@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
     echo "  -h, --help            Show this help message"
     echo ""
     echo "What it does:"
-    echo "  1) Rsync package files from edge -> stable (without overwriting existing files)"
+    echo "  1) Rsync tested package artifacts from edge -> stable (without overwriting existing files)"
     echo "  2) Run stable cleanup (keep 2 versions)"
     echo "  3) Update stable repository database"
     echo "  4) Sync stable repository to remote (prompts for confirmation)"
@@ -57,7 +57,7 @@ done
 SOURCE_DIR="$BUILD_ROOT/pkgs.omarchy.org/edge/$ARCH"
 TARGET_DIR="$BUILD_ROOT/pkgs.omarchy.org/stable/$ARCH"
 
-print_header "Migrate Edge to Stable"
+print_header "Promote Edge Artifacts to Stable"
 print_info "Architecture: $ARCH"
 print_info "Source: $SOURCE_DIR"
 print_info "Target: $TARGET_DIR"

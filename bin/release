@@ -10,6 +10,7 @@ source "$BUILD_ROOT/helpers/basecamp-notifier.sh"
 
 SYNC_REMOTE=""
 SKIP_PROD_CHECK=false
+DRY_RUN=false
 
 print_header "Complete Release Workflow"
 
@@ -51,6 +52,11 @@ while [[ $# -gt 0 ]]; do
     SKIP_PROD_CHECK=true
     shift
     ;;
+  --dry-run)
+    DRY_RUN=true
+    BUILD_ARGS+=("--dry-run")
+    shift
+    ;;
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
@@ -59,7 +65,8 @@ while [[ $# -gt 0 ]]; do
     echo "  --mirror <mirror>     Mirror to use (edge or stable, default: edge)"
     echo "  --package <name>      Build only the specified package"
     echo "  --sync-remote <path>  Rclone remote for sync (default: pkgs.omarchy.org:omarchy-pkgs)"
-    echo "  --skip-prod-check     Skip production environment check during sync"
+    echo "  --skip-prod-check     Skip production environment check during sync
+  --dry-run             Show build plan only; do not sign/promote/clean/update/sync"
     echo "  -h, --help            Show this help message"
     echo ""
     echo "This script runs the complete workflow:"
@@ -80,12 +87,22 @@ print_info "Build workspace: $BUILD_OUTPUT_DIR"
 
 # Step 1: Build
 echo ""
-print_info "Step 1/6: Building packages..."
+if [[ "$DRY_RUN" == true ]]; then
+  print_info "Step 1/6: Planning build..."
+else
+  print_info "Step 1/6: Building packages..."
+fi
 "$BUILD_ROOT/bin/build" "${BUILD_ARGS[@]}" || {
   print_error "Build failed"
   notify_error "Release failed: Build step failed" "Mirror: $MIRROR | Arch: $ARCH"
   exit 1
 }
+
+if [[ "$DRY_RUN" == true ]]; then
+  echo ""
+  print_success "Release dry run complete (build plan only)."
+  exit 0
+fi
 
 # Step 2: Sign
 echo ""

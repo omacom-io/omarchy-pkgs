@@ -1,90 +1,86 @@
 #!/bin/bash
-# Build script - builds packages based on mirror tier
-# Edge builds: /pkgbuilds/edge/* + /pkgbuilds/shared/*
-# Stable builds: /pkgbuilds/shared/* only (edge packages are promoted via binary copy)
-
-# Import GPG keys
-/build/import-gpg-keys.sh || exit 1
+# Build script - builds packages based on package metadata
+# Edge builds all packages. Stable builds only packages in the fast release ring.
 
 # Setup directories
 ARCH=${ARCH:-x86_64}
 MIRROR=${MIRROR:-edge}
-BUILD_OUTPUT_DIR="/build-output/$MIRROR/$ARCH"
-FINAL_OUTPUT_DIR="/pkgs.omarchy.org/$MIRROR/$ARCH"
+DRY_RUN=${DRY_RUN:-false}
+PKGBUILDS_DIR=${PKGBUILDS_DIR:-/pkgbuilds}
+BUILD_OUTPUT_DIR=${BUILD_OUTPUT_DIR:-/build-output/$MIRROR/$ARCH}
+FINAL_OUTPUT_DIR=${FINAL_OUTPUT_DIR:-/pkgs.omarchy.org/$MIRROR/$ARCH}
+HELPERS_DIR=${HELPERS_DIR:-/helpers}
+SRC_DIR=${SRC_DIR:-/src}
 
-# Determine which package directories to use based on mirror
-# Edge builds from edge + shared; stable only builds shared (edge packages are promoted via binary copy)
-if [[ "$MIRROR" == "stable" ]]; then
-  PKGBUILD_DIRS="/pkgbuilds/shared"
-else
-  PKGBUILD_DIRS="/pkgbuilds/edge /pkgbuilds/shared"
-fi
+source "$HELPERS_DIR/package-metadata.sh"
 
-mkdir -p "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR"
+if [[ "$DRY_RUN" != true ]]; then
+  # Import GPG keys
+  /build/import-gpg-keys.sh || exit 1
 
-# Configure Omarchy repositories for dependency resolution
-echo "==> Configuring Omarchy repositories for dependency resolution..."
+  mkdir -p "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR"
 
-# Always add omarchy-build repo (for incremental builds)
-# Packages in build-output are unsigned, so use SigLevel = Never
-sudo tee -a /etc/pacman.conf > /dev/null <<EOF
+  # Configure Omarchy repositories for dependency resolution
+  echo "==> Configuring Omarchy repositories for dependency resolution..."
+
+  # Always add omarchy-build repo (for incremental builds)
+  # Packages in build-output are unsigned, so use SigLevel = Never
+  sudo tee -a /etc/pacman.conf > /dev/null <<EOF
 
 [omarchy-build]
 SigLevel = Never
 Server = file://$BUILD_OUTPUT_DIR
 EOF
-echo "  -> omarchy-build (priority 1): $BUILD_OUTPUT_DIR"
+  echo "  -> omarchy-build (priority 1): $BUILD_OUTPUT_DIR"
 
-# Initialize empty build database if it doesn't exist
-cd "$BUILD_OUTPUT_DIR"
-if [[ ! -f "omarchy-build.db.tar.zst" ]]; then
-  # Create an empty database
-  repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
-  ln -sf omarchy-build.db.tar.zst omarchy-build.db
-else
-  # Database exists, check if we need to rebuild it from packages
-  if ls *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | grep -q .; then
-    echo "==> Rebuilding build database from existing packages..."
-    ls *.pkg.tar.* | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | xargs -r repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
+  # Initialize empty build database if it doesn't exist
+  cd "$BUILD_OUTPUT_DIR"
+  if [[ ! -f "omarchy-build.db.tar.zst" ]]; then
+    # Create an empty database
+    repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
     ln -sf omarchy-build.db.tar.zst omarchy-build.db
+  else
+    # Database exists, check if we need to rebuild it from packages
+    if ls *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | grep -q .; then
+      echo "==> Rebuilding build database from existing packages..."
+      ls *.pkg.tar.* | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | xargs -r repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
+      ln -sf omarchy-build.db.tar.zst omarchy-build.db
+    fi
   fi
-fi
 
-# Add omarchy repo if it has a database (stable packages)
-if [[ -f "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" ]] || [[ -f "$FINAL_OUTPUT_DIR/omarchy.db" ]]; then
-  sudo tee -a /etc/pacman.conf > /dev/null <<EOF
+  # Add omarchy repo if it has a database (stable packages)
+  if [[ -f "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" ]] || [[ -f "$FINAL_OUTPUT_DIR/omarchy.db" ]]; then
+    sudo tee -a /etc/pacman.conf > /dev/null <<EOF
 
 [omarchy]
 SigLevel = Optional TrustAll
 Server = file://$FINAL_OUTPUT_DIR
 EOF
-  echo "  -> omarchy (priority 2): $FINAL_OUTPUT_DIR"
-fi
+    echo "  -> omarchy (priority 2): $FINAL_OUTPUT_DIR"
+  fi
 
-# Sync pacman database
-sudo pacman -Sy
+  # Sync pacman database
+  sudo pacman -Sy
+fi
 
 echo "==> Package Builder"
 echo "==> Target architecture: $ARCH"
 echo "==> Mirror: $MIRROR"
-echo "==> Package directories: $PKGBUILD_DIRS"
+echo "==> Package root: $PKGBUILDS_DIR"
 echo "==> Build workspace: $BUILD_OUTPUT_DIR"
 echo "==> Final output: $FINAL_OUTPUT_DIR"
+if [[ "$DRY_RUN" == true ]]; then
+  echo "==> Dry run: yes (plan only; makepkg will not run)"
+fi
 
 FAILED_PACKAGES=""
 SUCCESSFUL_PACKAGES=""
 SKIPPED_PACKAGES=""
 
-# Find package directory - searches through PKGBUILD_DIRS
+# Find package directory
 find_package_dir() {
   local pkg="$1"
-  for dir in $PKGBUILD_DIRS; do
-    if [[ -d "$dir/$pkg" ]]; then
-      echo "$dir/$pkg"
-      return 0
-    fi
-  done
-  return 1
+  package_dir_for_name "$pkg"
 }
 
 # Get version from final output (production packages)
@@ -228,7 +224,7 @@ get_package_deps() {
   ) | tr ' ' '\n' | while read -r dep; do
     # Strip version constraints (e.g., 'hyprshade>=1.0' -> 'hyprshade')
     dep=$(echo "$dep" | sed 's/[<>=].*$//')
-    # Check if this dependency exists in our pkgbuilds (any tier)
+    # Check if this dependency exists in our pkgbuilds
     if find_package_dir "$dep" >/dev/null 2>&1; then
       echo "$dep"
     fi
@@ -315,22 +311,15 @@ check_needs_build() {
   fi
 }
 
-# Collect all packages from the relevant directories
+# Collect packages that should be built for the selected mirror
 collect_packages() {
-  for dir in $PKGBUILD_DIRS; do
-    if [[ -d "$dir" ]]; then
-      for pkgdir in "$dir"/*/; do
-        [[ ! -d "$pkgdir" ]] && continue
-        local pkg=$(basename "$pkgdir")
-        [[ ! -f "$pkgdir/PKGBUILD" ]] && continue
-        echo "$pkg"
-      done
-    fi
-  done
+  packages_for_mirror "$MIRROR"
 }
 
 # Main execution
-cd /src
+if [[ "$DRY_RUN" != true ]]; then
+  cd "$SRC_DIR"
+fi
 
 TOTAL_COUNT=0
 
@@ -345,8 +334,18 @@ if [[ -n "$PACKAGES" ]]; then
   for pkg_name in $PACKAGES; do
     pkgdir=$(find_package_dir "$pkg_name")
     if [[ -z "$pkgdir" || ! -f "$pkgdir/PKGBUILD" ]]; then
-      echo "==> ERROR: Package '$pkg_name' not found in $PKGBUILD_DIRS"
+      echo "==> ERROR: Package '$pkg_name' not found in $PKGBUILDS_DIR"
       exit 1
+    fi
+
+    if ! package_builds_for_mirror "$pkgdir" "$MIRROR"; then
+      if [[ "$MIRROR" == "stable" ]]; then
+        echo "  - $pkg_name - not in release_ring=fast; build edge and promote with repo migrate"
+      else
+        echo "  - $pkg_name - not configured for direct $MIRROR builds"
+      fi
+      SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg_name"
+      continue
     fi
 
     # Check if package should be built for this architecture
@@ -445,6 +444,12 @@ else
   fi
 
   echo "==> Build order: ${ORDERED_PACKAGES[@]}"
+
+  if [[ "$DRY_RUN" == true ]]; then
+    echo ""
+    echo "==> Dry run complete. Packages that would build: ${ORDERED_PACKAGES[@]}"
+    exit 0
+  fi
 
   # Determine which packages need to be installed for other packages being built
   declare -A INSTALL_PACKAGES

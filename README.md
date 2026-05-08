@@ -5,11 +5,15 @@ Build system for the Omarchy Package Repository. Builds PKGBUILDs from local sou
 **Multi-Architecture**: Supports both x86_64 and aarch64 (ARM64).
 
 ## PKGBUILDs
-There are 3 folders housing PKGBUILD that drive what is ultimately on the respective repos. 
 
-- `edge` - Built and pushed to the edge repo. These are synced daily with AUR if they're set to mirror it.
-- `stable` - Built and pushed to the stable repo. These are only synced manually when stable is bumped.
-- `shared` - Built and pushed to both stable and edge repo every 6hrs.
+Each package lives directly under `pkgbuilds/<package>/` and carries Omarchy metadata in `.omarchy/package.json`.
+
+The filesystem no longer encodes release policy. Instead:
+
+- all packages build for `edge`
+- packages with `"release_ring": "fast"` also build directly for `stable`
+- all other packages reach `stable` by promoting tested edge artifacts with `bin/repo migrate`
+- AUR sync behavior is controlled by `source`, `sync`, `aur`, patches, and hooks in `.omarchy/`
 
 ## Prerequisites
 ### aarch64 Builds (Optional)
@@ -54,6 +58,9 @@ bin/repo release --arch aarch64
 
 # Force build specific package (useful for debugging failures)
 bin/repo release --package omarchy-nvim
+
+# Show what would build without signing/promoting/syncing
+bin/repo release --dry-run
 ```
 
 ### Step-by-Step
@@ -83,9 +90,12 @@ bin/repo build                                   # All packages (x86_64, edge)
 bin/repo build --arch aarch64                    # ARM64
 bin/repo build --mirror stable                   # Stable mirror
 bin/repo build --package yay cursor-bin          # Specific packages
+bin/repo build --dry-run                         # Show what would build
 ```
 
 **Output**: Unsigned `.pkg.tar.zst` in `build-output/`. Only builds packages that are newer than what is in the repository.
+
+Use `--dry-run` to show the build plan without running `makepkg`.
 
 ### Sign
 
@@ -123,7 +133,7 @@ bin/repo update                     # Update database
 
 Updates the repository database (adding the newest version of each package). Run this after `promote` or `clean`.
 
-### Sync
+### Sync Repository
 
 ```bash
 bin/repo sync                           # Sync current arch/mirror
@@ -132,30 +142,56 @@ bin/repo sync --arch aarch64            # Sync ARM64
 bin/repo sync --skip-prod-check         # No confirmation
 ```
 
-Syncs to remote server using rclone based on the configured mirror and architecture.
+Syncs package repositories to the remote server using rclone based on the configured mirror and architecture.
+
+### Sync AUR PKGBUILDs
+
+```bash
+bin/sync-aur                            # Sync all AUR packages with sync enabled
+bin/sync-aur yay v4l2-relayd            # Sync specific packages
+```
+
+AUR sync is metadata-driven. It preserves `.omarchy/`, replaces the package root with AUR contents, applies `.omarchy/patches/*.patch`, runs `.omarchy/post-sync.sh` when present, applies pkgrel metadata, removes AUR-only `.SRCINFO` and `.gitignore` files, and records `upstream_commit`.
 
 ### Other
 
 ```bash
-bin/repo migrate --arch x86_64       # Migrate missing packages edge -> stable, then clean + update
+bin/repo migrate --arch x86_64       # Promote tested edge artifacts -> stable, then clean + update
 bin/repo migrate --dry-run           # Preview migration and cleanup
-bin/repo list                       # List packages
-bin/repo remove <package>           # Remove package
-bin/clean-docker                    # Clear Docker images/cache (forces fresh rebuild)
+bin/repo list                        # List package metadata
+bin/add-package <package>            # Add an AUR/local package with metadata
+bin/package-worktree <package>       # Create upstream/patched/current scratch workspace
+bin/repo remove <package>            # Remove package
+bin/clean-docker                     # Clear Docker images/cache (forces fresh rebuild)
+```
+
+### Package Metadata Tools
+
+```bash
+bin/add-package yay                  # Add AUR package, create metadata, sync from AUR
+bin/add-package spotify --fast       # Add package to the fast release ring
+bin/add-package foo --no-sync        # Sync once, then mark AUR sync disabled
+bin/add-package my-package --local   # Create local package metadata
+
+bin/repo list                        # Table view of source package metadata
+bin/repo list --json                 # Agent/script-friendly JSON
+bin/repo list --repo --mirror stable # List packages in a published repo database
+
+bin/package-worktree v4l2-relayd     # Create upstream/patched/current scratch workspace
 ```
 
 ## Directory Structure
 
 ```
 omarchy-pkgs/
-├── pkgbuilds/                  # Source PKGBUILDs (tiered)
-│   ├── stable/                 # Manual promotion only, builds for stable
-│   ├── edge/                   # Daily sync w/ PR review, builds for edge only
-│   └── shared/                 # 6-hourly sync, auto-merge, builds for BOTH
+├── pkgbuilds/                  # Source PKGBUILDs
+│   └── package-name/
+│       ├── PKGBUILD
+│       └── .omarchy/
+│           ├── package.json    # Source/sync/release metadata
+│           ├── patches/        # Omarchy patches reapplied after AUR sync
+│           └── post-sync.sh    # Optional dynamic post-sync customization hook
 ├── build/
-│   └── packages/
-│       ├── edge.packages       # Package list for daily sync (PR review)
-│       └── shared.packages     # Package list for 6-hourly sync (auto-merge)
 ├── build-output/               # Unsigned packages (temporary)
 │   ├── edge/
 │   │   ├── x86_64/
@@ -173,66 +209,121 @@ omarchy-pkgs/
 └── bin/                        # CLI tools (on host)
 ```
 
-## Package Tiers
+## Package Metadata
 
-Packages are organized into three tiers based on their release cadence:
+Each source package has Omarchy metadata at `pkgbuilds/<package>/.omarchy/package.json`.
 
-| Tier | Directory | Sync Frequency | Review | Builds To |
-|------|-----------|----------------|--------|-----------|
-| **Stable** | `pkgbuilds/stable/` | Manual | N/A | stable only |
-| **Edge** | `pkgbuilds/edge/` | Daily | PR required | edge only |
-| **Shared** | `pkgbuilds/shared/` | Every 6 hours | Auto-merge | edge AND stable |
+Minimal examples:
+
+```json
+{ "source": "aur" }
+```
+
+```json
+{ "source": "aur", "sync": false }
+```
+
+```json
+{ "source": "aur", "release_ring": "fast" }
+```
+
+```json
+{ "source": "local" }
+```
+
+```json
+{ "source": "aur", "pkgrel": { "suffix": 1 } }
+```
+
+Fields:
+
+- `source`: `aur` or `local`
+- `sync`: optional for AUR packages; defaults to `true`. Set `false` for AUR-origin packages that Omarchy maintains manually.
+- `aur`: optional AUR package name when it differs from the local package directory, usually for split packages.
+- `release_ring`: optional. `fast` means the package is built directly for stable as well as edge. Packages without a ring build in edge and reach stable through tested artifact promotion (`bin/repo migrate`).
+- `pkgrel`: optional Omarchy pkgrel suffix for a version-pinned rebuild bump. This emits `<aur pkgrel>.<suffix>` instead of replacing AUR's pkgrel. `offset` can be used only when preserving monotonic upgrades from old absolute pkgrel bumps. The metadata is removed automatically when AUR sync changes `pkgver`; the current package version is read from the checked-in PKGBUILD, so the version is not duplicated in JSON.
+- `upstream_commit`: set by `bin/sync-aur` for AUR packages. Used by `bin/package-worktree` to recreate the exact raw AUR package that Omarchy last synced.
 
 ### Build Matrix
 
-- **Edge builds** (`--mirror edge`): `pkgbuilds/edge/*` + `pkgbuilds/shared/*`
-- **Stable builds** (`--mirror stable`): `pkgbuilds/stable/*` + `pkgbuilds/shared/*`
+- **Edge builds** (`--mirror edge`): all packages in `pkgbuilds/*`
+- **Stable builds** (`--mirror stable`): packages with `"release_ring": "fast"`
+- **Stable promotion** (`bin/repo migrate`): copies tested edge artifacts into stable
 
 ## Adding Packages
 
-### From AUR (Edge - Daily Sync, PR Review)
+### From AUR
 
 ```bash
-# Add to edge package list
-echo "package-name" >> build/packages/edge.packages
-
-# Sync PKGBUILD
-bin/sync-aur --tier edge package-name
-
-# Build and release
+bin/add-package package-name
 bin/repo release --package package-name
 ```
 
-### From AUR (Shared - 6-Hourly Sync, Auto-Merge)
+### From AUR, fast release ring
 
 ```bash
-# Add to shared package list
-echo "package-name" >> build/packages/shared.packages
-
-# Sync PKGBUILD
-bin/sync-aur --tier shared package-name
-
-# Build and release (will publish to both edge and stable)
+bin/add-package package-name --fast
 bin/repo release --package package-name
 bin/repo release --mirror stable --package package-name
 ```
 
-### Local Patches for AUR Packages
-
-Create `pkgbuilds/<tier>/package-name/patches/*.patch` to maintain modifications across AUR syncs:
+### AUR-origin, manually maintained by Omarchy
 
 ```bash
-cd pkgbuilds/edge/package-name
-# Make changes
-git diff > patches/my-fix.patch
-# Next sync will auto-apply patches
+bin/add-package package-name --no-sync
 ```
+
+### Local Customizations for AUR Packages
+
+For static changes, create `pkgbuilds/package-name/.omarchy/patches/*.patch` to maintain modifications across AUR syncs.
+
+The recommended workflow is to use a scratch workspace:
+
+```bash
+bin/package-worktree package-name --dir /tmp/package-name-worktree
+```
+
+This creates:
+
+```text
+upstream/  # raw AUR package at upstream_commit
+patched/   # AUR + existing Omarchy .omarchy customizations
+current/   # current checked-in package directory
+```
+
+Patch-authoring flow:
+
+```bash
+# 1. Make the intended change in pkgbuilds/package-name/
+
+# 2. Recreate the scratch workspace
+bin/package-worktree package-name --dir /tmp/package-name-worktree
+
+# 3. Inspect drift from patched -> current
+# For multi-file changes, inspect this and split into focused patches.
+diff -ruN /tmp/package-name-worktree/patched /tmp/package-name-worktree/current
+
+# For a single PKGBUILD change, write a patch like this:
+mkdir -p pkgbuilds/package-name/.omarchy/patches
+(
+  cd /tmp/package-name-worktree/patched
+  diff -u --label a/PKGBUILD --label b/PKGBUILD \
+    PKGBUILD /tmp/package-name-worktree/current/PKGBUILD || true
+) > pkgbuilds/package-name/.omarchy/patches/my-fix.patch
+
+# 4. Verify the package is reproducible from AUR + .omarchy
+bin/sync-aur package-name
+bin/package-worktree package-name --dir /tmp/package-name-check
+diff -ruN /tmp/package-name-check/patched /tmp/package-name-check/current
+```
+
+For dynamic changes that depend on the current upstream version, add `pkgbuilds/package-name/.omarchy/post-sync.sh`. The hook runs after the AUR package is copied into a temporary worktree and before the Omarchy pkgrel suffix is applied. After patches/hooks/metadata pkgrel overrides, `bin/sync-aur` removes AUR-only `.SRCINFO` and `.gitignore` files before writing the package back.
 
 ### Custom Package
 
 ```bash
-mkdir pkgbuilds/edge/my-package
-# Add PKGBUILD and files
+bin/add-package my-package --local --scaffold
+# Fill in PKGBUILD and package files
 bin/repo release --package my-package
 ```
 
@@ -286,14 +377,13 @@ The repository includes GitHub workflows and systemd services for automated rele
 
 #### GitHub Workflows
 
-1. **sync-aur-edge.yml** (Daily at 6:00 AM UTC): Syncs edge packages from AUR, creates PR for review
-2. **sync-aur-shared.yml** (Every 6 hours): Syncs shared packages from AUR, auto-commits to master
+1. **sync-aur.yml** (Every 6 hours): Syncs AUR packages according to `.omarchy/package.json` and opens a PR when changes are found.
 
 #### Systemd Services
 
 1. **check-versions** (Every 6 hours at :30): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
-2. **auto-release-edge** (Every 6 hours at +1:00): If state file exists, builds edge packages
-3. **auto-release-stable** (Every 6 hours at +1:00): If state file exists, builds stable packages (runs in parallel with edge)
+2. **auto-release-edge** (Every 6 hours at +1:00): If state file exists, builds all edge packages that need updates
+3. **auto-release-stable** (Every 6 hours at +1:00): If state file exists, builds `release_ring=fast` packages for stable (runs in parallel with edge)
 
 State files are stored in `/root/.state/`:
 - `.sync-needed-edge`
