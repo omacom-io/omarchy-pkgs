@@ -84,14 +84,54 @@ find_package_dir() {
 }
 
 # Get version from final output (production packages)
+#
+# Source package directories are named after the PKGBUILD pkgbase, but split
+# packages are stored in the repo DB under their individual pkgname entries.
+# Cache versions by both %NAME% and %BASE% so a pkgbase like
+# libretro-vice-git can be found even though the DB only contains packages like
+# libretro-vice-x64-git.
+declare -A LOCAL_VERSION_BY_NAME=()
+declare -A LOCAL_VERSION_BY_BASE=()
+LOCAL_VERSION_CACHE_LOADED=false
+LOCAL_VERSION_CACHE_DB=""
+
+load_local_versions() {
+  local db="$FINAL_OUTPUT_DIR/omarchy.db.tar.zst"
+
+  if [[ ! -f "$db" ]]; then
+    db="$FINAL_OUTPUT_DIR/omarchy.db"
+  fi
+
+  [[ -f "$db" ]] || return 0
+  [[ "$LOCAL_VERSION_CACHE_LOADED" == true && "$LOCAL_VERSION_CACHE_DB" == "$db" ]] && return 0
+
+  LOCAL_VERSION_BY_NAME=()
+  LOCAL_VERSION_BY_BASE=()
+
+  local desc_file desc name base version
+  while IFS= read -r desc_file; do
+    desc=$(tar -xOf "$db" "$desc_file" 2>/dev/null) || continue
+    name=$(awk '/%NAME%/{getline; print; exit}' <<< "$desc")
+    base=$(awk '/%BASE%/{getline; print; exit}' <<< "$desc")
+    version=$(awk '/%VERSION%/{getline; print; exit}' <<< "$desc")
+
+    [[ -n "$name" && -n "$version" ]] && LOCAL_VERSION_BY_NAME["$name"]="$version"
+    [[ -n "$base" && -n "$version" ]] && LOCAL_VERSION_BY_BASE["$base"]="$version"
+  done < <(tar -tf "$db" 2>/dev/null | grep '/desc$')
+
+  LOCAL_VERSION_CACHE_LOADED=true
+  LOCAL_VERSION_CACHE_DB="$db"
+}
+
 get_local_version() {
   local pkg="$1"
-  if [[ -f "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" ]]; then
-    local desc_file=$(tar -tf "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" | grep "^${pkg}-[0-9r].*/desc$" | head -1)
-    if [[ -n "$desc_file" ]]; then
-      tar -xOf "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" "$desc_file" 2>/dev/null |
-        awk '/%VERSION%/{getline; print; exit}'
-    fi
+
+  load_local_versions
+
+  if [[ -n "${LOCAL_VERSION_BY_NAME[$pkg]:-}" ]]; then
+    echo "${LOCAL_VERSION_BY_NAME[$pkg]}"
+  elif [[ -n "${LOCAL_VERSION_BY_BASE[$pkg]:-}" ]]; then
+    echo "${LOCAL_VERSION_BY_BASE[$pkg]}"
   fi
 }
 
@@ -233,11 +273,33 @@ get_package_deps() {
 
 # For VCS packages (those with a pkgver() function), the static pkgver= in the
 # PKGBUILD is just a placeholder; the real version is computed at build time
-# from `git describe`. Without this check, version comparison always reports a
+# from the git checkout. Without this check, version comparison always reports a
 # mismatch and we rebuild on every run, producing a package with the same
 # name+version as one already in production. Detect this by comparing the
-# upstream HEAD commit hash to the g<hash> suffix already in the production
-# version. Returns 0 when upstream is unchanged (build can be skipped).
+# upstream HEAD commit hash to the hash suffix already in the production version
+# (both `...gabcdef0` and `...abcdef0` styles are common). Returns 0 when
+# upstream is unchanged (build can be skipped).
+extract_vcs_hash_from_version() {
+  local version="$1"
+  local version_no_pkgrel="${version%-*}"
+  local candidate hash=""
+
+  # Drop an epoch prefix before scanning for commit-looking components.
+  if [[ "$version_no_pkgrel" == *:* ]]; then
+    version_no_pkgrel="${version_no_pkgrel#*:}"
+  fi
+
+  while IFS= read -r candidate; do
+    # Prefer candidates explicitly prefixed with `g`, but also accept bare hex
+    # hashes that contain at least one a-f character (e.g. r21251.626ee68).
+    if [[ "$candidate" == g* || "$candidate" =~ [a-f] ]]; then
+      hash="${candidate#g}"
+    fi
+  done < <(echo "$version_no_pkgrel" | grep -oE 'g?[a-f0-9]{7,40}')
+
+  [[ -n "$hash" ]] && echo "${hash:0:7}"
+}
+
 check_vcs_unchanged() {
   local pkg="$1"
   local pkgdir="$2"
@@ -274,9 +336,7 @@ check_vcs_unchanged() {
   [[ -z "$source_url" ]] && return 1
   [[ "$source_url" == *"#"* ]] && return 1
 
-  local prod_hash=$(echo "$local_version" | grep -oE '\.g[a-f0-9]{7,}' | tail -1)
-  prod_hash="${prod_hash#.g}"
-  prod_hash="${prod_hash:0:7}"
+  local prod_hash=$(extract_vcs_hash_from_version "$local_version")
   [[ -z "$prod_hash" ]] && return 1
 
   local upstream_hash=$(git ls-remote "$source_url" HEAD 2>/dev/null | awk 'NR==1 {print substr($1, 1, 7)}')
