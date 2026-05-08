@@ -108,16 +108,23 @@ load_local_versions() {
   LOCAL_VERSION_BY_NAME=()
   LOCAL_VERSION_BY_BASE=()
 
-  local desc_file desc name base version
-  while IFS= read -r desc_file; do
-    desc=$(tar -xOf "$db" "$desc_file" 2>/dev/null) || continue
-    name=$(awk '/%NAME%/{getline; print; exit}' <<< "$desc")
-    base=$(awk '/%BASE%/{getline; print; exit}' <<< "$desc")
-    version=$(awk '/%VERSION%/{getline; print; exit}' <<< "$desc")
-
+  local name base version
+  while IFS=$'\t' read -r name base version; do
     [[ -n "$name" && -n "$version" ]] && LOCAL_VERSION_BY_NAME["$name"]="$version"
     [[ -n "$base" && -n "$version" ]] && LOCAL_VERSION_BY_BASE["$base"]="$version"
-  done < <(tar -tf "$db" 2>/dev/null | grep '/desc$')
+  done < <(
+    tar -xOf "$db" --wildcards '*/desc' 2>/dev/null | awk '
+      function emit() {
+        if (name != "" && version != "") print name "\t" base "\t" version
+        name=""; base=""; version=""
+      }
+      $0 == "%FILENAME%" { emit(); next }
+      $0 == "%NAME%" { if (name != "" && version != "") emit(); getline; name=$0; next }
+      $0 == "%BASE%" { getline; base=$0; next }
+      $0 == "%VERSION%" { getline; version=$0; next }
+      END { emit() }
+    '
+  )
 
   LOCAL_VERSION_CACHE_LOADED=true
   LOCAL_VERSION_CACHE_DB="$db"
@@ -353,10 +360,6 @@ check_needs_build() {
 
   [[ ! -f "$pkgbuild" ]] && return 1
 
-  if check_vcs_unchanged "$pkg" "$pkgdir"; then
-    return 1
-  fi
-
   # Get PKGBUILD version (including epoch if present)
   local pkgbuild_version=$(cd "$pkgdir" && bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
   [[ -z "$pkgbuild_version" ]] && return 1
@@ -366,6 +369,8 @@ check_needs_build() {
 
   if [[ "$local_version" == "$pkgbuild_version" ]]; then
     return 1  # Already up to date
+  elif check_vcs_unchanged "$pkg" "$pkgdir"; then
+    return 1  # VCS upstream HEAD is already represented in the repo
   else
     return 0  # Needs building
   fi
