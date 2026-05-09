@@ -3,7 +3,7 @@
 
 pkgbase=linux-ptl
 pkgver=7.0.3.arch1
-pkgrel=2
+pkgrel=6
 pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, PSR2, Panel Replay SU)'
 url='https://github.com/archlinux/linux'
 arch=(
@@ -37,6 +37,10 @@ source=(
   0027-drm-i915-trans-push-frame-change-for-panel-replay.patch
   0028-drm-i915-psr-exit-Panel-Replay-for-ALPM-lag.patch
   0029-drm-edid-populate-monitor-range-from-displayid-adaptive-sync.patch
+  0030-sof-intel-exact-sdw-mask.patch
+  0031-ptl-mach-lenovo-83qk-rt722-ghost.patch
+  0032-sdw-utils-lenovo-83qk-skip-cs42l43-sdca-check.patch
+  0033-lenovo-83qk-ignore-pch-dmic.patch
 )
 source_x86_64=(config.x86_64)
 validpgpkeys=(
@@ -48,7 +52,7 @@ b2sums=('SKIP'
         'SKIP'
         'SKIP'
         'SKIP'
-        'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+        'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 b2sums_x86_64=('9742088ab0381d8196046e42e8acb4ce01ea77461fada77dc90d197e859631e73b06ead4d512f15ab619b33ebad7bca58a10d4506d66916a99c40f9f52708a53')
 
 # https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
@@ -56,7 +60,7 @@ sha256sums=('0bedadbf5788693ddebbcc913c893f1a97349af79ddde7144c2a80b401959f1c'
             'SKIP'
             'SKIP'
             'SKIP'
-            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase

@@ -1,0 +1,22 @@
+diff --git a/sound/soc/sof/intel/hda.c b/sound/soc/sof/intel/hda.c
+index 111111111111..222222222222 100644
+--- a/sound/soc/sof/intel/hda.c
++++ b/sound/soc/sof/intel/hda.c
+@@ -1584,6 +1584,17 @@ struct snd_soc_acpi_mach *hda_machine_select(struct snd_sof_dev *sdev)
+ 		/* report to machine driver if any DMICs are found */
+ 		mach->mach_params.dmic_num = check_dmic_num(sdev);
+ 
++		/*
++		 * Lenovo Yoga Slim 7 Ultra 14IPH11 (83QK, SSID 17aa:3821)
++		 * uses the CS42L43 SoundWire DMIC path. Ignore the PCH DMICs
++		 * from NHLT so topology filename fixup does not append "-4ch"
++		 * and so PCH DMIC links do not shift BE IDs before iDisp.
++		 */
++		if (sof_pdata->subsystem_id_set &&
++		    sof_pdata->subsystem_vendor == 0x17aa &&
++		    sof_pdata->subsystem_device == 0x3821)
++			mach->mach_params.dmic_num = 0;
++
+ 		if (sdw_mach_found || mach->tplg_quirk_mask & SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER)
+ 			dmic_fixup = true;
+ 

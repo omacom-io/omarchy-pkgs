@@ -1,0 +1,25 @@
+diff --git a/sound/soc/sdw_utils/soc_sdw_utils.c b/sound/soc/sdw_utils/soc_sdw_utils.c
+index 0a000000000000..0b000000000000 100644
+--- a/sound/soc/sdw_utils/soc_sdw_utils.c
++++ b/sound/soc/sdw_utils/soc_sdw_utils.c
+@@ -1542,8 +1542,18 @@
+ 				soc_end->include_sidecar = true;
+ 			}
+ 
+-			if (SDW_CLASS_ID(adr_dev->adr) && adr_dev->num_endpoints > 1)
+-				check_sdca = true;
++			if (SDW_CLASS_ID(adr_dev->adr) && adr_dev->num_endpoints > 1) {
++				/*
++				 * Lenovo 83QK exposes CS42L43 endpoints through firmware in a
++				 * way that reports only SmartAmp SDCA functions. If we enforce
++				 * SDCA endpoint probing here, SimpleJack endpoints are skipped
++				 * and CS42L43 topologies fail to connect Playback-SimpleJack.
++				 */
++				if (!(ctx->mc_quirk & SOC_SDW_SIDECAR_AMPS &&
++				      SDW_MFG_ID(adr_dev->adr) == 0x01fa &&
++				      SDW_PART_ID(adr_dev->adr) == 0x4243))
++					check_sdca = true;
++			}
+ 
+ 			for (j = 0; j < adr_dev->num_endpoints; j++) {
+ 				const struct snd_soc_acpi_endpoint *adr_end;

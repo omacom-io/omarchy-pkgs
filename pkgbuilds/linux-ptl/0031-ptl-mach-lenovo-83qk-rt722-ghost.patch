@@ -1,0 +1,62 @@
+diff --git a/sound/soc/intel/common/soc-acpi-intel-ptl-match.c b/sound/soc/intel/common/soc-acpi-intel-ptl-match.c
+index 3b7818355ff645..8f3d7b6c0a1e2 100644
+--- a/sound/soc/intel/common/soc-acpi-intel-ptl-match.c
++++ b/sound/soc/intel/common/soc-acpi-intel-ptl-match.c
+@@ -245,6 +245,28 @@
+ 	}
+ };
+ 
++static const struct snd_soc_acpi_adr_device cs42l43_3_agg_rt722_l3_ghost_adr[] = {
++	{
++		.adr = 0x00033001FA424301ull,
++		.num_endpoints = ARRAY_SIZE(cs42l43_amp_spkagg_endpoints),
++		.endpoints = cs42l43_amp_spkagg_endpoints,
++		.name_prefix = "cs42l43"
++	},
++	/*
++	 * Lenovo Yoga Slim 7 Ultra 14IPH11 (83QK, SSID 17aa:3821) exposes
++	 * an RT722 SDCA function at link 3 in firmware. On Linux this function
++	 * remains UNATTACHED and any attempt to route speaker/jack audio through
++	 * it fails with rt722 DPN_PortCtrl errors. Treat it as a zero-endpoint
++	 * ghost so the real CS42L43 + CS35L56 sidecar speaker path can be used.
++	 */
++	{
++		.adr = 0x000330025d072201ull, /* Ghost RT722/ALC722 */
++		.num_endpoints = 0,
++		.endpoints = NULL,
++		.name_prefix = "ghost"
++	}
++};
++
+ static const struct snd_soc_acpi_adr_device cs35l56_2_lr_adr[] = {
+ 	{
+ 		.adr = 0x00023001fa355601ull,
+@@ -460,6 +482,15 @@
+ 	{}
+ };
+ 
++static const struct snd_soc_acpi_link_adr ptl_lenovo_83qk_cs42l43_l3_rt722_ghost[] = {
++	{
++		.mask = BIT(3),
++		.num_adr = ARRAY_SIZE(cs42l43_3_agg_rt722_l3_ghost_adr),
++		.adr_d = cs42l43_3_agg_rt722_l3_ghost_adr,
++	},
++	{}
++};
++
+ static const struct snd_soc_acpi_link_adr ptl_cs42l43_l2_cs35l56x6_l13[] = {
+ 	{
+ 		.mask = BIT(2),
+@@ -693,6 +724,12 @@
+ 		.sof_tplg_filename = "sof-ptl-cs42l43-agg-l3-cs35l56-l2.tplg",
+ 	},
+ 	{
++		.link_mask = BIT(3),
++		.links = ptl_lenovo_83qk_cs42l43_l3_rt722_ghost,
++		.drv_name = "sof_sdw",
++		.sof_tplg_filename = "sof-arl-cs42l43-l2-cs35l56-l3.tplg",
++	},
++	{
+ 		.link_mask = BIT(0),
+ 		.links = ptl_rvp,
+ 		.drv_name = "sof_sdw",
