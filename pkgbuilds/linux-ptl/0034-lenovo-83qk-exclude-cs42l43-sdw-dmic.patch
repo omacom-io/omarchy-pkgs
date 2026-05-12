@@ -1,0 +1,21 @@
+diff --git a/sound/soc/intel/boards/sof_sdw.c b/sound/soc/intel/boards/sof_sdw.c
+index 111111111111..222222222222 100644
+--- a/sound/soc/intel/boards/sof_sdw.c
++++ b/sound/soc/intel/boards/sof_sdw.c
+@@ -858,7 +858,15 @@ static const struct snd_pci_quirk sof_sdw_ssid_quirk_table[] = {
+ 	SND_PCI_QUIRK(0x17aa, 0x2347, "Lenovo P16", SOC_SDW_CODEC_MIC),
+ 	SND_PCI_QUIRK(0x17aa, 0x2348, "Lenovo P16", SOC_SDW_CODEC_MIC),
+ 	SND_PCI_QUIRK(0x17aa, 0x2349, "Lenovo P1", SOC_SDW_CODEC_MIC),
+-	SND_PCI_QUIRK(0x17aa, 0x3821, "Lenovo 0x3821", SOC_SDW_SIDECAR_AMPS),
++	/*
++	 * Lenovo Yoga Slim 7 Ultra 14IPH11 (83QK, SSID 17aa:3821)
++	 * needs the CS35L56/CS35L57 sidecar speaker path, but the internal
++	 * microphone is the PCH DMIC path selected by the -2ch topology.
++	 * Mark SOC_SDW_CODEC_MIC as a quirk so the CS42L43 SmartMic endpoint
++	 * with quirk_exclude=true is skipped; otherwise the SDW DMIC consumes
++	 * DAI id 4 and dmic01 is not created at topology-expected id 3.
++	 */
++	SND_PCI_QUIRK(0x17aa, 0x3821, "Lenovo 0x3821", SOC_SDW_SIDECAR_AMPS | SOC_SDW_CODEC_MIC),
+ 	{}
+ };
+ 
