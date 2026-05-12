@@ -25,10 +25,10 @@ Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
  7 files changed, 53 insertions(+), 10 deletions(-)
 
 diff --git a/drivers/gpu/drm/i915/display/intel_crtc.c b/drivers/gpu/drm/i915/display/intel_crtc.c
+index 53378d2..b8189cd 100644
 --- a/drivers/gpu/drm/i915/display/intel_crtc.c
 +++ b/drivers/gpu/drm/i915/display/intel_crtc.c
 @@ -747,7 +747,9 @@ void intel_pipe_update_end(struct intel_atomic_state *state,
- 	 * push to affect the next frame instead of the current frame,
  	 * which would cause the next frame to terminate already at vmin
  	 * vblank start instead of vmax vblank start.
  	 */
@@ -40,20 +40,23 @@ diff --git a/drivers/gpu/drm/i915/display/intel_crtc.c b/drivers/gpu/drm/i915/di
  
  	local_irq_enable();
 diff --git a/drivers/gpu/drm/i915/display/intel_display_device.h b/drivers/gpu/drm/i915/display/intel_display_device.h
+index 13f2a62..e84c190 100644
 --- a/drivers/gpu/drm/i915/display/intel_display_device.h
 +++ b/drivers/gpu/drm/i915/display/intel_display_device.h
-@@ -186,6 +186,7 @@ struct intel_display_platforms {
+@@ -197,6 +197,7 @@ struct intel_display_platforms {
  #define HAS_PSR(__display)		(DISPLAY_INFO(__display)->has_psr)
  #define HAS_PSR_HW_TRACKING(__display)	(DISPLAY_INFO(__display)->has_psr_hw_tracking)
  #define HAS_PSR2_SEL_FETCH(__display)	(DISPLAY_VER(__display) >= 12)
 +#define HAS_PSR_TRANS_PUSH_FRAME_CHANGE(__display)	(DISPLAY_VER(__display) >= 20)
  #define HAS_SAGV(__display)		(DISPLAY_VER(__display) >= 9 && \
- 						 !(__display)->platform.broxton && !(__display)->platform.geminilake)
+ 					 !(__display)->platform.broxton && !(__display)->platform.geminilake)
  #define HAS_TRANSCODER(__display, trans)	((DISPLAY_RUNTIME_INFO(__display)->cpu_transcoder_mask & \
 diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
+index 77e813c..7600b49 100644
 --- a/drivers/gpu/drm/i915/display/intel_psr.c
 +++ b/drivers/gpu/drm/i915/display/intel_psr.c
-@@ -2130,5 +2130,8 @@ static void intel_psr_enable_source(struct intel_dp *intel_dp,
+@@ -2130,6 +2130,9 @@ static void intel_psr_enable_source(struct intel_dp *intel_dp,
+ 		intel_dmc_block_pkgc(display, intel_dp->psr.pipe, true);
  
  	intel_alpm_configure(intel_dp, crtc_state);
 +
@@ -62,8 +65,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/dis
  }
  
  static bool psr_interrupt_error_check(struct intel_dp *intel_dp)
-@@ -2522,10 +2525,12 @@ void intel_psr_trigger_frame_change_event(struct intel_dsb *dsb,
- 	const struct intel_crtc_state *crtc_state =
+@@ -2522,9 +2525,11 @@ void intel_psr_trigger_frame_change_event(struct intel_dsb *dsb,
  		intel_pre_commit_crtc_state(state, crtc);
  	struct intel_display *display = to_intel_display(crtc);
  
@@ -78,7 +80,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/dis
  }
  
  /**
-@@ -4615,3 +4620,10 @@ int intel_psr_min_guardband(struct intel_crtc_state *crtc_state)
+@@ -4614,3 +4619,10 @@ int intel_psr_min_guardband(struct intel_crtc_state *crtc_state)
  
  	return psr_min_guardband;
  }
@@ -90,9 +92,10 @@ diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/dis
 +	return HAS_PSR_TRANS_PUSH_FRAME_CHANGE(display) && crtc_state->has_panel_replay;
 +}
 diff --git a/drivers/gpu/drm/i915/display/intel_psr.h b/drivers/gpu/drm/i915/display/intel_psr.h
+index b41dc4d..394b641 100644
 --- a/drivers/gpu/drm/i915/display/intel_psr.h
 +++ b/drivers/gpu/drm/i915/display/intel_psr.h
-@@ -80,5 +80,6 @@ bool intel_psr_needs_alpm_aux_less(struct intel_dp *intel_dp,
+@@ -85,5 +85,6 @@ bool intel_psr_needs_alpm_aux_less(struct intel_dp *intel_dp,
  void intel_psr_compute_config_late(struct intel_dp *intel_dp,
  				   struct intel_crtc_state *crtc_state);
  int intel_psr_min_guardband(struct intel_crtc_state *crtc_state);
@@ -100,9 +103,10 @@ diff --git a/drivers/gpu/drm/i915/display/intel_psr.h b/drivers/gpu/drm/i915/dis
  
  #endif /* __INTEL_PSR_H__ */
 diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/display/intel_vrr.c
+index bea0057..145ca70 100644
 --- a/drivers/gpu/drm/i915/display/intel_vrr.c
 +++ b/drivers/gpu/drm/i915/display/intel_vrr.c
-@@ -688,21 +688,40 @@ intel_vrr_dcb_reset(const struct intel_crtc_state *old_crtc_state,
+@@ -688,13 +688,32 @@ intel_vrr_dcb_reset(const struct intel_crtc_state *old_crtc_state,
  	intel_de_write(display, PIPEDMC_DCB_BALANCE_RESET(pipe), 0);
  }
  
@@ -136,7 +140,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/dis
  		return;
  
  	if (dsb)
- 		intel_dsb_nonpost_start(dsb);
+@@ -702,7 +721,7 @@ void intel_vrr_send_push(struct intel_dsb *dsb,
  
  	intel_de_write_dsb(display, dsb,
  			   TRANS_PUSH(display, cpu_transcoder),
@@ -155,11 +159,17 @@ diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/dis
  
  	vrr_ctl = VRR_CTL_VRR_ENABLE | trans_vrr_ctl(crtc_state);
  
-@@ -919,1 +939,2 @@ static void intel_vrr_tg_disable(const struct intel_crtc_state *old_crtc_state)
+@@ -916,7 +936,8 @@ static void intel_vrr_tg_disable(const struct intel_crtc_state *old_crtc_state)
+ 				       VRR_STATUS_VRR_EN_LIVE, 1000))
+ 		drm_err(display->drm, "Timed out waiting for VRR live status to clear\n");
+ 
 -	intel_de_write(display, TRANS_PUSH(display, cpu_transcoder), 0);
 +	intel_de_rmw(display, TRANS_PUSH(display, cpu_transcoder),
 +		     TRANS_PUSH_EN, 0);
-@@ -970,6 +991,15 @@ void intel_vrr_transcoder_disable(const struct intel_crtc_state *old_crtc_state)
+ }
+ 
+ void intel_vrr_enable(const struct intel_crtc_state *crtc_state)
+@@ -971,6 +992,15 @@ void intel_vrr_transcoder_disable(const struct intel_crtc_state *old_crtc_state)
  		intel_vrr_tg_disable(old_crtc_state);
  }
  
@@ -176,9 +186,11 @@ diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/dis
  {
  	return crtc_state->vrr.flipline &&
 diff --git a/drivers/gpu/drm/i915/display/intel_vrr.h b/drivers/gpu/drm/i915/display/intel_vrr.h
+index bedcc8c..4f16ca4 100644
 --- a/drivers/gpu/drm/i915/display/intel_vrr.h
 +++ b/drivers/gpu/drm/i915/display/intel_vrr.h
-@@ -30,5 +30,6 @@ void intel_vrr_dcb_increment_flip_count(struct intel_crtc_state *crtc_state,
+@@ -33,6 +33,7 @@ void intel_vrr_dcb_increment_flip_count(struct intel_crtc_state *crtc_state,
+ 					struct intel_crtc *crtc);
  bool intel_vrr_is_push_sent(const struct intel_crtc_state *crtc_state);
  void intel_vrr_disable(const struct intel_crtc_state *old_crtc_state);
 +void intel_vrr_psr_frame_change_enable(const struct intel_crtc_state *crtc_state);
@@ -186,9 +198,10 @@ diff --git a/drivers/gpu/drm/i915/display/intel_vrr.h b/drivers/gpu/drm/i915/dis
  int intel_vrr_vmax_vtotal(const struct intel_crtc_state *crtc_state);
  int intel_vrr_vmin_vtotal(const struct intel_crtc_state *crtc_state);
 diff --git a/drivers/gpu/drm/i915/display/intel_vrr_regs.h b/drivers/gpu/drm/i915/display/intel_vrr_regs.h
+index 427ada0..9d4d657 100644
 --- a/drivers/gpu/drm/i915/display/intel_vrr_regs.h
 +++ b/drivers/gpu/drm/i915/display/intel_vrr_regs.h
-@@ -163,6 +163,7 @@
+@@ -165,6 +165,7 @@
  #define TRANS_PUSH(display, trans)		_MMIO_TRANS2((display), (trans), _TRANS_PUSH_A)
  #define   TRANS_PUSH_EN				REG_BIT(31)
  #define   TRANS_PUSH_SEND			REG_BIT(30)

@@ -2,8 +2,8 @@
 # Based on Arch Linux linux package by Jan Alexander Steffens (heftig)
 
 pkgbase=linux-ptl
-pkgver=7.0.3.arch1
-pkgrel=2
+pkgver=7.0.5.arch1
+pkgrel=1
 pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, PSR2, Panel Replay SU)'
 url='https://github.com/archlinux/linux'
 arch=(
@@ -12,14 +12,24 @@ arch=(
 license=(GPL-2.0-only)
 makedepends=(
   bc
+  binutils
   cpio
   gettext
+  glibc
   libelf
+  libgcc
+  openssl
   pahole
   perl
   python
+  rust
+  rust-bindgen
+  rust-src
   tar
+  xxhash
   xz
+  zlib
+  zstd
 )
 options=(
   !debug
@@ -44,17 +54,17 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
   83BC8889351B5DEBBB68416EB8AC08600F108CDF  # Jan Alexander Steffens (heftig)
 )
-b2sums=('SKIP'
+b2sums=('10b9e0c47da78d605d1ff45054e0693045bcbfe9ab1437ababe9b58383a193c89d5a36f9ee806266c743ae8a320ac60620b3e306751ead2e1a77150cf0d985eb'
         'SKIP'
-        'SKIP'
+        'd2c2b71ca0e7ee471007df333cb0d04e99ae3130175ca16af1c10c3b208fbaa303e06b1dbd398c483ec1e7953761c04cc52c542f46e4f187367b8c5bd79b0005'
         'SKIP'
         'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
-b2sums_x86_64=('9742088ab0381d8196046e42e8acb4ce01ea77461fada77dc90d197e859631e73b06ead4d512f15ab619b33ebad7bca58a10d4506d66916a99c40f9f52708a53')
+b2sums_x86_64=('74d7d779f0762352fc681258feda68f725032c1ab5cf436f7ea6be699d60404d2fb7a985d22d95a45b2acf77eef08b3aa8d23088ffec0db4dd7a7661a29cf3bc')
 
 # https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
-sha256sums=('0bedadbf5788693ddebbcc913c893f1a97349af79ddde7144c2a80b401959f1c'
+sha256sums=('965fb0a1c1675399fc60c6063b227c0523041b5f9a662b66462f1212c438ac3c'
             'SKIP'
-            'SKIP'
+            '01833ca865ce6c3a59c40eac570b3fb791b41c233205e1eb460a91aa6fef85f4'
             'SKIP'
             'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
@@ -140,7 +150,17 @@ _package() {
 
 _package-headers() {
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
-  depends=(pahole)
+  depends=(
+    binutils
+    glibc
+    libelf
+    libgcc
+    openssl
+    pahole
+    xxhash
+    zlib
+    zstd
+  )
   provides=(LINUX-HEADERS)
 
   cd $_srcname
