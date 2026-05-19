@@ -11,10 +11,8 @@ selection.
 
 Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
 ---
- drivers/gpu/drm/i915/display/intel_alpm.c | 6 +++---
- 1 file changed, 3 insertions(+), 3 deletions(-)
-
 diff --git a/drivers/gpu/drm/i915/display/intel_alpm.c b/drivers/gpu/drm/i915/display/intel_alpm.c
+index f4f1b68..a115b53 100644
 --- a/drivers/gpu/drm/i915/display/intel_alpm.c
 +++ b/drivers/gpu/drm/i915/display/intel_alpm.c
 @@ -317,7 +317,7 @@ static void lnl_alpm_configure(struct intel_dp *intel_dp,
@@ -26,7 +24,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_alpm.c b/drivers/gpu/drm/i915/di
  			u32 pr_alpm_ctl = PR_ALPM_CTL_ADAPTIVE_SYNC_SDP_POSITION_T1;
  
  			if (crtc_state->link_off_after_as_sdp_when_pr_active)
-@@ -432,8 +432,8 @@ void intel_alpm_enable_sink(struct intel_dp *intel_dp,
+@@ -430,8 +430,8 @@ void intel_alpm_enable_sink(struct intel_dp *intel_dp,
  
  	val = DP_ALPM_ENABLE | DP_ALPM_LOCK_ERROR_IRQ_HPD_ENABLE;
  
