@@ -1,0 +1,19 @@
+_etc_overrides_apply() {
+  echo "Applying Omarchy etc-overrides..."
+  cp -f /usr/share/omarchy/etc-overrides/security-faillock.conf  /etc/security/faillock.conf
+  cp -f /usr/share/omarchy/etc-overrides/nsswitch.conf           /etc/nsswitch.conf
+  cp -f /usr/share/omarchy/etc-overrides/cups-cups-browsed.conf  /etc/cups/cups-browsed.conf
+  cp -f /usr/share/omarchy/etc-overrides/plymouth-plymouthd.conf /etc/plymouth/plymouthd.conf
+  cp -f /usr/share/omarchy/etc-overrides/dot.bashrc              /etc/skel/.bashrc
+  chmod 0644 /etc/security/faillock.conf /etc/nsswitch.conf \
+             /etc/cups/cups-browsed.conf /etc/plymouth/plymouthd.conf \
+             /etc/skel/.bashrc
+}
+
+post_install() {
+  _etc_overrides_apply
+}
+
+post_upgrade() {
+  _etc_overrides_apply
+}

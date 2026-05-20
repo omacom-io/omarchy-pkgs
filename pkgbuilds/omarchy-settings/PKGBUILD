@@ -15,18 +15,37 @@ depends=(
   'plymouth'
 )
 
+backup=(
+  'etc/docker/daemon.json'
+  'etc/gnupg/dirmngr.conf'
+  'etc/nsswitch.conf'
+  'etc/security/faillock.conf'
+  'etc/cups/cups-browsed.conf'
+  'etc/plymouth/plymouthd.conf'
+  'etc/skel/.bashrc'
+)
+
 optdepends=(
   'omarchy: Full Omarchy desktop'
   'inxi: System information for omarchy-debug'
   'fastfetch: System information for omarchy-upload-log'
 )
 
+install='omarchy-settings.install'
+
+# Live config files the package can't own outright (the path is owned by an
+# upstream Arch package): ship them at /usr/share/omarchy/etc-overrides/ and
+# cp -f into place from post_install. See omarchy-settings.install.
+_etc_override_paths=(
+  'etc/security/faillock.conf'
+  'etc/nsswitch.conf'
+  'etc/cups/cups-browsed.conf'
+  'etc/plymouth/plymouthd.conf'
+)
+
 # Source: GitHub tag tarball by default; set OMARCHY_SRC=/path/to/checkout to
 # build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 # Until v4.0.0.alpha is tagged on basecamp/omarchy, sha256sums=('SKIP').
-#
-# TODO(chunk-3a): once `etc/` source tree exists, ship it here and populate the
-# etc-overrides post_install dance for upstream-owned conflict files.
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
   source=()
   sha256sums=()
@@ -51,6 +70,39 @@ package() {
   cp -a config/. "$pkgdir/etc/skel/.config/"
   # Font lives under config/ but ships to /usr/share/fonts; remove from skel copy.
   rm -f "$pkgdir/etc/skel/.config/omarchy.ttf"
+
+  # /etc tree (drop-ins the package fully owns + the etc-override files we
+  # stage separately below).
+  install -d "$pkgdir/etc"
+  cp -a etc/. "$pkgdir/etc/"
+  # sudoers.d files must be mode 0440 or sudo will refuse them.
+  if [[ -d "$pkgdir/etc/sudoers.d" ]]; then
+    chmod 0440 "$pkgdir/etc/sudoers.d"/*
+  fi
+
+  # Stage upstream-owned files at /usr/share/omarchy/etc-overrides/ instead of
+  # owning their live /etc paths directly (which would conflict with pam,
+  # filesystem, cups-browsed, plymouth, bash). post_install copies them in.
+  install -d "$pkgdir/usr/share/omarchy/etc-overrides"
+  install -Dm644 default/bashrc \
+    "$pkgdir/usr/share/omarchy/etc-overrides/dot.bashrc"
+  for path in "${_etc_override_paths[@]}"; do
+    case "$path" in
+      'etc/security/faillock.conf')
+        mv "$pkgdir/$path" "$pkgdir/usr/share/omarchy/etc-overrides/security-faillock.conf" ;;
+      'etc/nsswitch.conf')
+        mv "$pkgdir/$path" "$pkgdir/usr/share/omarchy/etc-overrides/nsswitch.conf" ;;
+      'etc/cups/cups-browsed.conf')
+        mv "$pkgdir/$path" "$pkgdir/usr/share/omarchy/etc-overrides/cups-cups-browsed.conf" ;;
+      'etc/plymouth/plymouthd.conf')
+        mv "$pkgdir/$path" "$pkgdir/usr/share/omarchy/etc-overrides/plymouth-plymouthd.conf" ;;
+    esac
+  done
+  # The directories under /etc we just emptied are upstream-owned; remove our
+  # empty placeholders so pacman doesn't complain.
+  rmdir "$pkgdir/etc/security" 2>/dev/null || true
+  rmdir "$pkgdir/etc/cups" 2>/dev/null || true
+  rmdir "$pkgdir/etc/plymouth" 2>/dev/null || true
 
   # /etc/skel/.local/share/applications from applications/**.
   install -d "$pkgdir/etc/skel/.local/share/applications/icons"
