@@ -1,0 +1,77 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+pkgname='omarchy-settings'
+pkgver=4.0.0.alpha
+pkgrel=1
+pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
+arch=('any')
+url='https://github.com/basecamp/omarchy'
+license=('MIT')
+provides=('omarchy-settings')
+
+depends=(
+  'bash'
+  'curl'
+  'gum'
+  'plymouth'
+)
+
+optdepends=(
+  'omarchy: Full Omarchy desktop'
+  'inxi: System information for omarchy-debug'
+  'fastfetch: System information for omarchy-upload-log'
+)
+
+# TODO(chunk-3a): once `etc/` source tree exists, ship it here and populate the
+# etc-overrides post_install dance for upstream-owned conflict files.
+# TODO(chunk-9): switch to git+https once `omarchy-shell-package` is pushed.
+_src_branch='omarchy-shell-package'
+source=("omarchy::git+file:///home/ryan/Work/omarchy/omarchy-installer#branch=${_src_branch}")
+sha256sums=('SKIP')
+
+package() {
+  cd "$srcdir/omarchy"
+
+  # /etc/skel/.config from config/** — system-wide default user config.
+  install -d "$pkgdir/etc/skel/.config"
+  cp -a config/. "$pkgdir/etc/skel/.config/"
+  # Font lives under config/ but ships to /usr/share/fonts; remove from skel copy.
+  rm -f "$pkgdir/etc/skel/.config/omarchy.ttf"
+
+  # /etc/skel/.local/share/applications from applications/**.
+  install -d "$pkgdir/etc/skel/.local/share/applications/icons"
+  if compgen -G 'applications/*.desktop' >/dev/null; then
+    cp applications/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
+  fi
+  if [[ -d applications/hidden ]] && compgen -G 'applications/hidden/*.desktop' >/dev/null; then
+    cp applications/hidden/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
+  fi
+  if [[ -d applications/icons ]] && compgen -G 'applications/icons/*' >/dev/null; then
+    cp applications/icons/* "$pkgdir/etc/skel/.local/share/applications/icons/"
+  fi
+
+  # default/** ships to /usr/share/omarchy/default/, except subsets owned by
+  # omarchy-limine (`default/limine`, `default/snapper`).
+  install -d "$pkgdir/usr/share/omarchy/default"
+  cp -a default/. "$pkgdir/usr/share/omarchy/default/"
+  rm -rf "$pkgdir/usr/share/omarchy/default/limine"
+  rm -rf "$pkgdir/usr/share/omarchy/default/snapper"
+
+  # Plymouth theme.
+  install -d "$pkgdir/usr/share/plymouth/themes/omarchy"
+  cp -a default/plymouth/. "$pkgdir/usr/share/plymouth/themes/omarchy/"
+
+  # System font.
+  install -Dm644 config/omarchy.ttf "$pkgdir/usr/share/fonts/omarchy/omarchy.ttf"
+
+  # Branding assets (logos, icons).
+  install -Dm644 logo.txt "$pkgdir/usr/share/omarchy/logo.txt"
+  install -Dm644 logo.svg "$pkgdir/usr/share/omarchy/logo.svg"
+  install -Dm644 icon.txt "$pkgdir/usr/share/omarchy/icon.txt"
+  install -Dm644 icon.png "$pkgdir/usr/share/omarchy/icon.png"
+
+  # Support binaries needed before the full omarchy package is installed
+  # (used by ISO/recovery flows).
+  install -Dm755 bin/omarchy-upload-log "$pkgdir/usr/bin/omarchy-upload-log"
+  install -Dm755 bin/omarchy-debug      "$pkgdir/usr/bin/omarchy-debug"
+  install -Dm755 bin/omarchy-debug-idle "$pkgdir/usr/bin/omarchy-debug-idle"
+}

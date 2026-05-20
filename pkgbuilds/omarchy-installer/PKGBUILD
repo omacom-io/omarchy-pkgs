@@ -1,0 +1,35 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+pkgname='omarchy-installer'
+pkgver=4.0.0.alpha
+pkgrel=1
+pkgdesc='Omarchy installation scripts and helpers'
+arch=('any')
+url='https://github.com/basecamp/omarchy'
+license=('MIT')
+provides=('omarchy-installer')
+
+depends=(
+  'bash'
+  'gum'
+  'jq'
+  'git'
+)
+
+optdepends=(
+  'omarchy-settings: User and system configurations'
+  'omarchy: Full Omarchy desktop'
+)
+
+# TODO(chunk-9): switch to git+https once `omarchy-shell-package` is pushed to origin.
+_src_branch='omarchy-shell-package'
+source=("omarchy::git+file:///home/ryan/Work/omarchy/omarchy-installer#branch=${_src_branch}")
+sha256sums=('SKIP')
+
+package() {
+  cd "$srcdir/omarchy"
+
+  install -Dm755 install.sh "$pkgdir/usr/share/omarchy/install.sh"
+
+  install -d "$pkgdir/usr/share/omarchy/install"
+  cp -a install/. "$pkgdir/usr/share/omarchy/install/"
+}

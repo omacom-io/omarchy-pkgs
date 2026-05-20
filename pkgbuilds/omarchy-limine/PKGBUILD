@@ -1,0 +1,61 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+pkgname='omarchy-limine'
+pkgver=4.0.0.alpha
+pkgrel=1
+pkgdesc='Limine bootloader configuration, mkinitcpio hooks, and snapper template for Omarchy'
+arch=('any')
+url='https://github.com/basecamp/omarchy'
+license=('MIT')
+provides=('omarchy-limine')
+
+# NOTE(chunk-7): `/etc/default/limine` is intentionally NOT owned by this
+# package. It is generated at install time from the boot cmdline by
+# `configure-limine.sh` (lands in Chunk 7). We ship a template under
+# `/usr/share/omarchy/limine/` for the generator to read.
+
+depends=(
+  'limine'
+  'limine-mkinitcpio-hook'
+  'limine-snapper-sync'
+  'snapper'
+)
+
+# TODO(chunk-9): switch to git+https once `omarchy-shell-package` is pushed.
+_src_branch='omarchy-shell-package'
+source=(
+  "omarchy::git+file:///home/ryan/Work/omarchy/omarchy-installer#branch=${_src_branch}"
+  'omarchy_hooks.conf'
+  'omarchy-uki.conf'
+)
+sha256sums=(
+  'SKIP'
+  'SKIP'
+  'SKIP'
+)
+
+package() {
+  cd "$srcdir/omarchy"
+
+  # mkinitcpio hooks for limine/snapper integration.
+  install -Dm644 "$srcdir/omarchy_hooks.conf" \
+    "$pkgdir/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+
+  # Limine entry-tool default drop-in (UKI by default; configure-limine.sh
+  # may override on BIOS).
+  install -Dm644 "$srcdir/omarchy-uki.conf" \
+    "$pkgdir/etc/limine-entry-tool.d/omarchy-uki.conf"
+
+  # Limine theme/preset.
+  install -Dm644 default/limine/limine.conf \
+    "$pkgdir/usr/share/omarchy/limine/limine.conf"
+
+  # Template for /etc/default/limine, NOT shipped to /etc — the install-time
+  # generator (configure-limine.sh) substitutes @@CMDLINE@@ and writes the
+  # live file.
+  install -Dm644 default/limine/default.conf \
+    "$pkgdir/usr/share/omarchy/limine/default.conf.template"
+
+  # Snapper config template used by the install-time `snapper create-config`.
+  install -Dm644 default/snapper/root \
+    "$pkgdir/etc/snapper/config-templates/omarchy"
+}
