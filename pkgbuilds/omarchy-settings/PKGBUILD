@@ -33,6 +33,9 @@ backup=(
   'etc/systemd/system.conf.d/10-faster-shutdown.conf'
   'etc/systemd/system/user@.service.d/10-faster-shutdown.conf'
   'etc/systemd/system/docker.service.d/no-block-boot.conf'
+  'etc/systemd/system/plocate-updatedb.service.d/ac-only.conf'
+  'etc/udev/rules.d/99-omarchy-power-profile.rules'
+  'etc/udev/rules.d/99-omarchy-wifi-powersave.rules'
 )
 
 optdepends=(
@@ -139,6 +142,13 @@ package() {
 
   # System font.
   install -Dm644 config/omarchy.ttf "$pkgdir/usr/share/fonts/omarchy/omarchy.ttf"
+
+  # systemd system-sleep hook (lazy-unmounts gvfsd-fuse mounts before
+  # suspend/hibernate). The script also ships under /usr/share/omarchy/default
+  # via the default/** copy above; we additionally install it to the live
+  # systemd path so the hook fires.
+  install -Dm755 default/systemd/system-sleep/unmount-fuse \
+    "$pkgdir/usr/lib/systemd/system-sleep/unmount-fuse"
 
   # Branding assets (logos, icons).
   install -Dm644 logo.txt "$pkgdir/usr/share/omarchy/logo.txt"
