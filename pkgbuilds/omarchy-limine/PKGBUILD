@@ -20,14 +20,23 @@ depends=(
   'snapper'
 )
 
+makedepends=('git')
+
+backup=(
+  'etc/mkinitcpio.conf.d/omarchy_hooks.conf'
+  'etc/limine-entry-tool.d/omarchy-uki.conf'
+)
+
 # TODO(chunk-9): switch to git+https once `omarchy-shell-package` is pushed.
 _src_branch='omarchy-shell-package'
 source=(
   "omarchy::git+file:///home/ryan/Work/omarchy/omarchy-installer#branch=${_src_branch}"
   'omarchy_hooks.conf'
   'omarchy-uki.conf'
+  'thunderbolt_module.conf'
 )
 sha256sums=(
+  'SKIP'
   'SKIP'
   'SKIP'
   'SKIP'
@@ -36,9 +45,17 @@ sha256sums=(
 package() {
   cd "$srcdir/omarchy"
 
-  # mkinitcpio hooks for limine/snapper integration.
+  # mkinitcpio hooks for limine/snapper integration. Content must match
+  # the line currently produced by install/login/limine-snapper.sh in the
+  # installer (verified 2026-05-20). If the installer's hook line changes,
+  # this file must be updated in lockstep.
   install -Dm644 "$srcdir/omarchy_hooks.conf" \
     "$pkgdir/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+
+  # Thunderbolt module drop-in, sibling to omarchy_hooks.conf (also written
+  # by the current installer).
+  install -Dm644 "$srcdir/thunderbolt_module.conf" \
+    "$pkgdir/etc/mkinitcpio.conf.d/thunderbolt_module.conf"
 
   # Limine entry-tool default drop-in (UKI by default; configure-limine.sh
   # may override on BIOS).

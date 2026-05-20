@@ -13,6 +13,8 @@ depends=(
   'omarchy'
 )
 
+makedepends=('git')
+
 # TODO(chunk-4): `omarchy-dev-link`, `omarchy-dev-unlink`, `omarchy-dev-status`,
 # and `omarchy-dev-pkg-test` are added in Chunk 4 (Phase DX). This skeleton
 # only ships the currently-existing `omarchy-dev-*` commands.

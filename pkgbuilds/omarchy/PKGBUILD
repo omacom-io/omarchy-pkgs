@@ -16,14 +16,13 @@ depends=(
 
   # Core Wayland/Hyprland stack
   'hyprland'
-  'waybar'
+  'quickshell'
   'hypridle'
   'hyprlock'
   'hyprsunset'
-  'swaybg'
   'swayosd'
-  'mako'
   'uwsm'
+  'perl' # /usr/bin/omarchy-shell invokes perl directly
 
   # Terminal & shell
   'ghostty'
@@ -93,7 +92,7 @@ optdepends=(
   'lazydocker: Terminal UI for docker'
 
   # Browsers & comms
-  'omarchy-chromium: Customized Chromium browser'
+  'omarchy-chromium-bin: Customized Chromium browser'
   'signal-desktop: Encrypted messaging'
   'spotify: Music streaming'
 
@@ -129,6 +128,8 @@ optdepends=(
   # Optional omarchy companion packages
   'omarchy-dev-tools: Developer commands for working on Omarchy'
 )
+
+makedepends=('git')
 
 # TODO(chunk-9): switch to git+https once `omarchy-shell-package` is pushed.
 _src_branch='omarchy-shell-package'
