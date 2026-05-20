@@ -84,6 +84,20 @@ package() {
   # Font lives under config/ but ships to /usr/share/fonts; remove from skel copy.
   rm -f "$pkgdir/etc/skel/.config/omarchy.ttf"
 
+  # ALSO ship config/** under /usr/share/omarchy/config/. Used as the
+  # source-of-truth by omarchy-refresh-config, omarchy-reinstall-configs,
+  # and other commands that copy individual files into a running user's
+  # ~/.config. /etc/skel only seeds new users; this tree is what existing
+  # users re-sync against.
+  install -d "$pkgdir/usr/share/omarchy/config"
+  cp -a config/. "$pkgdir/usr/share/omarchy/config/"
+  rm -f "$pkgdir/usr/share/omarchy/config/omarchy.ttf"
+
+  # Same for applications/** — used by omarchy-refresh-applications,
+  # omarchy-install-gaming-*, etc. to copy .desktop files into ~/.local/share.
+  install -d "$pkgdir/usr/share/omarchy/applications"
+  cp -a applications/. "$pkgdir/usr/share/omarchy/applications/"
+
   # /etc tree (drop-ins the package fully owns + the etc-override files we
   # stage separately below).
   install -d "$pkgdir/etc"
