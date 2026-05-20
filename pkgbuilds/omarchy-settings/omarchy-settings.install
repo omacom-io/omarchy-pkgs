@@ -1,5 +1,18 @@
 _etc_overrides_apply() {
   echo "Applying Omarchy etc-overrides..."
+
+  # Ensure parent dirs exist — cups-browsed and plymouth may not be installed
+  # yet (omarchy-settings only hard-depends on plymouth), and /etc/skel and
+  # /etc/security ship from filesystem/pam so should always be present, but
+  # guard anyway.
+  install -d /etc/cups /etc/plymouth /etc/security /etc/skel
+
+  # NOTE: these cp -f's are intentionally destructive on every install/upgrade.
+  # Users who customize /etc/plymouth/plymouthd.conf (theme switch),
+  # /etc/cups/cups-browsed.conf, /etc/nsswitch.conf, /etc/security/faillock.conf,
+  # or /etc/skel/.bashrc WILL have their changes reset to Omarchy defaults each
+  # time omarchy-settings is upgraded. This is the trade-off of routing
+  # upstream-owned paths through etc-overrides instead of pacman backup=().
   cp -f /usr/share/omarchy/etc-overrides/security-faillock.conf  /etc/security/faillock.conf
   cp -f /usr/share/omarchy/etc-overrides/nsswitch.conf           /etc/nsswitch.conf
   cp -f /usr/share/omarchy/etc-overrides/cups-cups-browsed.conf  /etc/cups/cups-browsed.conf

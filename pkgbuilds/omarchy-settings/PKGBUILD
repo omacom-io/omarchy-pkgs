@@ -15,14 +15,24 @@ depends=(
   'plymouth'
 )
 
+# backup=() is pacman's hook for protecting user edits to package-owned files
+# on upgrade. Only the paths the package actually installs into /etc qualify.
+# The etc-overrides set (faillock.conf, nsswitch.conf, cups-browsed.conf,
+# plymouthd.conf, /etc/skel/.bashrc) ships at /usr/share/omarchy/etc-overrides/
+# and is cp -f'd by post_install — those paths are unowned by pacman and the
+# scriptlet WILL clobber user edits on each upgrade (documented limitation).
 backup=(
   'etc/docker/daemon.json'
   'etc/gnupg/dirmngr.conf'
-  'etc/nsswitch.conf'
-  'etc/security/faillock.conf'
-  'etc/cups/cups-browsed.conf'
-  'etc/plymouth/plymouthd.conf'
-  'etc/skel/.bashrc'
+  'etc/sysctl.d/99-omarchy-sysctl.conf'
+  'etc/sysctl.d/90-omarchy-file-watchers.conf'
+  'etc/modprobe.d/omarchy-usb-autosuspend.conf'
+  'etc/systemd/logind.conf.d/10-ignore-power-button.conf'
+  'etc/systemd/resolved.conf.d/10-disable-multicast.conf'
+  'etc/systemd/resolved.conf.d/20-docker-dns.conf'
+  'etc/systemd/system.conf.d/10-faster-shutdown.conf'
+  'etc/systemd/system/user@.service.d/10-faster-shutdown.conf'
+  'etc/systemd/system/docker.service.d/no-block-boot.conf'
 )
 
 optdepends=(
