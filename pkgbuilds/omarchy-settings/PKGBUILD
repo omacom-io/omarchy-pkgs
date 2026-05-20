@@ -102,8 +102,11 @@ package() {
   # stage separately below).
   install -d "$pkgdir/etc"
   cp -a etc/. "$pkgdir/etc/"
-  # sudoers.d files must be mode 0440 or sudo will refuse them.
+  # sudoers.d files must be mode 0440 or sudo will refuse them, and the
+  # directory must be 0750 to match the Arch sudo package's filesystem
+  # convention (otherwise pacman warns about dir-mode drift on every install).
   if [[ -d "$pkgdir/etc/sudoers.d" ]]; then
+    chmod 0750 "$pkgdir/etc/sudoers.d"
     chmod 0440 "$pkgdir/etc/sudoers.d"/*
   fi
 
@@ -150,9 +153,14 @@ package() {
   rm -rf "$pkgdir/usr/share/omarchy/default/limine"
   rm -rf "$pkgdir/usr/share/omarchy/default/snapper"
 
-  # Plymouth theme.
-  install -d "$pkgdir/usr/share/plymouth/themes/omarchy"
+  # Plymouth theme. Files at 0644, dirs at 0755 (the upstream plymouth
+  # package's convention for /usr/share/plymouth/themes/*). cp -a inherits
+  # the source dir's mode, which is whatever the build host has — chmod
+  # explicitly so installs are consistent regardless of build environment.
+  install -d -m 0755 "$pkgdir/usr/share/plymouth/themes/omarchy"
   cp -a default/plymouth/. "$pkgdir/usr/share/plymouth/themes/omarchy/"
+  find "$pkgdir/usr/share/plymouth/themes/omarchy" -type d -exec chmod 0755 {} +
+  find "$pkgdir/usr/share/plymouth/themes/omarchy" -type f -exec chmod 0644 {} +
 
   # System font.
   install -Dm644 config/omarchy.ttf "$pkgdir/usr/share/fonts/omarchy/omarchy.ttf"
