@@ -15,20 +15,32 @@ depends=(
   'git'
 )
 
-makedepends=('git')
-
 optdepends=(
   'omarchy-settings: User and system configurations'
   'omarchy: Full Omarchy desktop'
 )
 
-# TODO(chunk-9): switch to git+https once `omarchy-shell-package` is pushed to origin.
-_src_branch='omarchy-shell-package'
-source=("omarchy::git+file:///home/ryan/Work/omarchy/omarchy-installer#branch=${_src_branch}")
-sha256sums=('SKIP')
+# Source: GitHub tag tarball by default; set OMARCHY_SRC=/path/to/checkout to
+# build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
+# Until v4.0.0.alpha is tagged on basecamp/omarchy, sha256sums=('SKIP').
+if [[ -n "${OMARCHY_SRC:-}" ]]; then
+  source=()
+  sha256sums=()
+else
+  source=("omarchy-${pkgver}.tar.gz::https://github.com/basecamp/omarchy/archive/refs/tags/v${pkgver}.tar.gz")
+  sha256sums=('SKIP')
+fi
+
+prepare() {
+  if [[ -n "${OMARCHY_SRC:-}" ]]; then
+    rm -rf "$srcdir/omarchy-${pkgver}"
+    mkdir -p "$srcdir/omarchy-${pkgver}"
+    cp -a "${OMARCHY_SRC}/." "$srcdir/omarchy-${pkgver}/"
+  fi
+}
 
 package() {
-  cd "$srcdir/omarchy"
+  cd "$srcdir/omarchy-${pkgver}"
 
   install -Dm755 install.sh "$pkgdir/usr/share/omarchy/install.sh"
 

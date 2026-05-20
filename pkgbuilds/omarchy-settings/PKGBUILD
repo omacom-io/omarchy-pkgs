@@ -15,23 +15,36 @@ depends=(
   'plymouth'
 )
 
-makedepends=('git')
-
 optdepends=(
   'omarchy: Full Omarchy desktop'
   'inxi: System information for omarchy-debug'
   'fastfetch: System information for omarchy-upload-log'
 )
 
+# Source: GitHub tag tarball by default; set OMARCHY_SRC=/path/to/checkout to
+# build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
+# Until v4.0.0.alpha is tagged on basecamp/omarchy, sha256sums=('SKIP').
+#
 # TODO(chunk-3a): once `etc/` source tree exists, ship it here and populate the
 # etc-overrides post_install dance for upstream-owned conflict files.
-# TODO(chunk-9): switch to git+https once `omarchy-shell-package` is pushed.
-_src_branch='omarchy-shell-package'
-source=("omarchy::git+file:///home/ryan/Work/omarchy/omarchy-installer#branch=${_src_branch}")
-sha256sums=('SKIP')
+if [[ -n "${OMARCHY_SRC:-}" ]]; then
+  source=()
+  sha256sums=()
+else
+  source=("omarchy-${pkgver}.tar.gz::https://github.com/basecamp/omarchy/archive/refs/tags/v${pkgver}.tar.gz")
+  sha256sums=('SKIP')
+fi
+
+prepare() {
+  if [[ -n "${OMARCHY_SRC:-}" ]]; then
+    rm -rf "$srcdir/omarchy-${pkgver}"
+    mkdir -p "$srcdir/omarchy-${pkgver}"
+    cp -a "${OMARCHY_SRC}/." "$srcdir/omarchy-${pkgver}/"
+  fi
+}
 
 package() {
-  cd "$srcdir/omarchy"
+  cd "$srcdir/omarchy-${pkgver}"
 
   # /etc/skel/.config from config/** — system-wide default user config.
   install -d "$pkgdir/etc/skel/.config"

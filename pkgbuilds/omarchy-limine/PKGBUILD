@@ -20,30 +20,50 @@ depends=(
   'snapper'
 )
 
-makedepends=('git')
-
 backup=(
   'etc/mkinitcpio.conf.d/omarchy_hooks.conf'
   'etc/limine-entry-tool.d/omarchy-uki.conf'
 )
 
-# TODO(chunk-9): switch to git+https once `omarchy-shell-package` is pushed.
-_src_branch='omarchy-shell-package'
-source=(
-  "omarchy::git+file:///home/ryan/Work/omarchy/omarchy-installer#branch=${_src_branch}"
-  'omarchy_hooks.conf'
-  'omarchy-uki.conf'
-  'thunderbolt_module.conf'
-)
-sha256sums=(
-  'SKIP'
-  'SKIP'
-  'SKIP'
-  'SKIP'
-)
+# Source: GitHub tag tarball by default; set OMARCHY_SRC=/path/to/checkout to
+# build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
+# Until v4.0.0.alpha is tagged on basecamp/omarchy, sha256sums=('SKIP').
+if [[ -n "${OMARCHY_SRC:-}" ]]; then
+  source=(
+    'omarchy_hooks.conf'
+    'omarchy-uki.conf'
+    'thunderbolt_module.conf'
+  )
+  sha256sums=(
+    'SKIP'
+    'SKIP'
+    'SKIP'
+  )
+else
+  source=(
+    "omarchy-${pkgver}.tar.gz::https://github.com/basecamp/omarchy/archive/refs/tags/v${pkgver}.tar.gz"
+    'omarchy_hooks.conf'
+    'omarchy-uki.conf'
+    'thunderbolt_module.conf'
+  )
+  sha256sums=(
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+  )
+fi
+
+prepare() {
+  if [[ -n "${OMARCHY_SRC:-}" ]]; then
+    rm -rf "$srcdir/omarchy-${pkgver}"
+    mkdir -p "$srcdir/omarchy-${pkgver}"
+    cp -a "${OMARCHY_SRC}/." "$srcdir/omarchy-${pkgver}/"
+  fi
+}
 
 package() {
-  cd "$srcdir/omarchy"
+  cd "$srcdir/omarchy-${pkgver}"
 
   # mkinitcpio hooks for limine/snapper integration. Content must match
   # the line currently produced by install/login/limine-snapper.sh in the
