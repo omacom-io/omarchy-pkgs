@@ -82,15 +82,19 @@ package() {
   install -Dm644 "$srcdir/omarchy-uki.conf" \
     "$pkgdir/etc/limine-entry-tool.d/omarchy-uki.conf"
 
-  # Limine theme/preset.
+  # Limine theme/preset and /etc/default/limine template. Both ship under
+  # /usr/share/omarchy/default/limine/ to match the installer's source-tree
+  # layout (install/login/limine-snapper.sh reads from
+  # $OMARCHY_PATH/default/limine/{limine,default}.conf). omarchy-settings
+  # explicitly excludes default/limine when shipping its default/** tree so
+  # this package owns these paths.
   install -Dm644 default/limine/limine.conf \
-    "$pkgdir/usr/share/omarchy/limine/limine.conf"
+    "$pkgdir/usr/share/omarchy/default/limine/limine.conf"
 
-  # Template for /etc/default/limine, NOT shipped to /etc — the install-time
-  # generator (configure-limine.sh) substitutes @@CMDLINE@@ and writes the
-  # live file.
+  # default.conf is a template: install/login/limine-snapper.sh copies it to
+  # /etc/default/limine and seds @@CMDLINE@@ to the live boot cmdline.
   install -Dm644 default/limine/default.conf \
-    "$pkgdir/usr/share/omarchy/limine/default.conf.template"
+    "$pkgdir/usr/share/omarchy/default/limine/default.conf"
 
   # Snapper config template used by the install-time `snapper create-config`.
   install -Dm644 default/snapper/root \
