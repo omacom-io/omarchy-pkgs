@@ -8,14 +8,15 @@ url='https://github.com/basecamp/omarchy'
 license=('MIT')
 provides=('omarchy-installer')
 
+# Intentionally minimal: omarchy-installer is the install runner, not a
+# transitive pull for the full system. install.sh pacman -Syu's omarchy itself
+# during the online install; the ISO pacstraps omarchy + omarchy-installer
+# together so /etc/skel is populated before the user is created.
 depends=(
   'bash'
   'gum'
   'jq'
   'git'
-  'omarchy'
-  'omarchy-settings'
-  'omarchy-limine'
 )
 
 # Source: GitHub tag tarball by default; set OMARCHY_SRC=/path/to/checkout to

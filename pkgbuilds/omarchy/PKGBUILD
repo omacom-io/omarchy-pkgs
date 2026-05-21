@@ -12,6 +12,7 @@ depends=(
   # Omarchy meta
   'omarchy-keyring'
   'omarchy-settings'
+  'omarchy-limine'
 
   # Core Wayland/Hyprland stack
   'hyprland'
