@@ -1,0 +1,37 @@
+diff --git a/sound/soc/sof/intel/hda.c b/sound/soc/sof/intel/hda.c
+index b3d61d973ce40b..24604e71386d6d 100644
+--- a/sound/soc/sof/intel/hda.c
++++ b/sound/soc/sof/intel/hda.c
+@@ -1337,6 +1337,8 @@ static struct snd_soc_acpi_mach *hda_sdw_machine_select(struct snd_sof_dev *sdev
+ 		return NULL;
+ 	}
+ 
++	chip = get_chip_info(sdev->pdata);
++
+ 	/*
+ 	 * Select SoundWire machine driver if needed using the
+ 	 * alternate tables. This case deals with SoundWire-only
+@@ -1352,8 +1354,13 @@ static struct snd_soc_acpi_mach *hda_sdw_machine_select(struct snd_sof_dev *sdev
+ 		 * first check whether link_mask of mach is subset of
+ 		 * link_mask supported by hw and then go on searching
+ 		 * link_adr
++		 * For those platforms that can use the created SDW mach below,
++		 * match the two masks exactly to avoid using an unexpected
++		 * mach.
+ 		 */
+-		if (~hdev->info.link_mask & mach->link_mask)
++		if (~hdev->info.link_mask & mach->link_mask ||
++		    (hdev->info.link_mask != mach->link_mask &&
++		     chip->hw_ip_version >= SOF_INTEL_ACE_2_0))
+ 			continue;
+ 
+ 		/* No need to match adr if there is no links defined */
+@@ -1393,8 +1400,6 @@ static struct snd_soc_acpi_mach *hda_sdw_machine_select(struct snd_sof_dev *sdev
+ 			 peripherals->array[i]->id.part_id,
+ 			 peripherals->array[i]->id.sdw_version);
+ 
+-	chip = get_chip_info(sdev->pdata);
+-
+ 	/* SDCA was not well supported in the BIOS before ACE2.0 */
+ 	if (chip->hw_ip_version < SOF_INTEL_ACE_2_0)
+ 		return NULL;

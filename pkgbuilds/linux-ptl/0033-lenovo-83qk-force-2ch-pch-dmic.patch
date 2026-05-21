@@ -1,0 +1,25 @@
+diff --git a/sound/soc/sof/intel/hda.c b/sound/soc/sof/intel/hda.c
+index 111111111111..222222222222 100644
+--- a/sound/soc/sof/intel/hda.c
++++ b/sound/soc/sof/intel/hda.c
+@@ -1584,6 +1584,20 @@ struct snd_soc_acpi_mach *hda_machine_select(struct snd_sof_dev *sdev)
+ 		/* report to machine driver if any DMICs are found */
+ 		mach->mach_params.dmic_num = check_dmic_num(sdev);
+ 
++		/*
++		 * Lenovo Yoga Slim 7 Ultra 14IPH11 (83QK, SSID 17aa:3821)
++		 * reports 4 PCH DMICs in NHLT, but sof-firmware currently ships
++		 * the matching ARL CS42L43 + CS35L56 topology only in a 2ch DMIC
++		 * variant. Clamp the DMIC count to 2 so topology filename fixup
++		 * selects sof-arl-cs42l43-l2-cs35l56-l3-2ch.tplg instead of the
++		 * unavailable/non-working -4ch variant, while still creating the
++		 * PCH DMIC capture links for the built-in microphones.
++		 */
++		if (sof_pdata->subsystem_id_set &&
++		    sof_pdata->subsystem_vendor == 0x17aa &&
++		    sof_pdata->subsystem_device == 0x3821)
++			mach->mach_params.dmic_num = 2;
++
+ 		if (sdw_mach_found || mach->tplg_quirk_mask & SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER)
+ 			dmic_fixup = true;
+ 

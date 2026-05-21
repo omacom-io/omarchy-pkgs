@@ -1,0 +1,26 @@
+diff --git a/sound/soc/sof/intel/hda-dai.c b/sound/soc/sof/intel/hda-dai.c
+index 111111111111..222222222222 100644
+--- a/sound/soc/sof/intel/hda-dai.c
++++ b/sound/soc/sof/intel/hda-dai.c
+@@ -758,6 +758,21 @@ void hda_set_dai_drv_ops(struct snd_sof_dev *sdev, struct snd_sof_dsp_ops *ops)
+ 	ssp_set_dai_drv_ops(sdev, ops);
+ 	dmic_set_dai_drv_ops(sdev, ops);
+ 
++	/*
++	 * Lenovo Yoga Slim 7 Ultra 14IPH11 (83QK, SSID 17aa:3821)
++	 * exposes a PCH DMIC capture path via the ARL CS42L43 + CS35L56
++	 * -2ch topology, but the BIOS NHLT blob lookup fails for that path
++	 * with "no matching blob" on DMIC Raw capture. Use the topology-provided
++	 * NHLT blobs on this machine so the PCH DMIC copier can be configured
++	 * from the topology manifest instead of the BIOS NHLT table.
++	 */
++	if (sdev->pdata->subsystem_id_set &&
++	    sdev->pdata->subsystem_vendor == 0x17aa &&
++	    sdev->pdata->subsystem_device == 0x3821) {
++		dev_info(sdev->dev, "Lenovo 83QK: using topology NHLT blobs for PCH DMIC\n");
++		hda_use_tplg_nhlt = true;
++	}
++
+ 	if (sdev->pdata->ipc_type == SOF_IPC_TYPE_4 && !hda_use_tplg_nhlt) {
+ 		struct sof_ipc4_fw_data *ipc4_data = sdev->private;
+ 
