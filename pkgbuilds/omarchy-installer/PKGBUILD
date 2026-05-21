@@ -13,11 +13,9 @@ depends=(
   'gum'
   'jq'
   'git'
-)
-
-optdepends=(
-  'omarchy-settings: User and system configurations'
-  'omarchy: Full Omarchy desktop'
+  'omarchy'
+  'omarchy-settings'
+  'omarchy-limine'
 )
 
 # Source: GitHub tag tarball by default; set OMARCHY_SRC=/path/to/checkout to
@@ -43,6 +41,7 @@ package() {
   cd "$srcdir/omarchy-${pkgver}"
 
   install -Dm755 install.sh "$pkgdir/usr/share/omarchy/install.sh"
+  install -Dm755 bin/omarchy-install "$pkgdir/usr/bin/omarchy-install"
 
   install -d "$pkgdir/usr/share/omarchy/install"
   cp -a install/. "$pkgdir/usr/share/omarchy/install/"
