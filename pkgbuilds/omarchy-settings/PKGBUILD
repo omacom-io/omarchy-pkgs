@@ -178,6 +178,14 @@ package() {
   install -Dm644 icon.txt "$pkgdir/usr/share/omarchy/icon.txt"
   install -Dm644 icon.png "$pkgdir/usr/share/omarchy/icon.png"
 
+  # Seed the user-editable branding files into /etc/skel so fresh users
+  # have working defaults for `omarchy screensaver` and the About screen
+  # from the moment they're created, independent of whether
+  # omarchy-setup-user has run yet. omarchy-setup-user / omarchy-branding-*
+  # reset can refresh these from the /usr/share/omarchy/ sources.
+  install -Dm644 logo.txt "$pkgdir/etc/skel/.config/omarchy/branding/screensaver.txt"
+  install -Dm644 icon.txt "$pkgdir/etc/skel/.config/omarchy/branding/about.txt"
+
   # Support binaries needed before the full omarchy package is installed
   # (used by ISO/recovery flows).
   install -Dm755 bin/omarchy-upload-log "$pkgdir/usr/bin/omarchy-upload-log"
