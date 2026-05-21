@@ -41,7 +41,8 @@ prepare() {
 package() {
   cd "$srcdir/omarchy-${pkgver}"
 
-  install -Dm755 install.sh "$pkgdir/usr/share/omarchy/install.sh"
+  install -Dm755 install.sh  "$pkgdir/usr/share/omarchy/install.sh"
+  install -Dm755 finalize.sh "$pkgdir/usr/share/omarchy/finalize.sh"
   install -Dm755 bin/omarchy-install "$pkgdir/usr/bin/omarchy-install"
 
   install -d "$pkgdir/usr/share/omarchy/install"
