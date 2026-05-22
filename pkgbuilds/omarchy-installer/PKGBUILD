@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-installer'
 pkgver=4.0.0.alpha
-pkgrel=6
+pkgrel=7
 pkgdesc='Omarchy installation scripts and helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
