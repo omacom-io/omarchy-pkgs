@@ -47,4 +47,13 @@ package() {
 
   install -d "$pkgdir/usr/share/omarchy/install"
   cp -a install/. "$pkgdir/usr/share/omarchy/install/"
+
+  # The ISO orchestrator writes /etc/default/limine before omarchy-limine is
+  # installed on the target so limine-mkinitcpio-hook sees the final cmdline on
+  # its first run. Ship just the templates as installer assets for the live ISO
+  # without pulling omarchy-limine's target-system hooks into the live image.
+  install -Dm644 default/limine/default.conf \
+    "$pkgdir/usr/share/omarchy/install/assets/limine/default.conf"
+  install -Dm644 default/limine/limine.conf \
+    "$pkgdir/usr/share/omarchy/install/assets/limine/limine.conf"
 }
