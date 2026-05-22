@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-settings'
 pkgver=4.0.0.alpha
-pkgrel=2
+pkgrel=3
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -191,6 +191,11 @@ EOF
   install -Dm644 logo.svg "$pkgdir/usr/share/omarchy/logo.svg"
   install -Dm644 icon.txt "$pkgdir/usr/share/omarchy/icon.txt"
   install -Dm644 icon.png "$pkgdir/usr/share/omarchy/icon.png"
+
+  # Standard icon-theme locations so os-release's LOGO=omarchy resolves in
+  # desktop/system-info tools that use the freedesktop icon lookup rules.
+  install -Dm644 icon.png "$pkgdir/usr/share/pixmaps/omarchy.png"
+  install -Dm644 icon.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/omarchy.png"
 
   # Seed the user-editable branding files into /etc/skel so fresh users
   # have working defaults for `omarchy screensaver` and the About screen
