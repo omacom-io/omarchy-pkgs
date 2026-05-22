@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-settings'
 pkgver=4.0.0.alpha
-pkgrel=1
+pkgrel=2
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -116,6 +116,20 @@ package() {
   install -d "$pkgdir/usr/share/omarchy/etc-overrides"
   install -Dm644 default/bashrc \
     "$pkgdir/usr/share/omarchy/etc-overrides/dot.bashrc"
+  cat >"$pkgdir/usr/share/omarchy/etc-overrides/os-release" <<EOF
+NAME="Omarchy"
+PRETTY_NAME="Omarchy"
+ID=omarchy
+ID_LIKE=arch
+BUILD_ID="$pkgver"
+VERSION_ID="$pkgver"
+ANSI_COLOR="38;2;158;206;106"
+HOME_URL="https://omarchy.org/"
+DOCUMENTATION_URL="https://learn.omacom.io/2/the-omarchy-manual"
+SUPPORT_URL="https://discord.gg/tXFUdasqhY"
+BUG_REPORT_URL="https://github.com/basecamp/omarchy/issues"
+LOGO=omarchy
+EOF
   for path in "${_etc_override_paths[@]}"; do
     case "$path" in
       'etc/security/faillock.conf')
