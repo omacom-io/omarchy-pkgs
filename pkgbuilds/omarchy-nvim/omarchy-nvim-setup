@@ -16,17 +16,21 @@ if [[ ! -d "$PACKAGE_DIR" ]]; then
   exit 1
 fi
 
-# Check if nvim config already exists
+# Check if nvim config already exists. During install this script is run under
+# run_logged with stdin redirected, so prompting would hang/fail. In that
+# non-interactive context, always back up and overwrite.
 if [[ -d "$CONFIG_DIR" ]]; then
-  if gum confirm "$(echo -e "Neovim configuration already exists at $CONFIG_DIR.\nThis will create a backup and overwrite it. Continue?")"; then
-    # Backup existing config
-    BACKUP_DIR="${CONFIG_DIR}.backup.$(date +%Y%m%d-%H%M%S)"
-    echo "Backing up existing config to $BACKUP_DIR"
-    mv "$CONFIG_DIR" "$BACKUP_DIR"
-  else
-    echo "Setup cancelled."
-    exit 0
+  BACKUP_DIR="${CONFIG_DIR}.backup.$(date +%Y%m%d-%H%M%S)"
+
+  if [[ -t 0 ]] && [[ -t 1 ]]; then
+    if ! gum confirm "$(echo -e "Neovim configuration already exists at $CONFIG_DIR.\nThis will create a backup and overwrite it. Continue?")"; then
+      echo "Setup cancelled."
+      exit 0
+    fi
   fi
+
+  echo "Backing up existing config to $BACKUP_DIR"
+  mv "$CONFIG_DIR" "$BACKUP_DIR"
 fi
 
 echo "Setting up Neovim configuration..."
@@ -42,9 +46,12 @@ mkdir -p "$(dirname "$DATA_DIR")"
 cp -r "$PACKAGE_DIR/config" "$CONFIG_DIR"
 cp -r "$PACKAGE_DIR/data" "$DATA_DIR"
 
-# Ensure proper ownership of all nvim directories
-chown -R "${USER}:${USER}" "$CONFIG_DIR"
-chown -R "${USER}:${USER}" "$DATA_DIR"
+# Files copied into $HOME by the install user already have the right owner.
+# Only adjust ownership when this script is explicitly run as root.
+if (( EUID == 0 )); then
+  chown -R "${USER}:${USER}" "$CONFIG_DIR"
+  chown -R "${USER}:${USER}" "$DATA_DIR"
+fi
 
 # Create link for current theme
 ln -snf "${HOME}/.config/omarchy/current/theme/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
