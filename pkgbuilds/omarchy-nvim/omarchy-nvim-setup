@@ -1,6 +1,9 @@
 #!/bin/bash
-# Setup script for omarchy-nvim
-# This can be called from Omarchy setup scripts
+# Setup/refresh script for omarchy-nvim
+#
+# omarchy-nvim-setup: install missing config/data for the current user.
+# omarchy-nvim-refresh: back up existing config, reset cached data, and copy
+#                        the packaged Omarchy Neovim defaults again.
 
 set -euo pipefail
 
@@ -10,60 +13,110 @@ DATA_DIR="${HOME}/.local/share/nvim"
 STATE_DIR="${HOME}/.local/state/nvim"
 CACHE_DIR="${HOME}/.cache/nvim"
 
-# Check if package is installed
+command_name="$(basename "$0")"
+refresh=false
+
+if [[ $command_name == "omarchy-nvim-refresh" ]]; then
+  refresh=true
+fi
+
+while (( $# > 0 )); do
+  case "$1" in
+    --force|--refresh)
+      refresh=true
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: omarchy-nvim-setup [--force]
+       omarchy-nvim-refresh
+
+omarchy-nvim-setup installs the packaged Omarchy Neovim config/data only when
+missing. omarchy-nvim-refresh backs up an existing config and overwrites it with
+the packaged defaults.
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
+
 if [[ ! -d "$PACKAGE_DIR" ]]; then
-  echo "Error: omarchy-nvim package not installed"
+  echo "Error: omarchy-nvim package not installed" >&2
   exit 1
 fi
 
-# Check if nvim config already exists. During install this script is run under
-# run_logged with stdin redirected, so prompting would hang/fail. In that
-# non-interactive context, always back up and overwrite.
-if [[ -d "$CONFIG_DIR" ]]; then
-  BACKUP_DIR="${CONFIG_DIR}.backup.$(date +%Y%m%d-%H%M%S)"
+backup_path() {
+  local path="$1"
+  local backup="${path}.backup.$(date +%Y%m%d-%H%M%S)"
 
-  if [[ -t 0 ]] && [[ -t 1 ]]; then
-    if ! gum confirm "$(echo -e "Neovim configuration already exists at $CONFIG_DIR.\nThis will create a backup and overwrite it. Continue?")"; then
-      echo "Setup cancelled."
-      exit 0
-    fi
+  if [[ -e $path || -L $path ]]; then
+    echo "Backing up $path to $backup"
+    mv "$path" "$backup"
+  fi
+}
+
+copy_tree() {
+  local src="$1"
+  local dest="$2"
+
+  mkdir -p "$(dirname "$dest")"
+  cp -a "$src" "$dest"
+}
+
+install_config() {
+  if [[ -d "$CONFIG_DIR" && $refresh != true ]]; then
+    echo "Neovim config already exists at $CONFIG_DIR; leaving it in place."
+    return
   fi
 
-  echo "Backing up existing config to $BACKUP_DIR"
-  mv "$CONFIG_DIR" "$BACKUP_DIR"
-fi
+  backup_path "$CONFIG_DIR"
+  copy_tree "$PACKAGE_DIR/config" "$CONFIG_DIR"
+  echo "Installed Neovim config to $CONFIG_DIR"
+}
 
-echo "Setting up Neovim configuration..."
+install_data() {
+  if [[ -d "$DATA_DIR" && $refresh != true ]]; then
+    echo "Neovim data already exists at $DATA_DIR; leaving it in place."
+    return
+  fi
 
-# Make sure everything is clear
-rm -rf $DATA_DIR $CACHE_DIR $STATE_DIR
+  if [[ $refresh == true ]]; then
+    rm -rf "$DATA_DIR" "$CACHE_DIR" "$STATE_DIR"
+  fi
 
-# Create directories if needed
-mkdir -p "$(dirname "$CONFIG_DIR")"
-mkdir -p "$(dirname "$DATA_DIR")"
+  copy_tree "$PACKAGE_DIR/data" "$DATA_DIR"
+  echo "Installed Neovim data to $DATA_DIR"
+}
 
-# Copy files (cache will be regenerated on first use)
-cp -r "$PACKAGE_DIR/config" "$CONFIG_DIR"
-cp -r "$PACKAGE_DIR/data" "$DATA_DIR"
+install_config
+install_data
 
 # Files copied into $HOME by the install user already have the right owner.
 # Only adjust ownership when this script is explicitly run as root.
 if (( EUID == 0 )); then
-  chown -R "${USER}:${USER}" "$CONFIG_DIR"
-  chown -R "${USER}:${USER}" "$DATA_DIR"
+  target_user="${SUDO_USER:-${USER:-root}}"
+  if [[ $target_user != "root" ]]; then
+    chown -R "${target_user}:${target_user}" "$CONFIG_DIR" "$DATA_DIR"
+  fi
 fi
 
-# Create link for current theme
-ln -snf "${HOME}/.config/omarchy/current/theme/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
+# Use a relative symlink so the same config works from /etc/skel and from any
+# user's home directory.
+mkdir -p "${CONFIG_DIR}/lua/plugins"
+ln -snf "../../../omarchy/current/theme/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
 
-# Restore git working trees
-for dir in $DATA_DIR/lazy/*/; do
-  if [ -d "$dir/.git" ]; then
+# Restore git working trees from the packaged lazy plugin cache.
+for dir in "$DATA_DIR"/lazy/*/; do
+  if [[ -d "$dir/.git" ]]; then
     git --git-dir="$dir/.git" --work-tree="$dir" restore .
   fi
 done
 
-# Set nvim.desktop as default so it takes priority in Nautilus
+# Set nvim.desktop as default so it takes priority in Nautilus.
 xdg-mime default nvim.desktop text/plain
 xdg-mime default nvim.desktop text/english
 xdg-mime default nvim.desktop text/x-makefile
@@ -82,4 +135,8 @@ xdg-mime default nvim.desktop text/x-c++
 xdg-mime default nvim.desktop application/xml
 xdg-mime default nvim.desktop text/xml
 
-echo "Neovim setup complete!"
+if [[ $refresh == true ]]; then
+  echo "Neovim refresh complete!"
+else
+  echo "Neovim setup complete!"
+fi

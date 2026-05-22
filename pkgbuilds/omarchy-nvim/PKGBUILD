@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=omarchy-nvim
 pkgver=2026.5.25
-pkgrel=1
+pkgrel=2
 pkgdesc="Pre-built LazyVim configuration with cached plugins"
 arch=('any')
 url="https://github.com/LazyVim/LazyVim"
@@ -59,6 +59,17 @@ package() {
   chmod -R 755 "$pkgdir/usr/share/$pkgname"
   find "$pkgdir/usr/share/$pkgname" -type f -exec chmod 644 {} \;
 
-  # Install setup script to /usr/bin
+  # Seed new users via /etc/skel. The installer installs omarchy-nvim before
+  # creating the first user, so this handles initial ISO installs and future
+  # users without an extra overwrite step.
+  install -dm755 "$pkgdir/etc/skel/.config" "$pkgdir/etc/skel/.local/share"
+  cp -a "$pkgdir/usr/share/$pkgname/config" "$pkgdir/etc/skel/.config/nvim"
+  cp -a "$pkgdir/usr/share/$pkgname/data" "$pkgdir/etc/skel/.local/share/nvim"
+  ln -snf "../../../omarchy/current/theme/neovim.lua" \
+    "$pkgdir/etc/skel/.config/nvim/lua/plugins/theme.lua"
+
+  # Install setup/refresh commands to /usr/bin. setup fills missing pieces;
+  # refresh explicitly backs up and overwrites with packaged defaults.
   install -Dm755 "$startdir/omarchy-nvim-setup" "$pkgdir/usr/bin/omarchy-nvim-setup"
+  ln -s omarchy-nvim-setup "$pkgdir/usr/bin/omarchy-nvim-refresh"
 }
