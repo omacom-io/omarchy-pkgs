@@ -13,7 +13,8 @@ options=(!strip)
 install="1password.install"
 source=(https://downloads.1password.com/linux/tar/stable/${CARCH}/${_tar}{,.sig})
 sha256sums=('b5d86e0497825db7a90cde99f58aacea013994c521ef6b0e26e412bf84288f53'
-            '095cbc50cf6a6c47169d9353a12ac166d5a94c41ebbda4d671d7f7748b1250ad')
+            '095cbc50cf6a6c47169d9353a12ac166d5a94c41ebbda4d671d7f7748b1250ad'
+)
 validpgpkeys=('3FEF9748469ADBE15DA7CA80AC2D62742012EA22')
 
 package() {
