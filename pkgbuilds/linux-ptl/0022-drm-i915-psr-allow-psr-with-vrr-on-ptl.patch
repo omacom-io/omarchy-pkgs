@@ -15,16 +15,14 @@ no specific workaround applies.
 
 Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
 ---
- drivers/gpu/drm/i915/display/intel_psr.c | 6 ------
- 1 file changed, 6 deletions(-)
-
 diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
+index 197c238..242077f 100644
 --- a/drivers/gpu/drm/i915/display/intel_psr.c
 +++ b/drivers/gpu/drm/i915/display/intel_psr.c
-@@ -1708,13 +1708,7 @@ static bool _psr_compute_config(struct intel_dp *intel_dp,
+@@ -1714,12 +1714,6 @@ static bool _psr_compute_config(struct intel_dp *intel_dp,
  	if (!CAN_PSR(intel_dp) || !display->params.enable_psr)
  		return false;
-
+ 
 -	/*
 -	 * Currently PSR doesn't work reliably with VRR enabled.
 -	 */
@@ -32,6 +30,5 @@ diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/dis
 -		return false;
 -
  	entry_setup_frames = intel_psr_entry_setup_frames(intel_dp, conn_state, adjusted_mode);
-
+ 
  	if (entry_setup_frames >= 0) {
-		crtc_state->entry_setup_frames = entry_setup_frames;
