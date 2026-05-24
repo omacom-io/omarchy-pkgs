@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-settings'
 pkgver=4.0.0.alpha
-pkgrel=5
+pkgrel=6
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -34,6 +34,10 @@ backup=(
   'etc/systemd/system/user@.service.d/10-faster-shutdown.conf'
   'etc/systemd/system/docker.service.d/no-block-boot.conf'
   'etc/systemd/system/plocate-updatedb.service.d/ac-only.conf'
+  'etc/systemd/system.conf.d/20-omarchy-nofile.conf'
+  'etc/systemd/user.conf.d/20-omarchy-nofile.conf'
+  'etc/sddm.conf.d/10-theme.conf'
+  'etc/sddm.conf.d/10-wayland.conf'
   'etc/udev/rules.d/99-omarchy-power-profile.rules'
   'etc/udev/rules.d/99-omarchy-wifi-powersave.rules'
 )
@@ -166,6 +170,16 @@ EOF
   cp -a default/. "$pkgdir/usr/share/omarchy/default/"
   rm -rf "$pkgdir/usr/share/omarchy/default/limine"
   rm -rf "$pkgdir/usr/share/omarchy/default/snapper"
+
+  # SDDM theme/session assets. These are static package-owned files; the
+  # installer only writes autologin.conf because that embeds the install user.
+  install -d -m 0755 "$pkgdir/usr/share/sddm/themes"
+  cp -a default/sddm/omarchy "$pkgdir/usr/share/sddm/themes/"
+  find "$pkgdir/usr/share/sddm/themes/omarchy" -type d -exec chmod 0755 {} +
+  find "$pkgdir/usr/share/sddm/themes/omarchy" -type f -exec chmod 0644 {} +
+  install -Dm644 default/sddm/hyprland.lua "$pkgdir/usr/share/sddm/hyprland.lua"
+  install -Dm644 default/wayland-sessions/omarchy.desktop \
+    "$pkgdir/usr/local/share/wayland-sessions/omarchy.desktop"
 
   # Plymouth theme. Files at 0644, dirs at 0755 (the upstream plymouth
   # package's convention for /usr/share/plymouth/themes/*). cp -a inherits
