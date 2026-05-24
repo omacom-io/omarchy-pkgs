@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-installer'
 pkgver=4.0.0.alpha
-pkgrel=16
+pkgrel=17
 pkgdesc='Omarchy installation scripts and helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -41,8 +41,9 @@ prepare() {
 package() {
   cd "$srcdir/omarchy-${pkgver}"
 
-  install -Dm755 install.sh  "$pkgdir/usr/share/omarchy/install.sh"
-  install -Dm755 finalize.sh "$pkgdir/usr/share/omarchy/finalize.sh"
+  install -Dm755 install.sh         "$pkgdir/usr/share/omarchy/install.sh"
+  install -Dm755 system-finalize.sh "$pkgdir/usr/share/omarchy/system-finalize.sh"
+  install -Dm755 finalize.sh        "$pkgdir/usr/share/omarchy/finalize.sh"
   install -Dm755 bin/omarchy-install "$pkgdir/usr/bin/omarchy-install"
 
   install -d "$pkgdir/usr/share/omarchy/install"
