@@ -8,10 +8,10 @@ url='https://github.com/basecamp/omarchy'
 license=('MIT')
 provides=('omarchy-limine')
 
-# NOTE(chunk-7): `/etc/default/limine` is intentionally NOT owned by this
-# package. It is generated at install time from the boot cmdline by
-# `configure-limine.sh` (lands in Chunk 7). We ship a template under
-# `/usr/share/omarchy/limine/` for the generator to read.
+# `/etc/default/limine` is intentionally NOT owned by this package. The ISO
+# orchestrator generates it at install time from the resolved target boot
+# cmdline. We ship a template under /usr/share/omarchy/default/limine/ for the
+# orchestrator to read.
 
 depends=(
   'limine'
@@ -22,6 +22,8 @@ depends=(
 
 backup=(
   'etc/mkinitcpio.conf.d/omarchy_hooks.conf'
+  'etc/mkinitcpio.conf.d/thunderbolt_module.conf'
+  'etc/limine-entry-tool.d/omarchy-defaults.conf'
   'etc/limine-entry-tool.d/omarchy-uki.conf'
 )
 
@@ -31,10 +33,12 @@ backup=(
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
   source=(
     'omarchy_hooks.conf'
+    'omarchy-defaults.conf'
     'omarchy-uki.conf'
     'thunderbolt_module.conf'
   )
   sha256sums=(
+    'SKIP'
     'SKIP'
     'SKIP'
     'SKIP'
@@ -43,10 +47,12 @@ else
   source=(
     "omarchy-${pkgver}.tar.gz::https://github.com/basecamp/omarchy/archive/refs/tags/v${pkgver}.tar.gz"
     'omarchy_hooks.conf'
+    'omarchy-defaults.conf'
     'omarchy-uki.conf'
     'thunderbolt_module.conf'
   )
   sha256sums=(
+    'SKIP'
     'SKIP'
     'SKIP'
     'SKIP'
@@ -65,34 +71,30 @@ prepare() {
 package() {
   cd "$srcdir/omarchy-${pkgver}"
 
-  # mkinitcpio hooks for limine/snapper integration. Content must match
-  # the line currently produced by install/login/limine-snapper.sh in the
-  # installer (verified 2026-05-20). If the installer's hook line changes,
-  # this file must be updated in lockstep.
+  # mkinitcpio hooks for limine/snapper integration.
   install -Dm644 "$srcdir/omarchy_hooks.conf" \
     "$pkgdir/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
 
-  # Thunderbolt module drop-in, sibling to omarchy_hooks.conf (also written
-  # by the current installer).
+  # Thunderbolt module drop-in, sibling to omarchy_hooks.conf.
   install -Dm644 "$srcdir/thunderbolt_module.conf" \
     "$pkgdir/etc/mkinitcpio.conf.d/thunderbolt_module.conf"
 
-  # Limine entry-tool default drop-in (UKI by default; configure-limine.sh
-  # may override on BIOS).
+  # Limine entry-tool default drop-ins.
+  install -Dm644 "$srcdir/omarchy-defaults.conf" \
+    "$pkgdir/etc/limine-entry-tool.d/omarchy-defaults.conf"
   install -Dm644 "$srcdir/omarchy-uki.conf" \
     "$pkgdir/etc/limine-entry-tool.d/omarchy-uki.conf"
 
   # Limine theme/preset and /etc/default/limine template. Both ship under
-  # /usr/share/omarchy/default/limine/ to match the installer's source-tree
-  # layout (install/login/limine-snapper.sh reads from
-  # $OMARCHY_PATH/default/limine/{limine,default}.conf). omarchy-settings
+  # /usr/share/omarchy/default/limine/ so the ISO orchestrator and runtime
+  # refresh commands use the same package-owned files. omarchy-settings
   # explicitly excludes default/limine when shipping its default/** tree so
   # this package owns these paths.
   install -Dm644 default/limine/limine.conf \
     "$pkgdir/usr/share/omarchy/default/limine/limine.conf"
 
-  # default.conf is a template: install/login/limine-snapper.sh copies it to
-  # /etc/default/limine and seds @@CMDLINE@@ to the live boot cmdline.
+  # default.conf is a template: the ISO orchestrator copies it to
+  # /etc/default/limine and replaces @@CMDLINE@@ with the target boot cmdline.
   install -Dm644 default/limine/default.conf \
     "$pkgdir/usr/share/omarchy/default/limine/default.conf"
 

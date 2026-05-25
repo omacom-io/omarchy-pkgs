@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-settings'
 pkgver=4.0.0.alpha
-pkgrel=6
+pkgrel=7
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -12,7 +12,12 @@ depends=(
   'bash'
   'curl'
   'gum'
+  'hicolor-icon-theme'
   'plymouth'
+)
+
+makedepends=(
+  'imagemagick'
 )
 
 # backup=() is pacman's hook for protecting user edits to package-owned files
@@ -101,6 +106,9 @@ package() {
   # omarchy-install-gaming-*, etc. to copy .desktop files into ~/.local/share.
   install -d "$pkgdir/usr/share/omarchy/applications"
   cp -a applications/. "$pkgdir/usr/share/omarchy/applications/"
+  # Icons are package-owned below in /usr/share/icons/hicolor, not this
+  # historical app-local folder.
+  rm -rf "$pkgdir/usr/share/omarchy/applications/icons"
 
   # /etc tree (drop-ins the package fully owns + the etc-override files we
   # stage separately below).
@@ -153,15 +161,39 @@ EOF
   rmdir "$pkgdir/etc/plymouth" 2>/dev/null || true
 
   # /etc/skel/.local/share/applications from applications/**.
-  install -d "$pkgdir/etc/skel/.local/share/applications/icons"
+  install -d "$pkgdir/etc/skel/.local/share/applications"
   if compgen -G 'applications/*.desktop' >/dev/null; then
     cp applications/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
   fi
   if [[ -d applications/hidden ]] && compgen -G 'applications/hidden/*.desktop' >/dev/null; then
     cp applications/hidden/*.desktop "$pkgdir/etc/skel/.local/share/applications/"
   fi
+
+  # Package-owned application icons in standard freedesktop hicolor paths.
+  # Desktop files and generated webapp/TUI launchers reference these by icon
+  # name, so user setup no longer needs to copy static Omarchy icons into
+  # ~/.local/share.
   if [[ -d applications/icons ]] && compgen -G 'applications/icons/*' >/dev/null; then
-    cp applications/icons/* "$pkgdir/etc/skel/.local/share/applications/icons/"
+    install -d "$pkgdir/usr/share/icons/hicolor/256x256/apps"
+    install -d "$pkgdir/usr/share/icons/hicolor/48x48/apps"
+    for icon in applications/icons/*; do
+      [[ -f $icon ]] || continue
+      icon_name=$(basename "$icon")
+      icon_id=$(printf '%s\n' "${icon_name%.*}" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
+      case "$icon_name" in
+        *.svg)
+          install -Dm644 "$icon" "$pkgdir/usr/share/icons/hicolor/scalable/apps/$icon_id.svg"
+          ;;
+        *)
+          magick "$icon" -thumbnail 256x256 -background transparent -gravity center -extent 256x256 \
+            "PNG32:$pkgdir/usr/share/icons/hicolor/256x256/apps/$icon_id.png"
+          magick "$icon" -thumbnail 48x48 -background transparent -gravity center -extent 48x48 \
+            "PNG32:$pkgdir/usr/share/icons/hicolor/48x48/apps/$icon_id.png"
+          ;;
+      esac
+    done
   fi
 
   # default/** ships to /usr/share/omarchy/default/, except subsets owned by

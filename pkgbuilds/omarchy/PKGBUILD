@@ -1,24 +1,22 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy'
 pkgver=4.0.0.alpha
-pkgrel=3
+pkgrel=4
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
 license=('MIT')
 provides=('omarchy')
 
-# Hard depends: only packages whose removal would brick the desktop. The full
-# Omarchy default install set lives in install/omarchy-base.packages and is
-# installed by install.sh (online) / pacstrapped by archinstall (offline). That
-# lets users remove apps (1password, browsers, etc.) via omarchy-{tui,webapp,
-# theme}-remove without pacman refusing because of a hard depend.
+# Hard depends: only packages whose removal would brick the desktop. The ISO
+# pacstraps the full default install set from install/omarchy-base.packages.
+# Keeping optional apps out of hard depends lets users remove them via Omarchy
+# commands without pacman refusing because of a hard dependency.
 depends=(
   # Omarchy meta
   'omarchy-keyring'
   'omarchy-settings'
   'omarchy-limine'
-  'omarchy-installer' # runtime user setup scripts under /usr/share/omarchy/install
 
   # Wayland / Hyprland core
   'hyprland'
@@ -110,16 +108,15 @@ prepare() {
 package() {
   cd "$srcdir/omarchy-${pkgver}"
 
-  # Runtime binaries — ship everything in bin/ except the explicit exclusions:
-  # - dev/debug helpers (shipped by omarchy-dev-tools and omarchy-settings)
-  # - the dropped refactor-poc installer wrappers (never ship)
+  # Runtime binaries — ship everything in bin/ except dev/debug helpers
+  # (shipped by omarchy-dev-tools and omarchy-settings).
   install -d "$pkgdir/usr/bin"
   for bin in bin/*; do
     [[ -f $bin ]] || continue
     local base
     base=$(basename "$bin")
     case "$base" in
-      omarchy-dev-*|omarchy-debug|omarchy-debug-idle|omarchy-upload-log|omarchy-install|omarchy-disk-config|omarchy-install-final-configurations.sh)
+      omarchy-dev-*|omarchy-debug|omarchy-debug-idle|omarchy-upload-log)
         continue
         ;;
     esac
@@ -128,11 +125,25 @@ package() {
 
   install -d "$pkgdir/usr/share/omarchy"
 
+  # Target-side setup scripts and package lists used by ISO finalization,
+  # first login, future users, migrations, and reinstall/reset commands.
+  cp -a install "$pkgdir/usr/share/omarchy/"
+
   # Theme bundles for theme switching.
   cp -a themes "$pkgdir/usr/share/omarchy/"
 
   # Versioned migrations runner reads from this tree.
   cp -a migrations "$pkgdir/usr/share/omarchy/"
+
+  # Fresh users created after install are already on the package layout in this
+  # build, so seed migration markers through /etc/skel. Existing users keep
+  # their own state and still run pending migrations on update.
+  if compgen -G 'migrations/*.sh' >/dev/null; then
+    install -d "$pkgdir/etc/skel/.local/state/omarchy/migrations"
+    for migration in migrations/*.sh; do
+      touch "$pkgdir/etc/skel/.local/state/omarchy/migrations/$(basename "$migration")"
+    done
+  fi
 
   # Quickshell desktop shell tree.
   cp -a shell "$pkgdir/usr/share/omarchy/"
