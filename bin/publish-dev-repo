@@ -1,0 +1,260 @@
+#!/bin/bash
+# Build a small Omarchy dev pacman repo from local sources and publish it to
+# the public Oodle artifact host.
+
+set -euo pipefail
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+DEFAULT_SRC=$(realpath "$BUILD_ROOT/../omarchy-installer" 2>/dev/null || true)
+
+ARCH=${ARCH:-x86_64}
+REPO_NAME=${REPO_NAME:-omarchy-dev}
+SRC=${OMARCHY_SRC:-${DEFAULT_SRC:-}}
+OUT=${OUT:-}
+SCP_DEST=${SCP_DEST:-${OMARCHY_DEV_REPO_SCP_DEST:-}}
+UPGRADE_DEST=${UPGRADE_DEST:-${OMARCHY_DEV_UPGRADE_SCP_DEST:-}}
+PACKAGES=(omarchy-settings omarchy-limine omarchy-dev-tools omarchy omarchy-nvim)
+UPLOAD=1
+KEEP_WORK=0
+PUBLIC_URL_BASE="https://share.heyoodle.com/omarchy/dev"
+MAKEPKG_FLAGS=${MAKEPKG_FLAGS:-"-f --nodeps --skipchecksums --noconfirm"}
+
+local_repo_default() {
+  printf '%s\n' "$BUILD_ROOT/pkgs.omarchy.org/dev/$ARCH"
+}
+
+scp_dest_default() {
+  printf '%s\n' "oodle@oodle-artifacts:/srv/artifacts/public/omarchy/dev/$ARCH"
+}
+
+upgrade_dest_default() {
+  printf '%s\n' "oodle@oodle-artifacts:/srv/artifacts/public/omarchy/dev/omarchy-upgrade-to-4"
+}
+
+public_server_url() {
+  printf '%s\n' "$PUBLIC_URL_BASE/\$arch"
+}
+
+usage() {
+  local default_out default_scp
+  default_out=${OUT:-$(local_repo_default)}
+  default_scp=${SCP_DEST:-$(scp_dest_default)}
+  default_upgrade=${UPGRADE_DEST:-$(upgrade_dest_default)}
+
+  cat <<USAGE
+Usage: bin/publish-dev-repo [options]
+
+Builds a small pacman repo from local Omarchy package sources, writes repo DB
+files, then scp's the flat repo directory to oodle-artifacts public storage.
+
+Uses MAKEPKG_FLAGS='$MAKEPKG_FLAGS' by default so building this repo does not
+try to pacman-install packages that are being built by the same repo.
+
+Options:
+  --src PATH          Omarchy source checkout (default: $SRC)
+  --out PATH          Local repo output directory (default: $default_out)
+  --arch ARCH         Repo architecture path (default: $ARCH)
+  --repo NAME         Pacman repo database name (default: $REPO_NAME)
+  --package NAMES...  Package list to build (default: ${PACKAGES[*]})
+  --scp DEST          scp destination host:/path (default: $default_scp)
+  --upgrade-scp DEST  scp destination for omarchy-upgrade-to-4 (default: $default_upgrade)
+  --no-upload         Build local repo only
+  --keep-work         Keep temporary build directories for debugging
+  -h, --help          Show this help
+
+Default published URL:
+  $(public_server_url)
+
+Client pacman.conf entry:
+
+  [$REPO_NAME]
+  SigLevel = Optional TrustAll
+  Server = $(public_server_url)
+
+Then:
+
+  sudo pacman -Syy
+  sudo pacman -S ${PACKAGES[*]}
+USAGE
+}
+
+while (($#)); do
+  case "$1" in
+    --src)
+      SRC=$(realpath -e "${2:-}" 2>/dev/null) || { echo "Invalid --src: ${2:-}" >&2; exit 1; }
+      shift 2
+      ;;
+    --src=*)
+      SRC=$(realpath -e "${1#*=}" 2>/dev/null) || { echo "Invalid --src: ${1#*=}" >&2; exit 1; }
+      shift
+      ;;
+    --out)
+      OUT=$(realpath -m "${2:-}")
+      shift 2
+      ;;
+    --out=*)
+      OUT=$(realpath -m "${1#*=}")
+      shift
+      ;;
+    --arch)
+      ARCH="${2:-}"
+      shift 2
+      ;;
+    --arch=*)
+      ARCH="${1#*=}"
+      shift
+      ;;
+    --repo)
+      REPO_NAME="${2:-}"
+      shift 2
+      ;;
+    --repo=*)
+      REPO_NAME="${1#*=}"
+      shift
+      ;;
+    --package)
+      shift
+      PACKAGES=()
+      while (($#)) && [[ $1 != --* ]]; do
+        PACKAGES+=("$1")
+        shift
+      done
+      ;;
+    --scp)
+      SCP_DEST="${2:-}"
+      UPLOAD=1
+      shift 2
+      ;;
+    --scp=*)
+      SCP_DEST="${1#*=}"
+      UPLOAD=1
+      shift
+      ;;
+    --upgrade-scp)
+      UPGRADE_DEST="${2:-}"
+      shift 2
+      ;;
+    --upgrade-scp=*)
+      UPGRADE_DEST="${1#*=}"
+      shift
+      ;;
+    --no-upload)
+      UPLOAD=0
+      shift
+      ;;
+    --keep-work)
+      KEEP_WORK=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+OUT=${OUT:-$(local_repo_default)}
+SCP_DEST=${SCP_DEST:-$(scp_dest_default)}
+UPGRADE_DEST=${UPGRADE_DEST:-$(upgrade_dest_default)}
+
+[[ -n $SRC && -d $SRC ]] || { echo "Omarchy source checkout not found. Pass --src PATH." >&2; exit 1; }
+[[ -n $ARCH ]] || { echo "--arch must not be empty" >&2; exit 1; }
+[[ -n $REPO_NAME ]] || { echo "--repo must not be empty" >&2; exit 1; }
+((${#PACKAGES[@]})) || { echo "No packages selected" >&2; exit 1; }
+
+build_one() {
+  local pkg="$1" pkgbuild_dir work built=()
+  pkgbuild_dir="$BUILD_ROOT/pkgbuilds/$pkg"
+  [[ -f $pkgbuild_dir/PKGBUILD ]] || { echo "Missing PKGBUILD: $pkgbuild_dir/PKGBUILD" >&2; return 1; }
+
+  work=$(mktemp -d -t "omarchy-dev-${pkg}.XXXXXX")
+  if (( KEEP_WORK )); then
+    echo "  work dir: $work"
+  else
+    trap 'rm -rf "$work"' RETURN
+  fi
+
+  cp -a "$pkgbuild_dir/." "$work/"
+
+  echo "==> Building $pkg"
+  (
+    cd "$work"
+    # --syncdeps would ask pacman to install runtime dependencies like
+    # `omarchy` while we are in the middle of building that same local repo.
+    # Keep dependency resolution for the client install, not repo assembly.
+    # shellcheck disable=SC2086
+    OMARCHY_SRC="$SRC" makepkg $MAKEPKG_FLAGS
+  )
+
+  mapfile -t built < <(find "$work" -maxdepth 1 -type f -name '*.pkg.tar.*' ! -name '*.sig' | sort)
+  ((${#built[@]})) || { echo "No package files built for $pkg" >&2; return 1; }
+
+  mkdir -p "$OUT"
+  cp -f "${built[@]}" "$OUT/"
+
+  if (( ! KEEP_WORK )); then
+    rm -rf "$work"
+    trap - RETURN
+  fi
+}
+
+publish_with_scp() {
+  local remote_host remote_path upgrade_host upgrade_path upgrade_dir
+  [[ $SCP_DEST == *:* ]] || { echo "SCP destination must look like host:/path: $SCP_DEST" >&2; return 1; }
+
+  remote_host=${SCP_DEST%%:*}
+  remote_path=${SCP_DEST#*:}
+
+  echo "==> Preparing remote directory $remote_host:$remote_path"
+  ssh "$remote_host" "mkdir -p '$remote_path' && rm -f '$remote_path'/*.pkg.tar.* '$remote_path'/$REPO_NAME.db* '$remote_path'/$REPO_NAME.files*"
+
+  echo "==> Uploading repo to $SCP_DEST"
+  scp -p ./* "$SCP_DEST/"
+
+  if [[ -f $SRC/bin/omarchy-upgrade-to-4 ]]; then
+    [[ $UPGRADE_DEST == *:* ]] || { echo "Upgrade script destination must look like host:/path: $UPGRADE_DEST" >&2; return 1; }
+    upgrade_host=${UPGRADE_DEST%%:*}
+    upgrade_path=${UPGRADE_DEST#*:}
+    upgrade_dir=$(dirname "$upgrade_path")
+    echo "==> Uploading upgrade script to $UPGRADE_DEST"
+    ssh "$upgrade_host" "mkdir -p '$upgrade_dir'"
+    scp -p "$SRC/bin/omarchy-upgrade-to-4" "$UPGRADE_DEST"
+  fi
+}
+
+echo "==> Source checkout: $SRC"
+echo "==> Packages: ${PACKAGES[*]}"
+echo "==> Local repo: $OUT"
+echo "==> makepkg flags: $MAKEPKG_FLAGS"
+
+rm -rf "$OUT"
+mkdir -p "$OUT"
+
+for pkg in "${PACKAGES[@]}"; do
+  build_one "$pkg"
+done
+
+echo "==> Creating repo database $REPO_NAME in $OUT"
+cd "$OUT"
+repo-add -R "$REPO_NAME.db.tar.zst" *.pkg.tar.zst
+
+# Static web hosts do not always preserve symlinks; pacman asks for .db/.files.
+rm -f "$REPO_NAME.db" "$REPO_NAME.files"
+cp "$REPO_NAME.db.tar.zst" "$REPO_NAME.db"
+cp "$REPO_NAME.files.tar.zst" "$REPO_NAME.files"
+
+if (( UPLOAD )); then
+  publish_with_scp
+else
+  echo "==> Skipping upload (--no-upload)"
+fi
+
+echo
+echo "Repo ready: $OUT"
+echo "Pacman Server: $(public_server_url)"
+echo "Upgrade URL: $PUBLIC_URL_BASE/omarchy-upgrade-to-4"
