@@ -195,7 +195,21 @@ build_one() {
   ((${#built[@]})) || { echo "No package files built for $pkg" >&2; return 1; }
 
   mkdir -p "$OUT"
-  cp -f "${built[@]}" "$OUT/"
+  local artifact target old_sha new_sha
+  for artifact in "${built[@]}"; do
+    target="$OUT/$(basename "$artifact")"
+    if [[ -e $target ]]; then
+      old_sha=$(sha256sum "$target" | awk '{ print $1 }')
+      new_sha=$(sha256sum "$artifact" | awk '{ print $1 }')
+      if [[ $old_sha != "$new_sha" ]]; then
+        echo "Refusing to overwrite existing package with different bytes: $(basename "$artifact")" >&2
+        echo "Bump pkgrel/pkgver so pacman and CDN caches see a new filename, or remove $target intentionally." >&2
+        return 1
+      fi
+    else
+      cp -f "$artifact" "$OUT/"
+    fi
+  done
 
   if (( ! KEEP_WORK )); then
     rm -rf "$work"
@@ -232,8 +246,8 @@ echo "==> Packages: ${PACKAGES[*]}"
 echo "==> Local repo: $OUT"
 echo "==> makepkg flags: $MAKEPKG_FLAGS"
 
-rm -rf "$OUT"
 mkdir -p "$OUT"
+rm -f "$OUT/$REPO_NAME".db* "$OUT/$REPO_NAME".files*
 
 for pkg in "${PACKAGES[@]}"; do
   build_one "$pkg"

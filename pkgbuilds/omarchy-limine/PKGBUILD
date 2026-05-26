@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-limine'
 pkgver=4.0.0.alpha
-pkgrel=1
+pkgrel=2
 pkgdesc='Limine bootloader configuration, mkinitcpio hooks, and snapper template for Omarchy'
 arch=('any')
 url='https://github.com/basecamp/omarchy'

@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-dev-tools'
 pkgver=4.0.0.alpha
-pkgrel=1
+pkgrel=2
 pkgdesc='Developer commands for working on Omarchy'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
