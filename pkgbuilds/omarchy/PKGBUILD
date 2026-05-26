@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy'
 pkgver=4.0.0.alpha
-pkgrel=5
+pkgrel=6
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -110,7 +110,7 @@ package() {
 
   # Runtime binaries — ship everything in bin/ except dev/debug helpers
   # (shipped by omarchy-dev-tools and omarchy-settings).
-  install -d "$pkgdir/usr/bin"
+  install -d "$pkgdir/usr/bin" "$pkgdir/usr/share/omarchy/bin"
   for bin in bin/*; do
     [[ -f $bin ]] || continue
     local base
@@ -121,6 +121,7 @@ package() {
         ;;
     esac
     install -Dm755 "$bin" "$pkgdir/usr/bin/$base"
+    ln -s "/usr/bin/$base" "$pkgdir/usr/share/omarchy/bin/$base"
   done
 
   install -d "$pkgdir/usr/share/omarchy"

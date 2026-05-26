@@ -1,0 +1,114 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+# Based on the Arch Linux hyprland package.
+
+pkgname=hyprland
+pkgver=0.55.2.pr14748.05e99f86
+pkgrel=1
+pkgdesc='a highly customizable dynamic tiling Wayland compositor (Omarchy dev PR 14748 build)'
+arch=(x86_64 aarch64)
+url="https://github.com/hyprwm/${pkgname^}"
+license=(BSD-3-Clause)
+options=(!debug)
+depends=(cairo # libcairo.so
+         aquamarine libaquamarine.so
+         libgcc # libgcc_s.so
+         'libstdc++' # libstdc++.so
+         glibc # libc.so libm.so
+         glib2 libgio-2.0.so libgobject-2.0.so
+         glslang # libglslang-default-resource-limits.so libglslang.so
+         hyprcursor libhyprcursor.so
+         hyprgraphics libhyprgraphics.so
+         hyprland-guiutils
+         hyprlang libhyprlang.so
+         hyprutils libhyprutils.so
+         hyprwayland-scanner
+         hyprwire libhyprwire.so
+         lcms2 liblcms2.so
+         libdrm # libdrm.so
+         libglvnd libEGL.so libGLESv2.so
+         libinput # libinput.so
+         libx11
+         libxcb # libxcb-dri3.so libxcb-present.so libxcb-render.so libxcb-res.so libxcb-shm.so libxcb.so libxcb-xfixes.so libxcb-xinput.so
+         libxcomposite # libxcb-composite.so
+         libxcursor # libXcursor.so
+         libxfixes
+         libxkbcommon libxkbcommon.so
+         libxrender
+         lua # liblua.so
+         mesa # libgbm.so
+         muparser # libmuparser.so
+         opengl-driver
+         pango libpango-1.0.so libpangocairo-1.0.so
+         pixman libpixman-1.so
+         re2 libre2.so
+         tomlplusplus libtomlplusplus.so
+         util-linux-libs libuuid.so
+         wayland libwayland-server.so
+         wayland-protocols
+         xcb-proto
+         xcb-util
+         xcb-util-errors # libxcb-errors.so
+         xcb-util-image
+         xcb-util-keysyms
+         xcb-util-renderutil # libxcb-render-util.so
+         xcb-util-wm # libxcb-ewmh.so  libxcb-icccm.so
+         xorg-xwayland)
+makedepends=(cmake
+             git
+             glaze
+             meson
+             ninja
+             xorgproto)
+optdepends=('cmake: to build and install plugins using hyprpm'
+            'cpio: to build and install plugins using hyprpm'
+            'glaze: to build and install plugins using hyprpm'
+            'hyprland-protocols: to build and install plugins using hyprpm'
+            'hyprshutdown: clean logout and shutdown helper'
+            'meson: to build and install plugins using hyprpm'
+            'uwsm: an advanced way to start desktop compositors as systemd units'
+            'xdg-desktop-portal-hyprland: xdg-desktop-portal backend for hyprland')
+provides=(wayland-compositor)
+_commit=05e99f86c1a5a2ec7457620ad51188a7e8fada55
+_hyprland_protocols_ver=0.7.0
+source=("git+$url.git#commit=$_commit"
+        "git+https://github.com/hyprwm/hyprland-protocols.git#tag=v$_hyprland_protocols_ver"
+        "udis86::git+https://github.com/canihavesomecoffee/udis86.git#commit=5336633af70f3917760a6d441ff02d93477b0c86"
+        "tracy::git+https://github.com/wolfpld/tracy.git#commit=05cceee0df3b8d7c6fa87e9638af311dbabc63cb")
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+prepare() {
+  cd "${pkgname^}"
+  rm -rf subprojects/hyprland-protocols subprojects/udis86 subprojects/tracy
+  ln -s "$srcdir/hyprland-protocols" subprojects/hyprland-protocols
+  ln -s "$srcdir/udis86" subprojects/udis86
+  ln -s "$srcdir/tracy" subprojects/tracy
+  sed -i -e '/^release:/{n;s/-D/-DCMAKE_SKIP_RPATH=ON -D/}' Makefile
+}
+
+build() {
+  local pkgconfig_dir="$srcdir/pkgconfig"
+
+  mkdir -p "$pkgconfig_dir"
+  cat >"$pkgconfig_dir/hyprland-protocols.pc" <<EOF
+prefix=/usr
+datarootdir=\${prefix}/share
+pkgdatadir=$srcdir/hyprland-protocols
+
+Name: Hyprland Protocols
+Description: Hyprland protocol files
+Version: $_hyprland_protocols_ver
+EOF
+
+  cd "${pkgname^}"
+  PKG_CONFIG_PATH="$pkgconfig_dir:${PKG_CONFIG_PATH:-}" make release PREFIX=/usr
+}
+
+package() {
+  cd "${pkgname^}"
+  make DESTDIR="$pkgdir" install
+  rm -fv "$pkgdir/usr/include/hyprland/src/version.h.in"
+  install -Dm0644 -t "$pkgdir/usr/share/licenses/$pkgname/" LICENSE
+}
