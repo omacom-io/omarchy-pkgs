@@ -1,19 +1,28 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-settings'
 pkgver=4.0.0.alpha
-pkgrel=9
+pkgrel=10
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
 license=('MIT')
 provides=('omarchy-settings')
 
+# `/etc/default/limine` is intentionally NOT owned by this package. The ISO
+# orchestrator generates it at install time from the resolved target boot
+# cmdline. We ship a template under /usr/share/omarchy/default/limine/ for the
+# orchestrator to read.
 depends=(
   'bash'
   'curl'
   'gum'
   'hicolor-icon-theme'
   'plymouth'
+  # Bootloader integration (formerly omarchy-limine).
+  'limine'
+  'limine-mkinitcpio-hook'
+  'limine-snapper-sync'
+  'snapper'
 )
 
 makedepends=(
@@ -27,6 +36,10 @@ makedepends=(
 # and is cp -f'd by post_install — those paths are unowned by pacman and the
 # scriptlet WILL clobber user edits on each upgrade (documented limitation).
 backup=(
+  'etc/mkinitcpio.conf.d/omarchy_hooks.conf'
+  'etc/mkinitcpio.conf.d/thunderbolt_module.conf'
+  'etc/limine-entry-tool.d/omarchy-defaults.conf'
+  'etc/limine-entry-tool.d/omarchy-uki.conf'
   'etc/docker/daemon.json'
   'etc/gnupg/dirmngr.conf'
   'etc/sysctl.d/99-omarchy-sysctl.conf'
@@ -69,11 +82,33 @@ _etc_override_paths=(
 # build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 # Until v4.0.0.alpha is tagged on basecamp/omarchy, sha256sums=('SKIP').
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
-  source=()
-  sha256sums=()
+  source=(
+    'omarchy_hooks.conf'
+    'omarchy-defaults.conf'
+    'omarchy-uki.conf'
+    'thunderbolt_module.conf'
+  )
+  sha256sums=(
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+  )
 else
-  source=("omarchy-${pkgver}.tar.gz::https://github.com/basecamp/omarchy/archive/refs/tags/v${pkgver}.tar.gz")
-  sha256sums=('SKIP')
+  source=(
+    "omarchy-${pkgver}.tar.gz::https://github.com/basecamp/omarchy/archive/refs/tags/v${pkgver}.tar.gz"
+    'omarchy_hooks.conf'
+    'omarchy-defaults.conf'
+    'omarchy-uki.conf'
+    'thunderbolt_module.conf'
+  )
+  sha256sums=(
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+  )
 fi
 
 prepare() {
@@ -210,12 +245,28 @@ EOF
     done
   fi
 
-  # default/** ships to /usr/share/omarchy/default/, except subsets owned by
-  # omarchy-limine (`default/limine`, `default/snapper`).
+  # default/** ships to /usr/share/omarchy/default/. The limine subset is
+  # additionally installed to /etc/mkinitcpio.conf.d/, /etc/limine-entry-tool.d/,
+  # and /etc/snapper/config-templates/ below so limine/snapper pick up the
+  # configs at install time without separate handling.
   install -d "$pkgdir/usr/share/omarchy/default"
   cp -a default/. "$pkgdir/usr/share/omarchy/default/"
-  rm -rf "$pkgdir/usr/share/omarchy/default/limine"
-  rm -rf "$pkgdir/usr/share/omarchy/default/snapper"
+
+  # mkinitcpio hooks for limine/snapper integration (formerly omarchy-limine).
+  install -Dm644 "$srcdir/omarchy_hooks.conf" \
+    "$pkgdir/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+  install -Dm644 "$srcdir/thunderbolt_module.conf" \
+    "$pkgdir/etc/mkinitcpio.conf.d/thunderbolt_module.conf"
+
+  # Limine entry-tool default drop-ins.
+  install -Dm644 "$srcdir/omarchy-defaults.conf" \
+    "$pkgdir/etc/limine-entry-tool.d/omarchy-defaults.conf"
+  install -Dm644 "$srcdir/omarchy-uki.conf" \
+    "$pkgdir/etc/limine-entry-tool.d/omarchy-uki.conf"
+
+  # Snapper config template used by the install-time `snapper create-config`.
+  install -Dm644 default/snapper/root \
+    "$pkgdir/etc/snapper/config-templates/omarchy"
 
   # SDDM theme/session assets. These are static package-owned files; the
   # installer only writes autologin.conf because that embeds the install user.
