@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-settings'
 pkgver=4.0.0.alpha
-pkgrel=8
+pkgrel=9
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -88,10 +88,10 @@ package() {
   cd "$srcdir/omarchy-${pkgver}"
 
   # /etc/skel/.config from config/** — system-wide default user config.
+  # Package-owned defaults that live elsewhere in the system belong under
+  # default/** instead.
   install -d "$pkgdir/etc/skel/.config"
   cp -a config/. "$pkgdir/etc/skel/.config/"
-  # Font lives under config/ but ships to /usr/share/fonts; remove from skel copy.
-  rm -f "$pkgdir/etc/skel/.config/omarchy.ttf"
 
   # ALSO ship config/** under /usr/share/omarchy/config/. Used as the
   # source-of-truth by omarchy-refresh-config, omarchy-reinstall-configs,
@@ -100,7 +100,21 @@ package() {
   # users re-sync against.
   install -d "$pkgdir/usr/share/omarchy/config"
   cp -a config/. "$pkgdir/usr/share/omarchy/config/"
-  rm -f "$pkgdir/usr/share/omarchy/config/omarchy.ttf"
+
+  # Package-owned defaults with real system/XDG locations. User config remains
+  # higher priority: ~/.config/uwsm/default, ~/.config/uwsm/env.d,
+  # ~/.config/environment.d, ~/.config/fontconfig, ~/.config/xdg-terminals.list,
+  # ~/.config/mimeapps.list, and ~/.config/systemd/user can all override these.
+  install -Dm644 default/uwsm/env.d/10-omarchy "$pkgdir/usr/share/uwsm/env.d/10-omarchy"
+  install -Dm644 default/environment.d/10-omarchy-fcitx.conf "$pkgdir/usr/lib/environment.d/10-omarchy-fcitx.conf"
+  install -Dm644 default/fontconfig/conf.avail/30-omarchy.conf "$pkgdir/usr/share/fontconfig/conf.avail/30-omarchy.conf"
+  install -d "$pkgdir/etc/fonts/conf.d"
+  ln -sfn /usr/share/fontconfig/conf.avail/30-omarchy.conf "$pkgdir/etc/fonts/conf.d/30-omarchy.conf"
+  install -Dm644 default/xdg-terminal-exec/hyprland-xdg-terminals.list "$pkgdir/usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list"
+  install -Dm644 default/applications/mimeapps.list "$pkgdir/usr/share/applications/mimeapps.list"
+  install -Dm644 default/systemd/user/bt-agent.service "$pkgdir/usr/lib/systemd/user/bt-agent.service"
+  install -Dm644 default/systemd/user/omarchy-sleep-lock.service "$pkgdir/usr/lib/systemd/user/omarchy-sleep-lock.service"
+  install -Dm644 default/systemd/user/omarchy-recover-internal-monitor.service "$pkgdir/usr/lib/systemd/user/omarchy-recover-internal-monitor.service"
 
   # Same for applications/** — used by omarchy-refresh-applications,
   # omarchy-install-gaming-*, etc. to copy .desktop files into ~/.local/share.
@@ -223,7 +237,7 @@ EOF
   find "$pkgdir/usr/share/plymouth/themes/omarchy" -type f -exec chmod 0644 {} +
 
   # System font.
-  install -Dm644 config/omarchy.ttf "$pkgdir/usr/share/fonts/omarchy/omarchy.ttf"
+  install -Dm644 default/fonts/omarchy/omarchy.ttf "$pkgdir/usr/share/fonts/omarchy/omarchy.ttf"
 
   # systemd system-sleep hook (lazy-unmounts gvfsd-fuse mounts before
   # suspend/hibernate). The script also ships under /usr/share/omarchy/default
@@ -245,11 +259,20 @@ EOF
 
   # Seed the user-editable branding files into /etc/skel so fresh users
   # have working defaults for `omarchy screensaver` and the About screen
-  # from the moment they're created, independent of whether
-  # omarchy-setup-user has run yet. omarchy-setup-user / omarchy-branding-*
-  # reset can refresh these from the /usr/share/omarchy/ sources.
+  # from the moment they're created. omarchy-reinstall-configs refreshes
+  # these from the /usr/share/omarchy/ sources for existing users.
   install -Dm644 logo.txt "$pkgdir/etc/skel/.config/omarchy/branding/screensaver.txt"
   install -Dm644 icon.txt "$pkgdir/etc/skel/.config/omarchy/branding/about.txt"
+
+  # Other static per-user defaults seeded via /etc/skel for new users.
+  # omarchy-finalize-user no longer copies these into $HOME; existing users
+  # resync via omarchy-reinstall-configs.
+  install -Dm644 default/hypr/toggles/flags.lua \
+    "$pkgdir/etc/skel/.local/state/omarchy/toggles/hypr/flags.lua"
+  install -Dm644 default/nautilus-python/extensions/localsend.py \
+    "$pkgdir/etc/skel/.local/share/nautilus-python/extensions/localsend.py"
+  install -Dm644 default/nautilus-python/extensions/transcode.py \
+    "$pkgdir/etc/skel/.local/share/nautilus-python/extensions/transcode.py"
 
   # Support binaries needed before the full omarchy package is installed
   # (used by ISO/recovery flows).
