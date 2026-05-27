@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy'
 pkgver=4.0.0.alpha
-pkgrel=9
+pkgrel=10
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -83,7 +83,6 @@ optdepends=(
   'tree-sitter-cli: Parser generator tool'
 
   # Optional omarchy companion packages
-  'omarchy-dev-tools: Developer commands for working on Omarchy'
 )
 
 # Source: GitHub tag tarball by default; set OMARCHY_SRC=/path/to/checkout to
@@ -108,15 +107,16 @@ prepare() {
 package() {
   cd "$srcdir/omarchy-${pkgver}"
 
-  # Runtime binaries — ship everything in bin/ except dev/debug helpers
-  # (shipped by omarchy-dev-tools and omarchy-settings).
+  # Runtime binaries — ship everything in bin/ except the debug helpers
+  # that ship from omarchy-settings (needed before omarchy is installed,
+  # e.g. on the ISO live env).
   install -d "$pkgdir/usr/bin" "$pkgdir/usr/share/omarchy/bin"
   for bin in bin/*; do
     [[ -f $bin ]] || continue
     local base
     base=$(basename "$bin")
     case "$base" in
-      omarchy-dev-*|omarchy-debug|omarchy-debug-idle|omarchy-upload-log)
+      omarchy-debug|omarchy-debug-idle|omarchy-upload-log)
         continue
         ;;
     esac
