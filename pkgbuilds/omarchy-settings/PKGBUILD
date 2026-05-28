@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-settings'
 pkgver=4.0.0.alpha
-pkgrel=10
+pkgrel=11
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -12,17 +12,19 @@ provides=('omarchy-settings')
 # orchestrator generates it at install time from the resolved target boot
 # cmdline. We ship a template under /usr/share/omarchy/default/limine/ for the
 # orchestrator to read.
+#
+# limine + limine-mkinitcpio-hook + limine-snapper-sync + snapper are NOT in
+# depends because this package gets installed into the live ISO env (for
+# plymouth / /etc/skel seeding) where there is no ESP and the mkinitcpio hook
+# would fail trying to deploy Limine. The bootloader stack is pulled in by
+# the omarchy package on the target install, and by EARLY_BOOTSTRAP_PACKAGES
+# in omarchy-iso/orchestrator/phases_impl.py for the target chroot.
 depends=(
   'bash'
   'curl'
   'gum'
   'hicolor-icon-theme'
   'plymouth'
-  # Bootloader integration (formerly omarchy-limine).
-  'limine'
-  'limine-mkinitcpio-hook'
-  'limine-snapper-sync'
-  'snapper'
 )
 
 makedepends=(
@@ -64,6 +66,10 @@ optdepends=(
   'omarchy: Full Omarchy desktop'
   'inxi: System information for omarchy-debug'
   'fastfetch: System information for omarchy-upload-log'
+  'limine: Bootloader the shipped /etc/mkinitcpio.conf.d/ and /etc/limine-entry-tool.d/ drop-ins are for'
+  'limine-mkinitcpio-hook: Picks up the shipped /etc/mkinitcpio.conf.d/omarchy_hooks.conf'
+  'limine-snapper-sync: Boot-entry sync for snapper snapshots'
+  'snapper: Used with the shipped /etc/snapper/config-templates/omarchy template'
 )
 
 install='omarchy-settings.install'

@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy'
 pkgver=4.0.0.alpha
-pkgrel=11
+pkgrel=12
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -16,6 +16,18 @@ depends=(
   # Omarchy meta
   'omarchy-keyring'
   'omarchy-settings'
+
+  # Bootloader stack. Lives here rather than on omarchy-settings because
+  # omarchy-settings is also installed into the live ISO env (for plymouth
+  # / /etc/skel seeding), where the limine-mkinitcpio-hook would fail with
+  # 'Cannot detect an ESP path' inside the chroot. The omarchy-settings
+  # config drop-ins under /etc/mkinitcpio.conf.d/, /etc/limine-entry-tool.d/,
+  # and /etc/snapper/config-templates/ only do anything when these are
+  # installed alongside.
+  'limine'
+  'limine-mkinitcpio-hook'
+  'limine-snapper-sync'
+  'snapper'
 
   # Wayland / Hyprland core
   'hyprland'
