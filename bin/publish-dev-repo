@@ -16,6 +16,7 @@ UPGRADE_DEST=${UPGRADE_DEST:-${OMARCHY_DEV_UPGRADE_SCP_DEST:-}}
 PACKAGES=(omarchy-settings omarchy omarchy-nvim)
 UPLOAD=1
 KEEP_WORK=0
+FORCE=0
 PUBLIC_URL_BASE="https://share.heyoodle.com/omarchy/dev"
 MAKEPKG_FLAGS=${MAKEPKG_FLAGS:-"-f --nodeps --skipchecksums --noconfirm"}
 
@@ -60,6 +61,7 @@ Options:
   --upgrade-scp DEST  scp destination for omarchy-upgrade-to-4 (default: $default_upgrade)
   --no-upload         Build local repo only
   --keep-work         Keep temporary build directories for debugging
+  --force             Rebuild even if the target pkg.tar.zst already exists
   -h, --help          Show this help
 
 Default published URL:
@@ -146,6 +148,10 @@ while (($#)); do
       KEEP_WORK=1
       shift
       ;;
+    --force)
+      FORCE=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -168,9 +174,30 @@ UPGRADE_DEST=${UPGRADE_DEST:-$(upgrade_dest_default)}
 ((${#PACKAGES[@]})) || { echo "No packages selected" >&2; exit 1; }
 
 build_one() {
-  local pkg="$1" pkgbuild_dir work built=()
+  local pkg="$1" pkgbuild_dir work built=() expected=()
   pkgbuild_dir="$BUILD_ROOT/pkgbuilds/$pkg"
   [[ -f $pkgbuild_dir/PKGBUILD ]] || { echo "Missing PKGBUILD: $pkgbuild_dir/PKGBUILD" >&2; return 1; }
+
+  # Skip rebuild if the expected output filenames are already in $OUT.
+  # Rebuilding the same pkgver-pkgrel produces byte-different artifacts
+  # (timestamps in .BUILDINFO, zstd non-determinism) but pacman treats
+  # same-name packages as equivalent, so there's no benefit to overwriting.
+  if (( ! FORCE )); then
+    mapfile -t expected < <(
+      cd "$pkgbuild_dir" &&
+      OMARCHY_SRC="$SRC" makepkg --packagelist 2>/dev/null
+    )
+    if ((${#expected[@]})); then
+      local missing=0 name
+      for name in "${expected[@]}"; do
+        [[ -e "$OUT/$(basename "$name")" ]] || { missing=1; break; }
+      done
+      if (( ! missing )); then
+        echo "==> $pkg unchanged (target artifacts present; pass --force to rebuild)"
+        return 0
+      fi
+    fi
+  fi
 
   work=$(mktemp -d -t "omarchy-dev-${pkg}.XXXXXX")
   if (( KEEP_WORK )); then
@@ -195,20 +222,12 @@ build_one() {
   ((${#built[@]})) || { echo "No package files built for $pkg" >&2; return 1; }
 
   mkdir -p "$OUT"
-  local artifact target old_sha new_sha
+  local artifact target
   for artifact in "${built[@]}"; do
     target="$OUT/$(basename "$artifact")"
-    if [[ -e $target ]]; then
-      old_sha=$(sha256sum "$target" | awk '{ print $1 }')
-      new_sha=$(sha256sum "$artifact" | awk '{ print $1 }')
-      if [[ $old_sha != "$new_sha" ]]; then
-        echo "Refusing to overwrite existing package with different bytes: $(basename "$artifact")" >&2
-        echo "Bump pkgrel/pkgver so pacman and CDN caches see a new filename, or remove $target intentionally." >&2
-        return 1
-      fi
-    else
-      cp -f "$artifact" "$OUT/"
-    fi
+    # With --force we always overwrite; otherwise the skip-rebuild check
+    # above means we only reach this branch when the target is missing.
+    cp -f "$artifact" "$OUT/"
   done
 
   if (( ! KEEP_WORK )); then
