@@ -272,9 +272,58 @@ for pkg in "${PACKAGES[@]}"; do
   build_one "$pkg"
 done
 
-echo "==> Creating repo database $REPO_NAME in $OUT"
+echo "==> Selecting latest version of each package"
 cd "$OUT"
-repo-add -R "$REPO_NAME.db.tar.zst" *.pkg.tar.zst
+
+# Map pkgname -> latest (version, file path). Files in $OUT are sorted
+# alphabetically, which puts 'alpha-12' before 'alpha-8' — wrong for
+# version comparison. Read each .PKGINFO for the authoritative pkgname/
+# pkgver, then use vercmp() so '12' > '8' the way pacman sees it.
+declare -A latest_pkgs latest_vers
+shopt -s nullglob
+for pkg_file in *.pkg.tar.zst; do
+  read -r name ver < <(
+    bsdtar -xOqf "$pkg_file" .PKGINFO 2>/dev/null | awk '
+      /^pkgname = / { name = substr($0, 11) }
+      /^pkgver = /  { ver  = substr($0, 10) }
+      END { print name, ver }
+    '
+  )
+  [[ -z $name ]] && continue
+
+  # Only consider packages this script is currently building. Anything else
+  # is an orphan from a previous run (e.g. omarchy-limine after the fold)
+  # and gets pruned below.
+  tracked=0
+  for p in "${PACKAGES[@]}"; do
+    [[ $p == "$name" ]] && { tracked=1; break; }
+  done
+  (( tracked )) || continue
+
+  if [[ -z ${latest_pkgs[$name]:-} ]] || [[ $(vercmp "$ver" "${latest_vers[$name]}") -gt 0 ]]; then
+    latest_pkgs[$name]="$pkg_file"
+    latest_vers[$name]="$ver"
+  fi
+done
+
+# Prune anything not chosen as latest: old versions of tracked packages
+# AND orphans (packages we no longer build). Otherwise scp would publish
+# them alongside the current set even though they're not in the DB.
+declare -A keep
+for f in "${latest_pkgs[@]}"; do keep["$f"]=1; done
+for pkg_file in *.pkg.tar.zst; do
+  if [[ -z ${keep[$pkg_file]:-} ]]; then
+    echo "  pruning: $pkg_file"
+    rm -f "$pkg_file" "$pkg_file.sig"
+  fi
+done
+shopt -u nullglob
+
+echo "==> Creating repo database $REPO_NAME in $OUT"
+for pkg in "${latest_pkgs[@]}"; do
+  echo "  including: $pkg"
+done | sort
+repo-add "$REPO_NAME.db.tar.zst" "${latest_pkgs[@]}"
 
 # Static web hosts do not always preserve symlinks; pacman asks for .db/.files.
 rm -f "$REPO_NAME.db" "$REPO_NAME.files"
