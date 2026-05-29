@@ -6,7 +6,7 @@ _npmmodule=@github/copilot
 pkgname=github-copilot-cli
 _pkgexec=copilot
 
-pkgver=1.0.51
+pkgver=1.0.55
 pkgrel=1
 
 pkgdesc="GitHub Copilot CLI brings the power of Copilot coding agent directly to your terminal."
@@ -30,8 +30,8 @@ source=("https://registry.npmjs.org/${_npmmodule}/-/copilot-${pkgver}.tgz"
 		"CHANGELOG-${pkgver}.md::${_urlraw}/changelog.md")
 noextract=("copilot-${pkgver}.tgz")
 
-b2sums=('807b1f6385f5b83e610340846c78a0f7e13b891493368565e611891094a47827c8688cf88026a4a970b21f818b79ff0ad952b7bff95677401730e7a7ca5518f8'
-        '6c5a48f7577d052079f8eece268f1c30be51e68cc4dab7275cdef91c5e2b5830f8f8feaa79cb3cb824497c2caa8ac168dfae3d310f51c90f3b9198f357fc3bdd')
+b2sums=('ec3b58cdfaa6276326f31054b7ecafb0eecee11a58f4e7f7c330d83dc5602137f69fa399a765731cdb70f0889e43edcb3c6e39ddb9f717b50f1a38925b1339e5'
+        '8a1c9dc2a45bae394070b7ac1d1c240aeee8d97c544f7b8d4aba27862d62b54fd3f3919a511fcefe1a3a6c89644921b90724781466c2a5fcf96d3ab0a321e276')
 
 # Document: https://wiki.archlinux.org/title/Node.js_package_guidelines
 package() {
@@ -40,6 +40,43 @@ package() {
 		--cache "${srcdir}/npm-cache" \
 		--prefix "${pkgdir}/usr" \
 		"${srcdir}/copilot-${pkgver}.tgz"
+
+	msg2 "Remove prebuilds and binaries for other platforms"
+	local _moddir="${pkgdir}/usr/lib/node_modules/${_npmmodule}"
+
+	local _arch
+	case "$CARCH" in
+		x86_64)  _arch="x64" ;;
+		aarch64) _arch="arm64" ;;
+		*)       error "Unsupported architecture: $CARCH"; exit 1 ;;
+	esac
+
+	msg2 "Cleaning non-native prebuilds for ${_arch}"
+	if [ -d "${_moddir}/prebuilds" ]; then
+		find "${_moddir}/prebuilds" -mindepth 1 -maxdepth 1 -type d ! -name "linux-${_arch}" -exec rm -rf {} +
+	fi
+	if [ -d "${_moddir}/mxc-bin" ]; then
+		find "${_moddir}/mxc-bin" -mindepth 1 -maxdepth 1 -type d ! -name "${_arch}" -exec rm -rf {} +
+	fi
+	if [ -d "${_moddir}/ripgrep/bin" ]; then
+		find "${_moddir}/ripgrep/bin" -mindepth 1 -maxdepth 1 -type d ! -name "linux-${_arch}" -exec rm -rf {} +
+	fi
+	if [ -d "${_moddir}/clipboard/node_modules/@teddyzhu" ]; then
+		find "${_moddir}/clipboard/node_modules/@teddyzhu" -mindepth 1 -maxdepth 1 -type d ! -name "clipboard-linux-${_arch}-gnu" -exec rm -rf {} +
+	fi
+	if [ -d "${_moddir}/foundry-local-sdk/node_modules/foundry-local-sdk/prebuilds" ]; then
+		find "${_moddir}/foundry-local-sdk/node_modules/foundry-local-sdk/prebuilds" -mindepth 1 -maxdepth 1 -type d ! -name "linux-${_arch}" -exec rm -rf {} +
+	fi
+
+	# pvrecorder only ships linux/x86_64; remove other OSes and non-native Linux archs
+	if [ -d "${_moddir}/pvrecorder/node_modules/@picovoice/pvrecorder-node/lib" ]; then
+		find "${_moddir}/pvrecorder/node_modules/@picovoice/pvrecorder-node/lib" -mindepth 1 -maxdepth 1 -type d ! -name 'linux' -exec rm -rf {} +
+		if [ "$CARCH" = "x86_64" ]; then
+			find "${_moddir}/pvrecorder/node_modules/@picovoice/pvrecorder-node/lib/linux" -mindepth 1 -maxdepth 1 -type d ! -name 'x86_64' -exec rm -rf {} +
+		else
+			rm -rf "${_moddir}/pvrecorder/node_modules/@picovoice/pvrecorder-node/lib/linux"
+		fi
+	fi
 
 	msg2 "Fix ownership of ALL FILES"
 	find "${pkgdir}/usr" -type d -exec chmod 755 {} +
