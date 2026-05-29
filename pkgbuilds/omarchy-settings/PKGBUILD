@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-settings'
 pkgver=4.0.0.alpha
-pkgrel=11
+pkgrel=14
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -156,6 +156,8 @@ package() {
   install -Dm644 default/systemd/user/bt-agent.service "$pkgdir/usr/lib/systemd/user/bt-agent.service"
   install -Dm644 default/systemd/user/omarchy-sleep-lock.service "$pkgdir/usr/lib/systemd/user/omarchy-sleep-lock.service"
   install -Dm644 default/systemd/user/omarchy-recover-internal-monitor.service "$pkgdir/usr/lib/systemd/user/omarchy-recover-internal-monitor.service"
+  install -Dm644 default/systemd/user/omarchy-update-user-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"
+  install -Dm644 default/systemd/user/omarchy-update-user-notify.path "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.path"
 
   # Same for applications/** — used by omarchy-refresh-applications,
   # omarchy-install-gaming-*, etc. to copy .desktop files into ~/.local/share.

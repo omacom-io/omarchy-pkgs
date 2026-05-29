@@ -1,12 +1,13 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy'
 pkgver=4.0.0.alpha
-pkgrel=12
+pkgrel=19
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
 license=('MIT')
 provides=('omarchy')
+install='omarchy.install'
 
 # Hard depends: only packages whose removal would brick the desktop. The ISO
 # pacstraps the full default install set from install/omarchy-base.packages.
@@ -137,6 +138,11 @@ package() {
 
   install -d "$pkgdir/usr/share/omarchy"
 
+  # Guard direct pacman upgrades from bypassing the Omarchy update pipeline.
+  # Ship the hook with its Exec target so package skew cannot leave a broken
+  # hook pointing at a missing binary.
+  install -Dm644 default/libalpm/hooks/00-omarchy-update-guard.hook "$pkgdir/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
+
   # Target-side setup scripts and package lists used by ISO finalization,
   # first login, future users, migrations, and reinstall/reset commands.
   cp -a install "$pkgdir/usr/share/omarchy/"
@@ -148,12 +154,12 @@ package() {
   cp -a migrations "$pkgdir/usr/share/omarchy/"
 
   # Fresh users created after install are already on the package layout in this
-  # build, so seed migration markers through /etc/skel. Existing users keep
-  # their own state and still run pending migrations on update.
-  if compgen -G 'migrations/*.sh' >/dev/null; then
-    install -d "$pkgdir/etc/skel/.local/state/omarchy/migrations"
-    for migration in migrations/*.sh; do
-      touch "$pkgdir/etc/skel/.local/state/omarchy/migrations/$(basename "$migration")"
+  # build, so seed user migration markers through /etc/skel. Existing users keep
+  # their own state and still run pending user migrations on update.
+  if compgen -G 'migrations/user/*.sh' >/dev/null; then
+    install -d "$pkgdir/etc/skel/.local/state/omarchy/migrations/user"
+    for migration in migrations/user/*.sh; do
+      touch "$pkgdir/etc/skel/.local/state/omarchy/migrations/user/$(basename "$migration")"
     done
   fi
 
