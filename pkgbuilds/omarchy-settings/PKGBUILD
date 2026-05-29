@@ -38,6 +38,7 @@ makedepends=(
 # and is cp -f'd by post_install — those paths are unowned by pacman and the
 # scriptlet WILL clobber user edits on each upgrade (documented limitation).
 backup=(
+  'etc/fastfetch/config.jsonc'
   'etc/mkinitcpio.conf.d/omarchy_hooks.conf'
   'etc/mkinitcpio.conf.d/thunderbolt_module.conf'
   'etc/limine-entry-tool.d/omarchy-defaults.conf'
@@ -130,9 +131,12 @@ package() {
 
   # /etc/skel/.config from config/** — system-wide default user config.
   # Package-owned defaults that live elsewhere in the system belong under
-  # default/** instead.
+  # default/** or etc/** instead.
   install -d "$pkgdir/etc/skel/.config"
   cp -a config/. "$pkgdir/etc/skel/.config/"
+
+  # Fastfetch reads /etc/fastfetch/config.jsonc when no user config exists.
+  install -Dm644 etc/fastfetch/config.jsonc "$pkgdir/etc/fastfetch/config.jsonc"
 
   # ALSO ship config/** under /usr/share/omarchy/config/. Used as the
   # source-of-truth by omarchy-refresh-config, omarchy-reinstall-configs,
