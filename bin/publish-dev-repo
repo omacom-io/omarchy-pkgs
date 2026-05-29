@@ -17,6 +17,7 @@ PACKAGES=(omarchy-settings omarchy omarchy-nvim)
 UPLOAD=1
 KEEP_WORK=0
 FORCE=0
+REPLACE_EXISTING=${REPLACE_EXISTING:-0}
 PUBLIC_URL_BASE="https://share.heyoodle.com/omarchy/dev"
 MAKEPKG_FLAGS=${MAKEPKG_FLAGS:-"-f --nodeps --skipchecksums --noconfirm"}
 
@@ -61,7 +62,8 @@ Options:
   --upgrade-scp DEST  scp destination for omarchy-upgrade-to-4 (default: $default_upgrade)
   --no-upload         Build local repo only
   --keep-work         Keep temporary build directories for debugging
-  --force             Rebuild even if the target pkg.tar.zst already exists
+  --force             Re-run build checks, but never overwrite existing package filenames
+  --replace-existing  DANGEROUS: allow overwriting existing package filenames
   -h, --help          Show this help
 
 Default published URL:
@@ -152,6 +154,11 @@ while (($#)); do
       FORCE=1
       shift
       ;;
+    --replace-existing)
+      REPLACE_EXISTING=1
+      FORCE=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -178,24 +185,22 @@ build_one() {
   pkgbuild_dir="$BUILD_ROOT/pkgbuilds/$pkg"
   [[ -f $pkgbuild_dir/PKGBUILD ]] || { echo "Missing PKGBUILD: $pkgbuild_dir/PKGBUILD" >&2; return 1; }
 
-  # Skip rebuild if the expected output filenames are already in $OUT.
-  # Rebuilding the same pkgver-pkgrel produces byte-different artifacts
-  # (timestamps in .BUILDINFO, zstd non-determinism) but pacman treats
-  # same-name packages as equivalent, so there's no benefit to overwriting.
-  if (( ! FORCE )); then
-    mapfile -t expected < <(
-      cd "$pkgbuild_dir" &&
-      OMARCHY_SRC="$SRC" makepkg --packagelist 2>/dev/null
-    )
-    if ((${#expected[@]})); then
-      local missing=0 name
-      for name in "${expected[@]}"; do
-        [[ -e "$OUT/$(basename "$name")" ]] || { missing=1; break; }
-      done
-      if (( ! missing )); then
-        echo "==> $pkg unchanged (target artifacts present; pass --force to rebuild)"
-        return 0
-      fi
+  # Package URLs are immutable once published. Rebuilding the same
+  # pkgver-pkgrel produces byte-different artifacts (timestamps in .BUILDINFO,
+  # zstd framing, etc.), and pacman validates downloads against the repo DB.
+  # Never overwrite an existing package filename unless explicitly requested.
+  mapfile -t expected < <(
+    cd "$pkgbuild_dir" &&
+    OMARCHY_SRC="$SRC" makepkg --packagelist 2>/dev/null | grep -v -- '-debug-' || true
+  )
+  if ((${#expected[@]})) && (( ! REPLACE_EXISTING )); then
+    local missing=0 name
+    for name in "${expected[@]}"; do
+      [[ -e "$OUT/$(basename "$name")" ]] || { missing=1; break; }
+    done
+    if (( ! missing )); then
+      echo "==> $pkg unchanged (target artifacts present; immutable repo; bump pkgrel to rebuild)"
+      return 0
     fi
   fi
 
@@ -225,8 +230,15 @@ build_one() {
   local artifact target
   for artifact in "${built[@]}"; do
     target="$OUT/$(basename "$artifact")"
-    # With --force we always overwrite; otherwise the skip-rebuild check
-    # above means we only reach this branch when the target is missing.
+    if [[ -e $target && $REPLACE_EXISTING -eq 0 ]]; then
+      if cmp -s "$artifact" "$target"; then
+        echo "  keeping existing immutable artifact: $(basename "$target")"
+        continue
+      fi
+      echo "Refusing to overwrite existing package artifact: $target" >&2
+      echo "Bump pkgrel/pkgver instead, or pass --replace-existing for local-only experiments." >&2
+      return 1
+    fi
     cp -f "$artifact" "$OUT/"
   done
 
