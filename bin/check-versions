@@ -21,13 +21,23 @@ get_repo_version() {
   local mirror="$2"
   local repo_db="$BUILD_ROOT/pkgs.omarchy.org/$mirror/$ARCH/omarchy.db.tar.zst"
 
-  if [[ -f "$repo_db" ]]; then
-    local desc_file
-    desc_file=$(tar -tf "$repo_db" 2>/dev/null | grep "^${pkg}-[0-9r].*/desc$" | head -1)
-    if [[ -n "$desc_file" ]]; then
-      tar -xOf "$repo_db" "$desc_file" 2>/dev/null | awk '/%VERSION%/{getline; print; exit}'
-    fi
-  fi
+  [[ -f "$repo_db" ]] || return 0
+
+  tar -xOf "$repo_db" --wildcards '*/desc' 2>/dev/null | awk -v pkg="$pkg" '
+    function reset() { name=""; base=""; version="" }
+    function emit() {
+      if (!found && version != "" && (name == pkg || base == pkg)) {
+        print version
+        found=1
+      }
+      reset()
+    }
+    $0 == "%FILENAME%" { emit(); next }
+    $0 == "%NAME%" { if (name != "" && version != "") emit(); getline; name=$0; next }
+    $0 == "%BASE%" { getline; base=$0; next }
+    $0 == "%VERSION%" { getline; version=$0; next }
+    END { emit() }
+  '
 }
 
 get_pkgbuild_version() {
@@ -35,6 +45,40 @@ get_pkgbuild_version() {
   if [[ -f "$pkgdir/PKGBUILD" ]]; then
     (cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi')
   fi
+}
+
+check_vcs_unchanged() {
+  local pkgdir="$1"
+  local repo_version="$2"
+  local pkgbuild="$pkgdir/PKGBUILD"
+
+  [[ -f "$pkgbuild" ]] || return 1
+  grep -qE '^pkgver[[:space:]]*\(\)' "$pkgbuild" || return 1
+  [[ -n "$repo_version" ]] || return 1
+
+  # If epoch or pkgrel changed in PKGBUILD, release even if upstream is unchanged.
+  local pkgbuild_epoch pkgbuild_pkgrel
+  pkgbuild_epoch=$(cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; echo "${epoch:-}"')
+  pkgbuild_pkgrel=$(cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; echo "${pkgrel}"')
+
+  local repo_pkgrel="${repo_version##*-}"
+  local repo_no_pkgrel="${repo_version%-*}"
+  local repo_epoch=""
+  if [[ "$repo_no_pkgrel" == *:* ]]; then
+    repo_epoch="${repo_no_pkgrel%%:*}"
+  fi
+
+  [[ "$pkgbuild_epoch" != "$repo_epoch" ]] && return 1
+  [[ "$pkgbuild_pkgrel" != "$repo_pkgrel" ]] && return 1
+
+  local repo_hash upstream_hash
+  repo_hash=$(package_extract_vcs_hash_from_version "$repo_version")
+  [[ -n "$repo_hash" ]] || return 1
+
+  upstream_hash=$(package_git_upstream_hash "$pkgdir")
+  [[ -n "$upstream_hash" ]] || return 1
+
+  [[ "$repo_hash" == "$upstream_hash" ]]
 }
 
 check_package() {
@@ -50,11 +94,25 @@ check_package() {
     return 1
   fi
 
-  if [[ "$pkgbuild_version" != "$repo_version" ]]; then
-    return 0
+  if grep -qE '^pkgver[[:space:]]*\(\)' "$pkgdir/PKGBUILD"; then
+    if [[ -n "$repo_version" && -n "$(package_extract_vcs_hash_from_version "$repo_version")" ]]; then
+      if check_vcs_unchanged "$pkgdir" "$repo_version"; then
+        return 1
+      else
+        return 0
+      fi
+    elif [[ "$pkgbuild_version" == "$repo_version" ]]; then
+      return 1
+    else
+      return 0
+    fi
   fi
 
-  return 1
+  if [[ "$pkgbuild_version" == "$repo_version" ]]; then
+    return 1
+  fi
+
+  return 0
 }
 
 check_mirror() {

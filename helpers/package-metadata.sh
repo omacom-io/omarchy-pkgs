@@ -133,6 +133,83 @@ packages_for_mirror() {
   done
 }
 
+package_extract_vcs_hash_from_version() {
+  local version="$1"
+  local version_no_pkgrel="${version%-*}"
+  local candidate hash=""
+
+  # Drop an epoch prefix before scanning for commit-looking components.
+  if [[ "$version_no_pkgrel" == *:* ]]; then
+    version_no_pkgrel="${version_no_pkgrel#*:}"
+  fi
+
+  while IFS= read -r candidate; do
+    # Prefer candidates explicitly prefixed with `g`, but also accept bare hex
+    # hashes that contain at least one a-f character (e.g. r21251.626ee68).
+    if [[ "$candidate" == g* || "$candidate" =~ [a-f] ]]; then
+      hash="${candidate#g}"
+    fi
+  done < <(echo "$version_no_pkgrel" | grep -oE 'g?[a-f0-9]{7,40}')
+
+  [[ -n "$hash" ]] && echo "${hash:0:7}"
+}
+
+package_first_git_source() {
+  local pkgdir="$1"
+
+  (cd "$pkgdir" && env -u OMARCHY_SRC bash -c '
+    source PKGBUILD 2>/dev/null
+    for s in "${source[@]}"; do
+      url="${s#*::}"
+      [[ "$url" == git+* ]] && { echo "${url#git+}"; break; }
+    done')
+}
+
+package_git_upstream_hash() {
+  local pkgdir="$1"
+  local source_spec source_url fragment ref hash
+
+  source_spec=$(package_first_git_source "$pkgdir") || return 1
+  [[ -n "$source_spec" ]] || return 1
+
+  source_url="${source_spec%%#*}"
+  fragment=""
+  if [[ "$source_spec" == *"#"* ]]; then
+    fragment="${source_spec#*#}"
+  fi
+
+  case "$fragment" in
+    "")
+      hash=$(git ls-remote "$source_url" HEAD 2>/dev/null | awk 'NR == 1 { print substr($1, 1, 7) }')
+      ;;
+    branch=*)
+      ref="${fragment#branch=}"
+      [[ -n "$ref" ]] || return 1
+      hash=$(git ls-remote "$source_url" "refs/heads/$ref" 2>/dev/null | awk 'NR == 1 { print substr($1, 1, 7) }')
+      ;;
+    tag=*)
+      ref="${fragment#tag=}"
+      [[ -n "$ref" ]] || return 1
+      hash=$(git ls-remote "$source_url" "refs/tags/$ref^{}" "refs/tags/$ref" 2>/dev/null | awk '
+        $2 ~ /\^\{\}$/ { print substr($1, 1, 7); found=1; exit }
+        NR == 1 { first=substr($1, 1, 7) }
+        END { if (!found && first != "") print first }
+      ')
+      ;;
+    commit=*)
+      ref="${fragment#commit=}"
+      [[ "$ref" =~ ^[a-f0-9]{7,40}$ ]] || return 1
+      hash="${ref:0:7}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  [[ -n "$hash" ]] || return 1
+  echo "$hash"
+}
+
 validate_package_metadata() {
   local pkgdir="$1"
   local metadata source sync aur ring pkgrel_type
