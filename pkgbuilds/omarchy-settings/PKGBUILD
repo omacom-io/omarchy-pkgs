@@ -89,33 +89,11 @@ _etc_override_paths=(
 # build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 # Until v4.0.0.alpha is tagged on basecamp/omarchy, sha256sums=('SKIP').
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
-  source=(
-    'omarchy_hooks.conf'
-    'omarchy-defaults.conf'
-    'omarchy-uki.conf'
-    'thunderbolt_module.conf'
-  )
-  sha256sums=(
-    'SKIP'
-    'SKIP'
-    'SKIP'
-    'SKIP'
-  )
+  source=()
+  sha256sums=()
 else
-  source=(
-    "omarchy-${pkgver}.tar.gz::https://github.com/basecamp/omarchy/archive/refs/tags/v${pkgver}.tar.gz"
-    'omarchy_hooks.conf'
-    'omarchy-defaults.conf'
-    'omarchy-uki.conf'
-    'thunderbolt_module.conf'
-  )
-  sha256sums=(
-    'SKIP'
-    'SKIP'
-    'SKIP'
-    'SKIP'
-    'SKIP'
-  )
+  source=("omarchy-${pkgver}.tar.gz::https://github.com/basecamp/omarchy/archive/refs/tags/v${pkgver}.tar.gz")
+  sha256sums=('SKIP')
 fi
 
 prepare() {
@@ -257,24 +235,11 @@ EOF
     done
   fi
 
-  # default/** ships to /usr/share/omarchy/default/. The limine subset is
-  # additionally installed to /etc/mkinitcpio.conf.d/, /etc/limine-entry-tool.d/,
-  # and /etc/snapper/config-templates/ below so limine/snapper pick up the
-  # configs at install time without separate handling.
+  # default/** ships to /usr/share/omarchy/default/. The snapper template is
+  # additionally installed to /etc/snapper/config-templates/ below so snapper
+  # can pick it up at install time without separate handling.
   install -d "$pkgdir/usr/share/omarchy/default"
   cp -a default/. "$pkgdir/usr/share/omarchy/default/"
-
-  # mkinitcpio hooks for limine/snapper integration (formerly omarchy-limine).
-  install -Dm644 "$srcdir/omarchy_hooks.conf" \
-    "$pkgdir/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
-  install -Dm644 "$srcdir/thunderbolt_module.conf" \
-    "$pkgdir/etc/mkinitcpio.conf.d/thunderbolt_module.conf"
-
-  # Limine entry-tool default drop-ins.
-  install -Dm644 "$srcdir/omarchy-defaults.conf" \
-    "$pkgdir/etc/limine-entry-tool.d/omarchy-defaults.conf"
-  install -Dm644 "$srcdir/omarchy-uki.conf" \
-    "$pkgdir/etc/limine-entry-tool.d/omarchy-uki.conf"
 
   # Snapper config template used by the install-time `snapper create-config`.
   install -Dm644 default/snapper/root \
