@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 
 pkgname=omarchy-zsh
-pkgver=1.4.0
+pkgver=1.5.0
 pkgrel=1
 pkgdesc="Omarchy shell configuration for Zsh"
 arch=('any')
@@ -12,7 +12,7 @@ options=('!debug')
 install=omarchy-zsh.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz"
         "omadots.tar.gz::https://github.com/omacom-io/omadots/archive/refs/heads/master.tar.gz")
-sha256sums=('45294dc2cdebfc10086518d39276720bb3f55e74728ae31819a3ea61d998e8f5'
+sha256sums=('e481aad290692a2a4560ee340dcd2c9839b85ab1ed05a8d482793cb219ce8313'
             'SKIP')
 
 package() {
