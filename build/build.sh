@@ -283,30 +283,9 @@ get_package_deps() {
 # from the git checkout. Without this check, version comparison always reports a
 # mismatch and we rebuild on every run, producing a package with the same
 # name+version as one already in production. Detect this by comparing the
-# upstream HEAD commit hash to the hash suffix already in the production version
+# upstream commit hash to the hash suffix already in the production version
 # (both `...gabcdef0` and `...abcdef0` styles are common). Returns 0 when
 # upstream is unchanged (build can be skipped).
-extract_vcs_hash_from_version() {
-  local version="$1"
-  local version_no_pkgrel="${version%-*}"
-  local candidate hash=""
-
-  # Drop an epoch prefix before scanning for commit-looking components.
-  if [[ "$version_no_pkgrel" == *:* ]]; then
-    version_no_pkgrel="${version_no_pkgrel#*:}"
-  fi
-
-  while IFS= read -r candidate; do
-    # Prefer candidates explicitly prefixed with `g`, but also accept bare hex
-    # hashes that contain at least one a-f character (e.g. r21251.626ee68).
-    if [[ "$candidate" == g* || "$candidate" =~ [a-f] ]]; then
-      hash="${candidate#g}"
-    fi
-  done < <(echo "$version_no_pkgrel" | grep -oE 'g?[a-f0-9]{7,40}')
-
-  [[ -n "$hash" ]] && echo "${hash:0:7}"
-}
-
 check_vcs_unchanged() {
   local pkg="$1"
   local pkgdir="$2"
@@ -331,22 +310,13 @@ check_vcs_unchanged() {
   [[ "$pkgbuild_epoch" != "$prod_epoch" ]] && return 1
   [[ "$pkgbuild_pkgrel" != "$prod_pkgrel" ]] && return 1
 
-  # Find the first git+ source URL (skip non-git sources like patch files).
-  # Bail out on any #fragment (commit/tag/branch pinning) — HEAD comparison
-  # wouldn't be meaningful there.
-  local source_url=$(cd "$pkgdir" && bash -c '
-    source PKGBUILD 2>/dev/null
-    for s in "${source[@]}"; do
-      url="${s#*::}"
-      [[ "$url" == git+* ]] && { echo "${url#git+}"; break; }
-    done')
-  [[ -z "$source_url" ]] && return 1
-  [[ "$source_url" == *"#"* ]] && return 1
-
-  local prod_hash=$(extract_vcs_hash_from_version "$local_version")
+  # Compare the commit represented in the published version to the current
+  # upstream ref. Supports unfragmented git sources as well as #branch=,
+  # #tag=, and #commit= fragments.
+  local prod_hash=$(package_extract_vcs_hash_from_version "$local_version")
   [[ -z "$prod_hash" ]] && return 1
 
-  local upstream_hash=$(git ls-remote "$source_url" HEAD 2>/dev/null | awk 'NR==1 {print substr($1, 1, 7)}')
+  local upstream_hash=$(package_git_upstream_hash "$pkgdir")
   [[ -z "$upstream_hash" ]] && return 1
 
   [[ "$prod_hash" == "$upstream_hash" ]]
@@ -367,10 +337,22 @@ check_needs_build() {
   # Check if already built
   local local_version=$(get_local_version "$pkg")
 
+  if grep -qE '^pkgver[[:space:]]*\(\)' "$pkgbuild"; then
+    if [[ -n "$local_version" && -n "$(package_extract_vcs_hash_from_version "$local_version")" ]]; then
+      if check_vcs_unchanged "$pkg" "$pkgdir"; then
+        return 1  # VCS upstream ref is already represented in the repo
+      else
+        return 0  # New VCS ref, missing repo package, or pkgrel/epoch changed
+      fi
+    elif [[ "$local_version" == "$pkgbuild_version" ]]; then
+      return 1  # VCS package does not expose a hash; fall back to static version
+    else
+      return 0
+    fi
+  fi
+
   if [[ "$local_version" == "$pkgbuild_version" ]]; then
     return 1  # Already up to date
-  elif check_vcs_unchanged "$pkg" "$pkgdir"; then
-    return 1  # VCS upstream HEAD is already represented in the repo
   else
     return 0  # Needs building
   fi
