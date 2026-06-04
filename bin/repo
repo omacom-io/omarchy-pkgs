@@ -40,6 +40,8 @@ if [[ -n "$LOG_MIRROR" ]]; then
 else
   LOG_FILE="$LOG_DIR/repo_${TIMESTAMP}.log"
 fi
+export LOG_FILE
+export OMARCHY_LOG_FILE="$LOG_FILE"
 
 # Show usage
 show_usage() {
