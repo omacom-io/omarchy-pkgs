@@ -84,6 +84,7 @@ print_info "Syncing to: $REMOTE/$DESTINATION_DIRECTORY"
 # Use --ignore-existing to not overwrite different versions already on remote
 print_info "Syncing packages..."
 rclone sync "$REPO_DIR" "$REMOTE/$DESTINATION_DIRECTORY" \
+  --s3-no-head \
   --exclude "omarchy.db*" \
   --exclude "omarchy.files*" \
   --ignore-existing \
@@ -92,6 +93,7 @@ rclone sync "$REPO_DIR" "$REMOTE/$DESTINATION_DIRECTORY" \
 # Then sync database files last to ensure repository integrity
 print_info "Updating repository database..."
 rclone copy "$REPO_DIR" "$REMOTE/$DESTINATION_DIRECTORY" \
+  --s3-no-head \
   --include "omarchy.*" \
   --checksum --copy-links -v
 
