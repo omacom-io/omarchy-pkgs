@@ -63,51 +63,6 @@ makedepends=(
   'git'
 )
 
-optdepends=(
-  # Development
-  '1password: Password manager'
-  '1password-cli: 1Password CLI'
-  'github-cli: GitHub CLI tool'
-  'lazygit: Terminal UI for git'
-  'lazydocker: Terminal UI for docker'
-
-  # Browsers & comms
-  'omarchy-chromium-bin: Customized Chromium browser'
-  'signal-desktop: Encrypted messaging'
-  'spotify: Music streaming'
-
-  # Productivity
-  'obsidian: Note-taking app'
-  'typora: Markdown editor'
-  'libreoffice: Office suite'
-
-  # Media & graphics
-  'obs-studio: Screen recording and streaming'
-  'mpv: Video player'
-  'imv: Image viewer'
-  'kdenlive: Video editor'
-  'pinta: Image editor'
-
-  # System utilities
-  'btop: System monitor'
-
-  # Printing
-  'cups: Printing support'
-  'system-config-printer: Printer configuration'
-
-  # Hardware support
-  'asdcontrol: Apple display brightness control'
-  'blueberry: Bluetooth manager'
-
-  # Developer tools
-  'cargo: Rust package manager'
-  'clang: C/C++ compiler'
-  'python-poetry-core: Python packaging'
-  'tree-sitter-cli: Parser generator tool'
-
-  # Optional omarchy companion packages
-)
-
 # Source: omarchy-4 branch tip by default; set OMARCHY_SRC=/path/to/checkout
 # to build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
