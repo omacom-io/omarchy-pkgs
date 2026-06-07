@@ -17,7 +17,6 @@ pkgbuilds/*/*.AppImage
 pkgbuilds/*/*.log
 pkgbuilds/*/*.sig
 pkgbuilds/*/*.zst
-pkgbuilds/*/*.in
 pkgbuilds/*/.xml
 pkgbuilds/*/*~
 pkgbuilds/*/*.swp

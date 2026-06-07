@@ -1,8 +1,8 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 
 pkgname=omarchy-zsh
-pkgver=1.4.0
-pkgrel=1
+pkgver=1.5.0
+pkgrel=2
 pkgdesc="Omarchy shell configuration for Zsh"
 arch=('any')
 url="https://github.com/omacom-io/omarchy-zsh"
@@ -12,7 +12,7 @@ options=('!debug')
 install=omarchy-zsh.install
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz"
         "omadots.tar.gz::https://github.com/omacom-io/omadots/archive/refs/heads/master.tar.gz")
-sha256sums=('45294dc2cdebfc10086518d39276720bb3f55e74728ae31819a3ea61d998e8f5'
+sha256sums=('e481aad290692a2a4560ee340dcd2c9839b85ab1ed05a8d482793cb219ce8313'
             'SKIP')
 
 package() {
@@ -20,10 +20,14 @@ package() {
 
   # Install shared shell config from omadots (aliases, functions, envs, inits, inputrc)
   install -dm755 "${pkgdir}/usr/share/${pkgname}/shell"
-  cp "${srcdir}/omadots-master/config/shell/"* "${pkgdir}/usr/share/${pkgname}/shell/"
+  cp -r "${srcdir}/omadots-master/config/shell/." "${pkgdir}/usr/share/${pkgname}/shell/"
 
   # Rewrite paths to source from installed package location instead of user config
-  sed -i 's|\$HOME/\.config/shell|/usr/share/omarchy-zsh/shell|g' "${pkgdir}/usr/share/${pkgname}/shell/all"
+  find "${pkgdir}/usr/share/${pkgname}/shell" -type f -exec \
+    sed -i \
+      -e 's|"\$HOME"/\.config/shell|/usr/share/omarchy-zsh/shell|g' \
+      -e 's|\$HOME/\.config/shell|/usr/share/omarchy-zsh/shell|g' \
+      {} +
 
   # Install zsh-specific zoptions from omarchy-zsh
   cp shell/zoptions "${pkgdir}/usr/share/${pkgname}/shell/"
