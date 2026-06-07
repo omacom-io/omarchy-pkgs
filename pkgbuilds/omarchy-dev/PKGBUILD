@@ -51,6 +51,10 @@ depends=(
   'git'
   'perl' # /usr/bin/omarchy-shell invokes perl directly
 
+  # Update availability checks (checkupdates from pacman-contrib uses fakeroot)
+  'fakeroot'
+  'pacman-contrib'
+
   # System font (UI assumes it)
   'ttf-jetbrains-mono-nerd-basic'
 )
