@@ -1,8 +1,4 @@
 {
   "source": "aur",
-  "pkgrel": {
-    "suffix": 1,
-    "offset": 1
-  },
-  "upstream_commit": "1a092538ebdfa373ddb641ab1fe564a2ed62877d"
+  "upstream_commit": "fb5d0b2479e6d80374765c8017cd22a7df8072b8"
 }
