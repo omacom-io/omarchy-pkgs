@@ -4,7 +4,7 @@ pkgver=4.0.0.r847.g4de185b
 pkgrel=1
 _pkgver_base=4.0.0
 _pkgver_base_tag=v3.8.2
-pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers (omarchy-4 branch tip)'
+pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers (quattro branch tip)'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
 license=('MIT')
@@ -68,7 +68,7 @@ backup=(
 )
 
 optdepends=(
-  'omarchy-dev: Full Omarchy desktop (omarchy-4 branch tip)'
+  'omarchy-dev: Full Omarchy desktop (quattro branch tip)'
   'inxi: System information for omarchy-debug'
   'fastfetch: System information for omarchy-upload-log'
   'limine: Bootloader the shipped /etc/mkinitcpio.conf.d/ and /etc/limine-entry-tool.d/ drop-ins are for'
@@ -89,13 +89,13 @@ _etc_override_paths=(
   'etc/plymouth/plymouthd.conf'
 )
 
-# Source: omarchy-4 branch tip by default; set OMARCHY_SRC=/path/to/checkout
+# Source: quattro branch tip by default; set OMARCHY_SRC=/path/to/checkout
 # to build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
   source=()
   sha256sums=()
 else
-  source=("omarchy::git+https://github.com/basecamp/omarchy.git#branch=omarchy-4")
+  source=("omarchy::git+https://github.com/basecamp/omarchy.git#branch=quattro")
   sha256sums=('SKIP')
 fi
 
