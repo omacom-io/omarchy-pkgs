@@ -4,7 +4,7 @@ pkgver=4.0.0.r847.g4de185b
 pkgrel=1
 _pkgver_base=4.0.0
 _pkgver_base_tag=v3.8.2
-pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH (omarchy-4 branch tip)'
+pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH (quattro branch tip)'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
 license=('MIT')
@@ -61,13 +61,13 @@ makedepends=(
   'git'
 )
 
-# Source: omarchy-4 branch tip by default; set OMARCHY_SRC=/path/to/checkout
+# Source: quattro branch tip by default; set OMARCHY_SRC=/path/to/checkout
 # to build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
   source=()
   sha256sums=()
 else
-  source=("omarchy::git+https://github.com/basecamp/omarchy.git#branch=omarchy-4")
+  source=("omarchy::git+https://github.com/basecamp/omarchy.git#branch=quattro")
   sha256sums=('SKIP')
 fi
 
