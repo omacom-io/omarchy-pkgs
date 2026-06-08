@@ -14,8 +14,6 @@ install='omarchy-dev.install'
 
 # Hard depends: only packages whose removal would brick the desktop. The ISO
 # pacstraps the full default install set from install/omarchy-base.packages.
-# Keeping optional apps out of hard depends lets users remove them via Omarchy
-# commands without pacman refusing because of a hard dependency.
 depends=(
   # Omarchy meta
   'omarchy-keyring'
