@@ -2,7 +2,7 @@
 # Based on Arch Linux linux package by Jan Alexander Steffens (heftig)
 
 pkgbase=linux-ptl
-pkgver=7.0.9.arch1
+pkgver=7.0.11.arch1
 pkgrel=1
 pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, PSR2, Panel Replay SU)'
 url='https://github.com/archlinux/linux'
@@ -54,17 +54,17 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
   83BC8889351B5DEBBB68416EB8AC08600F108CDF  # Jan Alexander Steffens (heftig)
 )
-b2sums=('SKIP'
+b2sums=('e198c4edf9cc681c602e4c0bd8d92ff9d93433c95a525d8d94e5ad59aa9da2299a5048690841263e925835e3960d621fab137afd3522020f58d4fe1a09041ac7'
         'SKIP'
-        'SKIP'
+        '17d5fbaf51a1930dbacadcf3eacc286e471e44fd1526516b7fa51f7e83b62c9d24e69e1cf9c5c111288160964b8e44d1138306de2ebc84b242e33f09d6d6e13a'
         'SKIP'
         'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
-b2sums_x86_64=('90dbd2917fac50d46a1bf3cd5c3997e3c4ae44cecafa042adeeae20c1b605ed1f0e5e85661bf9bc9b8320cdd477f147ee46109c8099d28bdaed900d894ce0a0d')
+b2sums_x86_64=('a3569058fb5d86df604568f3746c98285b23bd5f4d69abc34df84e05b29c73b4a2c55f589259ec7375591c825d09525bf7d4f5c29d5e3a5209dfaabaf834795a')
 
 # https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
-sha256sums=('ac07acdf76cf4621cc5187a2670270a1a699533c8a6b225e4878c416ad83f1c4'
+sha256sums=('e56c8356dda01136a6041c6ef832bd0ec99bd2d35dff97832aa5ec10ed014304'
             'SKIP'
-            'SKIP'
+            '694e74e08031d1388c0ae7ba3e44d9dfcb1888ed45ae1eb97f9c4160953042e5'
             'SKIP'
             'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
