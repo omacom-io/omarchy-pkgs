@@ -38,7 +38,7 @@ return {
 		priority = 1000,
 	},
 	{
-		"sainnhe/everforest",
+		"neanias/everforest-nvim",
 		lazy = true,
 		priority = 1000,
 	},
@@ -63,18 +63,23 @@ return {
 		priority = 1000,
 	},
 	{
-		"loctvl842/monokai-pro.nvim",
+		"gthelding/monokai-pro.nvim",
 		lazy = true,
 		priority = 1000,
 	},
 	{
-		"shaunsingh/nord.nvim",
+		"EdenEast/nightfox.nvim",
 		lazy = true,
 		priority = 1000,
 	},
 	{
 		"rose-pine/neovim",
 		name = "rose-pine",
+		lazy = true,
+		priority = 1000,
+	},
+	{
+		"ficcdaf/ashen.nvim",
 		lazy = true,
 		priority = 1000,
 	},
