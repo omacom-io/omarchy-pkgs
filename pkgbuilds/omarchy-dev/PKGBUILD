@@ -10,8 +10,6 @@ url='https://github.com/basecamp/omarchy'
 license=('MIT')
 provides=('omarchy')
 conflicts=('omarchy')
-install='omarchy-dev.install'
-
 # Hard depends: only packages whose removal would brick the desktop. The ISO
 # pacstraps the full default install set from install/omarchy-base.packages.
 depends=(
@@ -134,15 +132,14 @@ package() {
   cp -a migrations "$pkgdir/usr/share/omarchy/"
 
   # Fresh users created after install are already on the package layout in this
-  # build, so seed user migration markers through /etc/skel. Existing users keep
-  # their own state and still run pending user migrations on update.
-  if compgen -G 'migrations/user/*.sh' >/dev/null; then
-    install -d "$pkgdir/etc/skel/.local/state/omarchy/migrations/user"
-    for migration in migrations/user/*.sh; do
-      touch "$pkgdir/etc/skel/.local/state/omarchy/migrations/user/$(basename "$migration")"
+  # build, so seed migration markers through /etc/skel. Existing users keep
+  # their own state and still run pending migrations on update.
+  if compgen -G 'migrations/*.sh' >/dev/null; then
+    install -d "$pkgdir/etc/skel/.local/state/omarchy/migrations"
+    for migration in migrations/*.sh; do
+      touch "$pkgdir/etc/skel/.local/state/omarchy/migrations/$(basename "$migration")"
     done
   fi
-
   # Quickshell desktop shell tree.
   cp -a shell "$pkgdir/usr/share/omarchy/"
 

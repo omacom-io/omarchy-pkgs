@@ -1,5 +1,0 @@
-post_upgrade() {
-  if [ -x /usr/bin/omarchy-migrate-system ]; then
-    /usr/bin/omarchy-migrate-system
-  fi
-}
