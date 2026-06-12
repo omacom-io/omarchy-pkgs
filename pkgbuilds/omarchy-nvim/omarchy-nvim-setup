@@ -118,7 +118,7 @@ fi
 # Use a relative symlink so the same config works from /etc/skel and from any
 # user's home directory.
 mkdir -p "${CONFIG_DIR}/lua/plugins"
-ln -snf "../../../omarchy/current/theme/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
+ln -snf "../../../../.local/state/omarchy/current/theme/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
 
 # Restore git working trees from the packaged lazy plugin cache.
 for dir in "$DATA_DIR"/lazy/*/; do

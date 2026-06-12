@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=omarchy-nvim
-pkgver=2026.5.25
-pkgrel=2
+pkgver=2026.6.11
+pkgrel=1
 pkgdesc="Pre-built LazyVim configuration with cached plugins"
 arch=('any')
 url="https://github.com/LazyVim/LazyVim"
@@ -79,7 +79,7 @@ package() {
   install -dm755 "$pkgdir/etc/skel/.config" "$pkgdir/etc/skel/.local/share"
   cp -a "$pkgdir/usr/share/$pkgname/config" "$pkgdir/etc/skel/.config/nvim"
   cp -a "$pkgdir/usr/share/$pkgname/data" "$pkgdir/etc/skel/.local/share/nvim"
-  ln -snf "../../../omarchy/current/theme/neovim.lua" \
+  ln -snf "../../../../.local/state/omarchy/current/theme/neovim.lua" \
     "$pkgdir/etc/skel/.config/nvim/lua/plugins/theme.lua"
 
   # Install setup/refresh commands to /usr/bin. setup fills missing pieces;
