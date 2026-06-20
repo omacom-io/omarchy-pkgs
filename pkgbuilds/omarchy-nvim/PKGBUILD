@@ -1,6 +1,6 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=omarchy-nvim
-pkgver=2026.6.11
+pkgver=2026.6.17
 pkgrel=1
 pkgdesc="Pre-built LazyVim configuration with cached plugins"
 arch=('any')
@@ -34,8 +34,11 @@ build() {
   cp -r "$startdir/plugin" "$XDG_CONFIG_HOME/nvim/"
   cp "$startdir/lazyvim.json" "$XDG_CONFIG_HOME/nvim/"
 
-  echo "vim.opt.relativenumber = false" >>"$XDG_CONFIG_HOME/nvim/lua/config/options.lua"
-  echo "vim.g.autoformat = false" >>"$XDG_CONFIG_HOME/nvim/lua/config/options.lua"
+  {
+    echo "require('config.remote_clipboard').setup()"
+    echo "vim.opt.relativenumber = false"
+    echo "vim.g.autoformat = false"
+  } >>"$XDG_CONFIG_HOME/nvim/lua/config/options.lua"
 
   echo "Installing LazyVim plugins..."
   nvim --headless \
