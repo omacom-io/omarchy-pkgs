@@ -168,6 +168,53 @@ should_build_for_arch() {
   fi
 }
 
+# For VCS packages, makepkg recalculates pkgver() before the build. If the
+# recalculated pkgver differs from the static PKGBUILD value, makepkg resets
+# pkgrel to 1. That is right for stock VCS packages, but wrong for Omarchy's
+# patched AUR packages where sync-aur intentionally applies a dotted local
+# pkgrel suffix (for example 1.1) to sort above the upstream/AUR package.
+# Refresh pkgver once, then restore the local dotted pkgrel before the real
+# build so the produced package filename carries the Omarchy revision.
+refresh_vcs_pkgver_preserving_local_pkgrel() {
+  local pkg="$1"
+  local pkgbuild="PKGBUILD"
+
+  grep -qE '^pkgver[[:space:]]*\(\)' "$pkgbuild" || return 0
+
+  local original_pkgver original_pkgrel refreshed_pkgver refreshed_pkgrel
+  original_pkgver=$(bash -c 'source PKGBUILD 2>/dev/null; echo "${pkgver:-}"')
+  original_pkgrel=$(bash -c 'source PKGBUILD 2>/dev/null; echo "${pkgrel:-}"')
+
+  # Omarchy local rebuilds use dotted pkgrels (AUR pkgrel + .suffix). Plain
+  # integer pkgrels can keep makepkg's normal reset-to-1 behavior on new VCS
+  # revisions.
+  [[ "$original_pkgrel" == *.* ]] || return 0
+
+  echo "    Refreshing VCS pkgver before build (preserving local pkgrel=$original_pkgrel)..."
+  if [[ -x /usr/local/bin/pacman-for-makepkg ]]; then
+    PACMAN=/usr/local/bin/pacman-for-makepkg makepkg --nobuild --nodeps --skipinteg --skippgpcheck --noprepare --noconfirm
+  else
+    makepkg --nobuild --nodeps --skipinteg --skippgpcheck --noprepare --noconfirm
+  fi
+
+  if [[ $? -ne 0 ]]; then
+    echo "    Failed to refresh VCS pkgver for $pkg"
+    return 1
+  fi
+
+  refreshed_pkgver=$(bash -c 'source PKGBUILD 2>/dev/null; echo "${pkgver:-}"')
+  refreshed_pkgrel=$(bash -c 'source PKGBUILD 2>/dev/null; echo "${pkgrel:-}"')
+
+  if [[ "$refreshed_pkgrel" != "$original_pkgrel" ]]; then
+    sed -i "s/^pkgrel=.*/pkgrel=$original_pkgrel/" PKGBUILD
+    echo "    Restored local pkgrel suffix: $refreshed_pkgrel -> $original_pkgrel"
+  fi
+
+  if [[ -n "$refreshed_pkgver" && "$refreshed_pkgver" != "$original_pkgver" ]]; then
+    echo "    Refreshed VCS version: $original_pkgver -> $refreshed_pkgver"
+  fi
+}
+
 # Build a package
 build_package() {
   local pkg="$1"
@@ -181,6 +228,11 @@ build_package() {
   rm -rf "$pkg"
   cp -r "$pkgdir" "$pkg"
   cd "/src/$pkg" || return 1
+
+  refresh_vcs_pkgver_preserving_local_pkgrel "$pkg" || {
+    FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+    return 1
+  }
 
   # Get PKGBUILD version (including epoch if present)
   local pkgbuild_version=$(bash -c 'source PKGBUILD; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi' 2>/dev/null)
