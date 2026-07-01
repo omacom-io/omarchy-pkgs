@@ -2,21 +2,12 @@
 
 # Handle camera service around suspend/resume.
 #
-# On resume the IPU7 firmware re-authenticates (CSE authenticate_run),
-# but the ov08x40 sensor is not re-bound to the media-controller graph.
-# libcamhal then reports "No sensors available", icamerasrc fails to
-# register properties, and /dev/video50 stays empty — the camera looks
-# dead to every app until reboot.
+# v4l2-relayd must be stopped before suspend to avoid GStreamer crashes,
+# then restarted after resume once the camera hardware is ready.
 #
-# Workaround: after resume, unload + reload ov08x40 and intel_ipu7_isys
-# so isys re-probes the sensor via ipu_bridge.
-#
-# DO NOT unload intel_ipu7_isys pre-suspend: s2idle wake requires the
-# IPU7 driver to be attached, and unloading it before suspend hangs the
-# machine on wake.
-#
-# The post-resume work runs via systemd-run so it doesn't block the
-# lock-screen password prompt while modules settle.
+# Avoid unloading/reloading IPU7 kernel modules from the sleep hook. Module
+# reprobe during resume can hit fragile kernel PM paths and make wake less
+# reliable than a recoverable camera failure.
 
 case "$1" in
   pre)
@@ -24,12 +15,7 @@ case "$1" in
     ;;
   post)
     systemd-run --no-block --unit=camera-resume bash -c '
-      rmmod ov08x40 2>/dev/null || true
-      rmmod intel_ipu7_isys 2>/dev/null || true
-      sleep 1
-      modprobe intel_ipu7_isys 2>/dev/null
-      sleep 1
-      modprobe ov08x40 2>/dev/null
+      systemctl restart camera-init.service 2>/dev/null || true
       systemctl reset-failed v4l2-relayd@ipu7.service 2>/dev/null || true
       systemctl start v4l2-relayd@ipu7.service 2>/dev/null || true
     '
