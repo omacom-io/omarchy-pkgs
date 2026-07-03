@@ -23,7 +23,7 @@ makedepends=(
   'qt6-declarative'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/omacom-io/omawrite/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('4a78648b7da87ebf9d88e1b415e785fe9265089df9c837a6e499dfc0ffc71bd3')
+sha256sums=('1f46b105bf6df925925b681a7c1d607aeeb93811cfb57c05c5b1a6f34bbfb2a7')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"

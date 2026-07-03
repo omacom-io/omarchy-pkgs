@@ -1,7 +1,7 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
 pkgname=omacut
-pkgver=0.1.1
+pkgver=0.1.2
 pkgrel=1
 pkgdesc='Dead-simple video length trimmer built with Qt Quick and ffmpeg'
 arch=('x86_64' 'aarch64')
@@ -25,7 +25,7 @@ makedepends=(
   'qt6-multimedia'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/omacom-io/omacut/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('874b23ea9b405478a40b8323c1b77d96f37b4acef65b0cca8cd43af76880354e')
+sha256sums=('fee13b750362b98cfb626f0368f6c24fe2f7080180067198ff4bb662f3adbcdc')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
