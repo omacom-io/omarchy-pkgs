@@ -135,13 +135,14 @@ package_matches_filters() {
 }
 
 emit_package_json() {
-  local name="$1" source="$2" aur="$3" sync="$4" ring="$5" pkgrel="$6" upstream_commit="$7" patches="$8" hook="$9" version="${10}" path="${11}"
+  local name="$1" source="$2" aur="$3" sync="$4" skip_build="$5" ring="$6" pkgrel="$7" upstream_commit="$8" patches="$9" hook="${10}" version="${11}" path="${12}"
 
   jq -n \
     --arg name "$name" \
     --arg source "$source" \
     --arg aur "$aur" \
     --arg sync "$sync" \
+    --arg skip_build "$skip_build" \
     --arg release_ring "$ring" \
     --argjson pkgrel "$pkgrel" \
     --arg upstream_commit "$upstream_commit" \
@@ -149,7 +150,7 @@ emit_package_json() {
     --arg hook "$hook" \
     --arg version "$version" \
     --arg path "$path" \
-    '{name: $name, source: $source, aur: $aur, sync: (if $sync == "" then null else $sync == "true" end), release_ring: $release_ring, pkgrel: $pkgrel, upstream_commit: $upstream_commit, patches: $patches, post_sync_hook: ($hook == "true"), version: $version, path: $path}'
+    '{name: $name, source: $source, aur: $aur, sync: (if $sync == "" then null else $sync == "true" end), skip_build: ($skip_build == "true"), release_ring: $release_ring, pkgrel: $pkgrel, upstream_commit: $upstream_commit, patches: $patches, post_sync_hook: ($hook == "true"), version: $version, path: $path}'
 }
 
 if [[ "$LIST_REPO" == true ]]; then
@@ -178,6 +179,7 @@ while IFS= read -r pkgdir; do
   else
     sync=""
   fi
+  skip_build=$(jq -r 'if has("skip_build") then .skip_build else false end' "$metadata")
 
   package_matches_filters "$source" "$sync" "$ring" || continue
 
@@ -191,11 +193,12 @@ while IFS= read -r pkgdir; do
   version=$(get_pkgbuild_version "$pkgdir")
   relpath=${pkgdir#"$BUILD_ROOT/"}
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$name" \
     "$source" \
     "$aur_display" \
     "$([[ -n "$sync" ]] && [[ "$sync" == true ]] && echo yes || ([[ "$sync" == false ]] && echo no || echo -))" \
+    "$([[ "$skip_build" == true ]] && echo yes || echo no)" \
     "$ring" \
     "$pkgrel_display" \
     "$upstream_display" \
@@ -207,7 +210,7 @@ while IFS= read -r pkgdir; do
   if [[ "$first_json" == false ]]; then
     printf ',\n' >> "$json_file"
   fi
-  emit_package_json "$name" "$source" "$aur" "$sync" "$ring" "$pkgrel" "$upstream_commit" "$patches" "$hook" "$version" "$relpath" >> "$json_file"
+  emit_package_json "$name" "$source" "$aur" "$sync" "$skip_build" "$ring" "$pkgrel" "$upstream_commit" "$patches" "$hook" "$version" "$relpath" >> "$json_file"
   first_json=false
 done < <(package_dirs)
 
@@ -220,11 +223,11 @@ fi
 
 if command -v gum >/dev/null 2>&1; then
   gum table --print --separator $'\t' \
-    --columns Package,Source,AUR,Sync,Release_Ring,Pkgrel,Upstream,Patches,Post_Sync,Version,Path \
+    --columns Package,Source,AUR,Sync,Skip_Build,Release_Ring,Pkgrel,Upstream,Patches,Post_Sync,Version,Path \
     < "$rows_file"
 else
   {
-    printf 'Package\tSource\tAUR\tSync\tRelease_Ring\tPkgrel\tUpstream\tPatches\tPost_Sync\tVersion\tPath\n'
+    printf 'Package\tSource\tAUR\tSync\tSkip_Build\tRelease_Ring\tPkgrel\tUpstream\tPatches\tPost_Sync\tVersion\tPath\n'
     cat "$rows_file"
   } | column -t -s $'\t'
 fi

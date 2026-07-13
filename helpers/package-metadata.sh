@@ -8,6 +8,7 @@
 #   { "source": "aur", "sync": false }
 #   { "source": "aur", "aur": "different-aur-name" }
 #   { "source": "aur", "release_ring": "fast" }
+#   { "source": "aur", "skip_build": true }
 #   { "source": "aur", "pkgrel": { "suffix": 1, "offset": 1 } }
 #   { "source": "local" }
 #
@@ -75,6 +76,17 @@ package_is_fast_ring() {
   [[ "$(package_release_ring "$pkgdir")" == "fast" ]]
 }
 
+package_build_skipped() {
+  local pkgdir="$1"
+  local metadata skip_build
+
+  metadata=$(metadata_file_for_dir "$pkgdir")
+  [[ -f "$metadata" ]] || return 1
+
+  skip_build=$(jq -r 'if has("skip_build") then .skip_build else false end' "$metadata")
+  [[ "$skip_build" == "true" ]]
+}
+
 package_has_metadata() {
   local pkgdir="$1"
   [[ -f "$(metadata_file_for_dir "$pkgdir")" ]]
@@ -128,6 +140,16 @@ packages_for_mirror() {
 
   package_dirs | while IFS= read -r pkgdir; do
     if package_builds_for_mirror "$pkgdir" "$mirror"; then
+      basename "$pkgdir"
+    fi
+  done
+}
+
+packages_for_unscoped_build() {
+  local mirror="$1"
+
+  package_dirs | while IFS= read -r pkgdir; do
+    if package_builds_for_mirror "$pkgdir" "$mirror" && ! package_build_skipped "$pkgdir"; then
       basename "$pkgdir"
     fi
   done
@@ -212,7 +234,7 @@ package_git_upstream_hash() {
 
 validate_package_metadata() {
   local pkgdir="$1"
-  local metadata source sync aur ring pkgrel_type
+  local metadata source sync skip_build aur ring pkgrel_type
 
   metadata=$(metadata_file_for_dir "$pkgdir")
   [[ -f "$metadata" ]] || { echo "missing metadata: $metadata"; return 1; }
@@ -229,6 +251,12 @@ validate_package_metadata() {
   case "$sync" in
     boolean|missing) ;;
     *) echo "invalid sync for $(basename "$pkgdir"): must be boolean"; return 1 ;;
+  esac
+
+  skip_build=$(jq -r 'if has("skip_build") then .skip_build | type else "missing" end' "$metadata")
+  case "$skip_build" in
+    boolean|missing) ;;
+    *) echo "invalid skip_build for $(basename "$pkgdir"): must be boolean"; return 1 ;;
   esac
 
   aur=$(jq -r 'if has("aur") then .aur | type else "missing" end' "$metadata")

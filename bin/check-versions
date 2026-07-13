@@ -129,7 +129,7 @@ check_mirror() {
       needs_build=true
       packages+=("$pkg")
     fi
-  done < <(packages_for_mirror "$mirror")
+  done < <(packages_for_unscoped_build "$mirror")
 
   echo ""
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build script - builds packages based on package metadata
-# Edge builds all packages. Stable builds only packages in the fast release ring.
+# Unscoped edge builds exclude skip_build packages. Stable also requires the fast release ring.
+# Explicit --package selections may build packages with skip_build=true.
 
 # Setup directories
 ARCH=${ARCH:-x86_64}
@@ -412,7 +413,7 @@ check_needs_build() {
 
 # Collect packages that should be built for the selected mirror
 collect_packages() {
-  packages_for_mirror "$MIRROR"
+  packages_for_unscoped_build "$MIRROR"
 }
 
 # Main execution

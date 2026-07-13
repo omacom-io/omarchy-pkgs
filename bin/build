@@ -54,8 +54,9 @@ while [[ $# -gt 0 ]]; do
     echo "  -h, --help           Show this help message"
     echo ""
     echo "This script builds packages from pkgbuilds/ based on .omarchy/package.json:"
-    echo "  --mirror edge:   builds all packages"
-    echo "  --mirror stable: builds packages with release_ring=fast only"
+    echo "  --mirror edge:   builds packages not marked skip_build=true"
+    echo "  --mirror stable: builds fast-ring packages not marked skip_build=true"
+    echo "  --package:       explicitly builds selected packages, even with skip_build=true"
     echo ""
     echo "Or build specific packages with --package:"
     echo "  Package names should match directories in pkgbuilds/"
@@ -120,7 +121,7 @@ mkdir -p "$BUILD_OUTPUT_DIR"
 if [[ -n "$PACKAGES" ]]; then
   print_info "Building packages: $PACKAGES"
 else
-  print_info "Building all packages for $MIRROR mirror"
+  print_info "Building unscoped packages for $MIRROR mirror"
 fi
 
 # Build/update the Docker image

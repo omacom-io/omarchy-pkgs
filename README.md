@@ -14,6 +14,7 @@ The filesystem no longer encodes release policy. Instead:
 - packages with `"release_ring": "fast"` also build directly for `stable`
 - all other packages reach `stable` by promoting tested edge artifacts with `bin/repo migrate`
 - AUR sync behavior is controlled by `source`, `sync`, `aur`, patches, and hooks in `.omarchy/`
+- packages can opt out of unscoped builds with `skip_build`; explicit `--package` builds remain available
 
 ## Prerequisites
 ### aarch64 Builds (Optional)
@@ -232,6 +233,10 @@ Minimal examples:
 ```
 
 ```json
+{ "source": "local", "skip_build": true }
+```
+
+```json
 { "source": "aur", "pkgrel": { "suffix": 1 } }
 ```
 
@@ -241,13 +246,15 @@ Fields:
 - `sync`: optional for AUR packages; defaults to `true`. Set `false` for AUR-origin packages that Omarchy maintains manually.
 - `aur`: optional AUR package name when it differs from the local package directory, usually for split packages.
 - `release_ring`: optional. `fast` means the package is built directly for stable as well as edge. Packages without a ring build in edge and reach stable through tested artifact promotion (`bin/repo migrate`).
+- `skip_build`: optional boolean; defaults to `false`. Set `true` to exclude a package from scheduled version checks and unscoped builds. The package can still be built explicitly with `bin/repo release --package <name>`.
 - `pkgrel`: optional Omarchy pkgrel suffix for a version-pinned rebuild bump. This emits `<aur pkgrel>.<suffix>` instead of replacing AUR's pkgrel. `offset` can be used only when preserving monotonic upgrades from old absolute pkgrel bumps. The metadata is removed automatically when AUR sync changes `pkgver`; the current package version is read from the checked-in PKGBUILD, so the version is not duplicated in JSON.
 - `upstream_commit`: set by `bin/sync-aur` for AUR packages. Used by `bin/package-worktree` to recreate the exact raw AUR package that Omarchy last synced.
 
 ### Build Matrix
 
-- **Edge builds** (`--mirror edge`): all packages in `pkgbuilds/*`
-- **Stable builds** (`--mirror stable`): packages with `"release_ring": "fast"`
+- **Edge unscoped builds** (`--mirror edge`): packages in `pkgbuilds/*` unless `"skip_build": true`
+- **Stable unscoped builds** (`--mirror stable`): packages with `"release_ring": "fast"` unless `"skip_build": true`
+- **Explicit builds** (`--package <name>`): the selected package, including packages with `"skip_build": true`, subject to mirror eligibility
 - **Stable promotion** (`bin/repo migrate`): copies tested edge artifacts into stable
 
 ## Adding Packages
