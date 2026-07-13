@@ -4,7 +4,7 @@ pkgver=4.0.0.r847.g4de185b
 pkgrel=1
 _pkgver_base=4.0.0
 _pkgver_base_tag=v3.8.2
-pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers (omarchy-4 branch tip)'
+pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers (quattro branch tip)'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
 license=('MIT')
@@ -19,9 +19,9 @@ conflicts=('omarchy-settings')
 # limine + limine-mkinitcpio-hook + limine-snapper-sync + snapper are NOT in
 # depends because this package gets installed into the live ISO env (for
 # plymouth / /etc/skel seeding) where there is no ESP and the mkinitcpio hook
-# would fail trying to deploy Limine. The bootloader stack is pulled in by
-# the omarchy package on the target install, and by EARLY_BOOTSTRAP_PACKAGES
-# in omarchy-iso/orchestrator/phases_impl.py for the target chroot.
+# would fail trying to deploy Limine. The target omarchy package pulls in the
+# full bootloader/snapshot stack; omarchy-iso only installs the early Limine
+# pieces needed before the runtime package lands.
 depends=(
   'bash'
   'curl'
@@ -68,7 +68,7 @@ backup=(
 )
 
 optdepends=(
-  'omarchy-dev: Full Omarchy desktop (omarchy-4 branch tip)'
+  'omarchy-dev: Full Omarchy desktop (quattro branch tip)'
   'inxi: System information for omarchy-debug'
   'fastfetch: System information for omarchy-upload-log'
   'limine: Bootloader the shipped /etc/mkinitcpio.conf.d/ and /etc/limine-entry-tool.d/ drop-ins are for'
@@ -89,13 +89,13 @@ _etc_override_paths=(
   'etc/plymouth/plymouthd.conf'
 )
 
-# Source: omarchy-4 branch tip by default; set OMARCHY_SRC=/path/to/checkout
+# Source: quattro branch tip by default; set OMARCHY_SRC=/path/to/checkout
 # to build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
   source=()
   sha256sums=()
 else
-  source=("omarchy::git+https://github.com/basecamp/omarchy.git#branch=omarchy-4")
+  source=("omarchy::git+https://github.com/basecamp/omarchy.git#branch=quattro")
   sha256sums=('SKIP')
 fi
 
@@ -252,9 +252,10 @@ EOF
     done
   fi
 
-  # default/** ships to /usr/share/omarchy/default/. The snapper template is
-  # additionally installed to /etc/snapper/config-templates/ below so snapper
-  # can pick it up at install time without separate handling.
+  # default/** ships to /usr/share/omarchy/default/. The Snapper template is
+  # additionally installed to /etc/snapper/config-templates/ for the standard
+  # Snapper template location; Omarchy target setup copies the default into the
+  # live root config.
   install -d "$pkgdir/usr/share/omarchy/default"
   cp -a default/. "$pkgdir/usr/share/omarchy/default/"
 

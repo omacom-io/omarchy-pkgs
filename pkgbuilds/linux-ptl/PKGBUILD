@@ -2,7 +2,7 @@
 # Based on Arch Linux linux package by Jan Alexander Steffens (heftig)
 
 pkgbase=linux-ptl
-pkgver=7.0.9.arch1
+pkgver=7.1.3.arch1
 pkgrel=1
 pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, PSR2, Panel Replay SU)'
 url='https://github.com/archlinux/linux'
@@ -43,7 +43,6 @@ source=(
   0017-ASoC-SDCA-Fix-NULL-pointer-dereference-in-sdca_jack_.patch
   0019-drm-i915-psr-accept-early-transport-for-psr2.patch
   0020-drm-i915-alpm-limit-pr-alpm-to-panel-replay.patch
-  0022-drm-i915-psr-allow-psr-with-vrr-on-ptl.patch
   0027-drm-i915-trans-push-frame-change-for-panel-replay.patch
   0028-drm-i915-psr-exit-Panel-Replay-for-ALPM-lag.patch
   0029-drm-edid-populate-monitor-range-from-displayid-adaptive-sync.patch
@@ -54,19 +53,29 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
   83BC8889351B5DEBBB68416EB8AC08600F108CDF  # Jan Alexander Steffens (heftig)
 )
-b2sums=('SKIP'
+b2sums=('b6466e2798627522f0339c670a223b21266f4d4ede39163867c0f122295e54c5d24093abb51d5c6c6c917de0cb199836e81f45f7c391a5cc138cac2a519438e8'
         'SKIP'
+        'b402dbf0b29131c2c3fe80406c5560e3e1a5c1384d6a1ba670793b343d57300ec312da7d3a4f7b3f44a6615b015d7fbebb2c7df832a99aa0e1941faef0481baa'
         'SKIP'
-        'SKIP'
-        'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
-b2sums_x86_64=('90dbd2917fac50d46a1bf3cd5c3997e3c4ae44cecafa042adeeae20c1b605ed1f0e5e85661bf9bc9b8320cdd477f147ee46109c8099d28bdaed900d894ce0a0d')
+        'b5c40077f538e67496f1c274774976d31c48af36a6bd0a5df570eddf097b18f79812ee811392534dae8b911dc1f2a9949d969f90ce4ad7bdf62692456908c1be'
+        'f893d63ef7b9e3ab05907117b561971a54c07422c46f7ec4511470b5dc81ab53815b6c73fac2b829fac43f4c480caa2f26741d604ad9ea5ecb460f7750f71635'
+        '217aed0e9dbb96ed845a1d686be7df3e27602600ab8b5fb663a54dbcd550c8e4bb2acce3bb8ed4d6ef268d5de1c6068d97d374de8ea2f208389a13dbb1ffa1c3'
+        '63339c2b7a073302c3e56148c1834fd9aed2adfcbb282c79fbc491c0013d9e16409cb46e3e3ff4d2cf6f39818b3873b449939e8d8c43acc664529a6e32229beb'
+        '4daaa96fac95436ad83ada07bb313ba1219b8b6c30f21b3d131d0f4731cd3739190c398b39ea9db636318b107b4ddd9c43ff7e15ac738d94dd2cfcc70d115264'
+        'c17328b6025bb55f229591506d7fff887f5da9580caf59e675dbaeee17447ef07254f70cf5282d6c46b4820a10724090a3e96b728f685dbbe26e1d08d17958d2')
+b2sums_x86_64=('f08103d44e5506637ed115067c714e6184e0de538eea1c45a3d2ee8160a36d91755ca5f6cf1f4d7bc4500ed62bc69ca51fa21bef26a40c3a49c4e0f8df835c16')
 
 # https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
-sha256sums=('ac07acdf76cf4621cc5187a2670270a1a699533c8a6b225e4878c416ad83f1c4'
+sha256sums=('be41c068e88f5242a19bccdbffbe077b18c47b45f627e2325504b4fab79dd1dc'
             'SKIP'
+            '861ea54a40c1d25296422fd48eac2e02b46e0071b3d99a6c28555ae3acc8edd7'
             'SKIP'
-            'SKIP'
-            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+            '167446c23001fe9d8dbe017e57a36f7f6e69f67a6b501ccbd9f4301ff08f8a47'
+            'a65fb17db3c5c44a9d1728d0bf182f20e0867eaabcdc20c76329e65d5cae2dd1'
+            '0ab145668a04b983b110b49fbd5a12f55c69106c7bb49cb968fff87392cc1c46'
+            'd4355299c1917a53b366e91c07e30bf595ade63654cfbca5ea8a2238730084a5'
+            '39530f920476e79578f41fbed94de825dd0e2285d578d1b5c5302e65e39b045f'
+            '3f6e98250b864125501a9968118861424977b3765eb4fcba7248735ed0b667ae')
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
@@ -150,7 +159,17 @@ _package() {
 
 _package-headers() {
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
-  depends=(pahole)
+  depends=(
+    binutils
+    glibc
+    libelf
+    libgcc
+    openssl
+    pahole
+    xxhash
+    zlib
+    zstd
+  )
   provides=(LINUX-HEADERS)
 
   cd $_srcname

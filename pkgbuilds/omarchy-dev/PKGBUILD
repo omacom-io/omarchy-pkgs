@@ -4,18 +4,14 @@ pkgver=4.0.0.r847.g4de185b
 pkgrel=1
 _pkgver_base=4.0.0
 _pkgver_base_tag=v3.8.2
-pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH (omarchy-4 branch tip)'
+pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH (quattro branch tip)'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
 license=('MIT')
 provides=('omarchy')
 conflicts=('omarchy')
-install='omarchy-dev.install'
-
 # Hard depends: only packages whose removal would brick the desktop. The ISO
 # pacstraps the full default install set from install/omarchy-base.packages.
-# Keeping optional apps out of hard depends lets users remove them via Omarchy
-# commands without pacman refusing because of a hard dependency.
 depends=(
   # Omarchy meta
   'omarchy-keyring'
@@ -51,6 +47,10 @@ depends=(
   'git'
   'perl' # /usr/bin/omarchy-shell invokes perl directly
 
+  # Update availability checks (checkupdates from pacman-contrib uses fakeroot)
+  'fakeroot'
+  'pacman-contrib'
+
   # System font (UI assumes it)
   'ttf-jetbrains-mono-nerd-basic'
 )
@@ -59,58 +59,13 @@ makedepends=(
   'git'
 )
 
-optdepends=(
-  # Development
-  '1password: Password manager'
-  '1password-cli: 1Password CLI'
-  'github-cli: GitHub CLI tool'
-  'lazygit: Terminal UI for git'
-  'lazydocker: Terminal UI for docker'
-
-  # Browsers & comms
-  'omarchy-chromium-bin: Customized Chromium browser'
-  'signal-desktop: Encrypted messaging'
-  'spotify: Music streaming'
-
-  # Productivity
-  'obsidian: Note-taking app'
-  'typora: Markdown editor'
-  'libreoffice: Office suite'
-
-  # Media & graphics
-  'obs-studio: Screen recording and streaming'
-  'mpv: Video player'
-  'imv: Image viewer'
-  'kdenlive: Video editor'
-  'pinta: Image editor'
-
-  # System utilities
-  'btop: System monitor'
-
-  # Printing
-  'cups: Printing support'
-  'system-config-printer: Printer configuration'
-
-  # Hardware support
-  'asdcontrol: Apple display brightness control'
-  'blueberry: Bluetooth manager'
-
-  # Developer tools
-  'cargo: Rust package manager'
-  'clang: C/C++ compiler'
-  'python-poetry-core: Python packaging'
-  'tree-sitter-cli: Parser generator tool'
-
-  # Optional omarchy companion packages
-)
-
-# Source: omarchy-4 branch tip by default; set OMARCHY_SRC=/path/to/checkout
+# Source: quattro branch tip by default; set OMARCHY_SRC=/path/to/checkout
 # to build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
   source=()
   sha256sums=()
 else
-  source=("omarchy::git+https://github.com/basecamp/omarchy.git#branch=omarchy-4")
+  source=("omarchy::git+https://github.com/basecamp/omarchy.git#branch=quattro")
   sha256sums=('SKIP')
 fi
 
@@ -158,10 +113,13 @@ package() {
 
   install -d "$pkgdir/usr/share/omarchy"
 
-  # Guard direct pacman upgrades from bypassing the Omarchy update pipeline.
-  # Ship the hook with its Exec target so package skew cannot leave a broken
+  # Guard direct pacman upgrades from bypassing the Omarchy update pipeline,
+  # and pause Hyprland live config reloads while settings files are replaced.
+  # Ship hooks with their Exec targets so package skew cannot leave a broken
   # hook pointing at a missing binary.
   install -Dm644 default/libalpm/hooks/00-omarchy-update-guard.hook "$pkgdir/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
+  install -Dm644 default/libalpm/hooks/10-omarchy-hyprland-reload-pause.hook "$pkgdir/usr/share/libalpm/hooks/10-omarchy-hyprland-reload-pause.hook"
+  install -Dm644 default/libalpm/hooks/90-omarchy-hyprland-reload-resume.hook "$pkgdir/usr/share/libalpm/hooks/90-omarchy-hyprland-reload-resume.hook"
 
   # Target-side setup scripts and package lists used by ISO finalization,
   # first login, future users, migrations, and reinstall/reset commands.
@@ -174,15 +132,14 @@ package() {
   cp -a migrations "$pkgdir/usr/share/omarchy/"
 
   # Fresh users created after install are already on the package layout in this
-  # build, so seed user migration markers through /etc/skel. Existing users keep
-  # their own state and still run pending user migrations on update.
-  if compgen -G 'migrations/user/*.sh' >/dev/null; then
-    install -d "$pkgdir/etc/skel/.local/state/omarchy/migrations/user"
-    for migration in migrations/user/*.sh; do
-      touch "$pkgdir/etc/skel/.local/state/omarchy/migrations/user/$(basename "$migration")"
+  # build, so seed migration markers through /etc/skel. Existing users keep
+  # their own state and still run pending migrations on update.
+  if compgen -G 'migrations/*.sh' >/dev/null; then
+    install -d "$pkgdir/etc/skel/.local/state/omarchy/migrations"
+    for migration in migrations/*.sh; do
+      touch "$pkgdir/etc/skel/.local/state/omarchy/migrations/$(basename "$migration")"
     done
   fi
-
   # Quickshell desktop shell tree.
   cp -a shell "$pkgdir/usr/share/omarchy/"
 
