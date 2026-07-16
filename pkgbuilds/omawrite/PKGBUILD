@@ -11,6 +11,7 @@ install='omawrite.install'
 options=('!debug')
 depends=(
   'hicolor-icon-theme'
+  'kwindowsystem'
   'qt6-base'
   'qt6-declarative'
   'ttf-ia-writer'
