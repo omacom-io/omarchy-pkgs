@@ -1,7 +1,7 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
 pkgname=omawrite
-pkgver=0.1.1
+pkgver=0.1.2
 pkgrel=1
 pkgdesc='Dead-simple Markdown writing app built with Qt Quick'
 arch=('x86_64' 'aarch64')
@@ -23,7 +23,7 @@ makedepends=(
   'qt6-declarative'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/omacom-io/omawrite/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('1f46b105bf6df925925b681a7c1d607aeeb93811cfb57c05c5b1a6f34bbfb2a7')
+sha256sums=('61f4a17cebdcb0a88e05406a9c49452b57111063a8ffed41bb2d59af5b44e267')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
