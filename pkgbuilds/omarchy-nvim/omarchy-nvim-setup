@@ -116,9 +116,20 @@ if (( EUID == 0 )); then
 fi
 
 # Use a relative symlink so the same config works from /etc/skel and from any
-# user's home directory.
+# user's home directory. Omarchy 4 keeps the active theme under
+# ~/.local/state/omarchy/current while Omarchy 3.x keeps it under
+# ~/.config/omarchy/current. Fresh 3.x installs run this before the first
+# theme is set, so when neither location exists yet, decide by the installed
+# Omarchy version.
+theme_dir=".local/state/omarchy/current/theme"
+if [[ ! -d "$HOME/.local/state/omarchy/current" ]]; then
+  omarchy_version=$(cat "${OMARCHY_PATH:-$HOME/.local/share/omarchy}/version" 2>/dev/null || true)
+  if [[ -d "$HOME/.config/omarchy/current" || ${omarchy_version%%.*} == "3" ]]; then
+    theme_dir=".config/omarchy/current/theme"
+  fi
+fi
 mkdir -p "${CONFIG_DIR}/lua/plugins"
-ln -snf "../../../../.local/state/omarchy/current/theme/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
+ln -snf "../../../../${theme_dir}/neovim.lua" "${CONFIG_DIR}/lua/plugins/theme.lua"
 
 # Restore git working trees from the packaged lazy plugin cache.
 for dir in "$DATA_DIR"/lazy/*/; do
