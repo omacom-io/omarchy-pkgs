@@ -55,8 +55,17 @@ return {
 							if spec[1] == "LazyVim/LazyVim" and spec.opts and spec.opts.colorscheme then
 								local colorscheme = spec.opts.colorscheme
 
-								-- Load the colorscheme plugin
-								require("lazy.core.loader").colorscheme(colorscheme)
+								-- Load the colorscheme plugin. If it's already loaded (old and new
+								-- theme sharing the same plugin, e.g. generic themes on aether.nvim),
+								-- lazy won't rerun setup() on a spec reload and keeps the old
+								-- resolved opts in the plugin's property cache, so fully reload it
+								-- to reapply setup() with the new theme's opts.
+								local theme_plugin = theme_plugin_name and require("lazy.core.config").plugins[theme_plugin_name]
+								if theme_plugin and theme_plugin._.loaded then
+									require("lazy.core.loader").reload(theme_plugin)
+								else
+									require("lazy.core.loader").colorscheme(colorscheme)
+								end
 
 								vim.defer_fn(function()
 									-- Apply the colorscheme (it will set background itself)
