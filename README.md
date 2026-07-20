@@ -158,6 +158,7 @@ AUR sync is metadata-driven. It preserves `.omarchy/`, replaces the package root
 
 ```bash
 bin/repo migrate --arch x86_64       # Promote tested edge artifacts -> stable, then clean + update
+bin/repo migrate --package <name>    # Promote a single package -> stable
 bin/repo migrate --dry-run           # Preview migration and cleanup
 bin/repo list                        # List package metadata
 bin/add-package <package>            # Add an AUR/local package with metadata

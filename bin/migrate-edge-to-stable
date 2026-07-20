@@ -10,12 +10,17 @@ source "$BUILD_ROOT/helpers/paths.sh"
 DRY_RUN=false
 SYNC_REMOTE=""
 SKIP_PROD_CHECK=false
+PACKAGE=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
   --arch)
     ARCH="$2"
     update_arch_paths
+    shift 2
+    ;;
+  --package)
+    PACKAGE="$2"
     shift 2
     ;;
   --dry-run)
@@ -35,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "Options:"
     echo "  --arch <arch>         Target architecture (x86_64 or aarch64, default: x86_64)"
+    echo "  --package <name>      Migrate only the specified package"
     echo "  --dry-run             Preview migration and cleanup without changing files"
     echo "  --sync-remote <path>  Rclone remote for sync (default: pkgs.omarchy.org:omarchy-pkgs)"
     echo "  --skip-prod-check     Skip production environment check during sync"
@@ -67,6 +73,18 @@ if [[ ! -d "$SOURCE_DIR" ]]; then
   exit 1
 fi
 
+# Version segment starts with a digit (same assumption as bin/clean-repo),
+# so omarchy-nvim doesn't also match omarchy-nvim-extras
+PACKAGE_GLOB="*"
+if [[ -n "$PACKAGE" ]]; then
+  print_info "Package: $PACKAGE"
+  PACKAGE_GLOB="$PACKAGE-[0-9]*"
+  if ! compgen -G "$SOURCE_DIR/$PACKAGE_GLOB.pkg.tar.*" >/dev/null; then
+    print_error "No artifacts matching $PACKAGE_GLOB.pkg.tar.* found in $SOURCE_DIR"
+    exit 1
+  fi
+fi
+
 mkdir -p "$TARGET_DIR"
 
 if [[ "$DRY_RUN" == true ]]; then
@@ -74,7 +92,7 @@ if [[ "$DRY_RUN" == true ]]; then
 fi
 
 print_info "Syncing package files from edge to stable (ignore existing)..."
-RSYNC_FLAGS="-av --ignore-existing --include=*/ --include=*.pkg.tar.* --exclude=*"
+RSYNC_FLAGS="-av --ignore-existing --include=*/ --include=$PACKAGE_GLOB.pkg.tar.* --exclude=*"
 if [[ "$DRY_RUN" == true ]]; then
   RSYNC_FLAGS="$RSYNC_FLAGS -n"
 fi
