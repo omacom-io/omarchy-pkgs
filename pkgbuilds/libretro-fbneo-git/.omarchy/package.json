@@ -1,4 +1,5 @@
 {
   "source": "aur",
+  "sync": false,
   "upstream_commit": "c33a5ce38a6a493fe88f092561d5197db1f97a1d"
 }

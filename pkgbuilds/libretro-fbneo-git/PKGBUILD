@@ -1,8 +1,10 @@
 # Maintainer: Alexandre Bouvier <contact@amb.tf>
 # Contributor: Oliver Jaksch <arch-aur@com-in.de>
 _pkgname=libretro-fbneo
+# Intentionally pinned; update this commit manually when needed.
+_commit=074bf135c4c66a216ffbb18ffbf2407f86e25234
 pkgname=$_pkgname-git
-pkgver=1.0.0.02.r7631.g8d2b25c
+pkgver=1.0.0.02.r8581.g074bf13
 pkgrel=1
 epoch=1
 pkgdesc="FinalBurn Neo multi-arcade core"
@@ -14,7 +16,7 @@ depends=('glibc' 'libretro-core-info')
 makedepends=('git' 'libgcc' 'libstdc++' 'zlib')
 provides=("$_pkgname=$pkgver")
 conflicts=("$_pkgname")
-source=("$_pkgname::git+$url.git")
+source=("$_pkgname::git+$url.git#commit=$_commit")
 b2sums=('SKIP')
 
 pkgver() {
