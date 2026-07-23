@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Kristoffer Haugland <stappmus@gmail.com>
+Date: Thu, 25 Jun 2026 23:48:00 +0200
+Subject: [PATCH] Prefer Xe gtidle before fdinfo utilization
+
+The fdinfo collector walks /proc/*/fd and /proc/*/fdinfo on each sample.
+That is much more expensive than sysfs gtidle counters on process-heavy
+desktops. Prefer gtidle when the kernel exposes it, and keep fdinfo as a
+fallback for systems without gtidle.
+---
+ src/linux/btop_collect.cpp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/linux/btop_collect.cpp b/src/linux/btop_collect.cpp
+index 57a2f2d..e816404 100644
+--- a/src/linux/btop_collect.cpp
++++ b/src/linux/btop_collect.cpp
+@@ -2487,8 +2487,10 @@ namespace Gpu {
+ 				st.mem_total = mem_total;
+ 			}
+ 
+-			// Test fdinfo availability
+-			if (not st.pci_slot.empty()) {
++			// Prefer gtidle when the kernel exposes it. fdinfo scans /proc every
++			// sample and is much more expensive on process-heavy desktops.
++			// Systems without gtidle still use fdinfo when available.
++			if (not st.pci_slot.empty() and st.gt_idle.empty()) {
+ 				FdinfoCycles test_cycles = collect_fdinfo_cycles(st.pci_slot);
+ 				st.fdinfo_probe_enabled = true;
+ 				st.fdinfo_next_probe_ns = 0;
+-- 
+2.50.0

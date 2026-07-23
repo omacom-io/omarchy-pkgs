@@ -1,0 +1,37 @@
+pkgname=btop-xe
+pkgver=1.4.7.xe.76530c8
+pkgrel=2
+pkgdesc='btop with Intel Xe GPU support'
+arch=('x86_64')
+url='https://github.com/aristocratos/btop'
+license=('Apache-2.0')
+depends=('glibc' 'hicolor-icon-theme' 'libgcc' 'libstdc++' 'libcap')
+makedepends=('git' 'gcc' 'make' 'libdrm' 'libpciaccess')
+optdepends=('rocm-smi-lib: AMD GPU support')
+provides=('btop')
+conflicts=('btop')
+install=btop-xe.install
+options=('!debug')
+source=(
+  "btop::git+https://github.com/deveworld/btop.git#commit=76530c80dd6184ccb72d7048c2589afdc4bdee52"
+  "prefer-gtidle-for-xe-utilization.patch"
+)
+sha256sums=(
+  'SKIP'
+  '53e0b555589a3333c0e40430988c62221becbeba02ed8c69ca69d452c9439371'
+)
+
+prepare() {
+  cd btop
+  patch -Np1 -i "$srcdir/prefer-gtidle-for-xe-utilization.patch"
+}
+
+build() {
+  cd btop
+  make STATIC= GPU_SUPPORT=true RSMI_STATIC= STRIP=true
+}
+
+package() {
+  cd btop
+  make PREFIX=/usr DESTDIR="$pkgdir" install
+}
