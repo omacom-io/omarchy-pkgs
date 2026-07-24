@@ -1,0 +1,81 @@
+From c4b9162e4f288d8d17c6d0a2cb5f05d9c4a5c4e5 Mon Sep 17 00:00:00 2001
+From: David Heinemeier Hansson <david@hey.com>
+Date: Fri, 24 Jul 2026 07:36:46 -0700
+Subject: [PATCH] launch: clear crash relaunch env after consuming it
+
+The crash handler re-execs the crashed process with __QUICKSHELL_CRASH_INFO_FD,
+__QUICKSHELL_CRASH_DUMP_PID and __QUICKSHELL_CRASH_SIGNAL in its environment,
+with CLOEXEC stripped from the info fd so it survives the exec.
+
+The relaunched shell kept all of that for its lifetime: the variables stayed
+in its environment and the info fd stayed open until shutdown. Every process
+it spawned inherited them, so any quickshell invocation from such a process
+(e.g. `qs ipc` from a script launched by the shell) mistook itself for a
+crash relaunch and booted the crashed instance's config instead of running
+its own command, registering a duplicate instance of the shell.
+
+Consume the relaunch info, then close the fd and unset the variables before
+launching.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ src/launch/main.cpp | 33 +++++++++++++++++++++++----------
+ 1 file changed, 23 insertions(+), 10 deletions(-)
+
+diff --git a/src/launch/main.cpp b/src/launch/main.cpp
+index efd6628..07d5e71 100644
+--- a/src/launch/main.cpp
++++ b/src/launch/main.cpp
+@@ -30,17 +30,31 @@ void checkCrashRelaunch(char** argv, QCoreApplication* coreApplication) {
+ 
+ 	if (!lastInfoFdStr.isEmpty()) {
+ 		auto lastInfoFd = lastInfoFdStr.toInt();
++		auto crashPid = qEnvironmentVariable("__QUICKSHELL_CRASH_DUMP_PID").toInt();
+ 
+-		QFile file;
+-		if (!file.open(lastInfoFd, QFile::ReadOnly, QFile::AutoCloseHandle)) {
+-			qFatal() << "Failed to open crash info fd. Cannot restart.";
++		RelaunchInfo info;
++
++		{
++			QFile file;
++			if (!file.open(lastInfoFd, QFile::ReadOnly, QFile::AutoCloseHandle)) {
++				qFatal() << "Failed to open crash info fd. Cannot restart.";
++			}
++
++			file.seek(0);
++
++			auto ds = QDataStream(&file);
++			ds >> info;
+ 		}
+ 
+-		file.seek(0);
+-
+-		auto ds = QDataStream(&file);
+-		RelaunchInfo info;
+-		ds >> info;
++		// The crash handler stripped CLOEXEC from the info fd and injected the crash
++		// variables into the environment so they survive the re-exec. Both are consumed
++		// at this point and must not leak further: children of the relaunched shell
++		// inherit its environment, so another quickshell invocation from one of them
++		// (e.g. `qs ipc` from a spawned script) would relaunch the crashed config
++		// instead of running its own command.
++		qunsetenv("__QUICKSHELL_CRASH_INFO_FD");
++		qunsetenv("__QUICKSHELL_CRASH_DUMP_PID");
++		qunsetenv("__QUICKSHELL_CRASH_SIGNAL");
+ 
+ 		LogManager::init(
+ 		    !info.noColor,
+@@ -50,8 +64,7 @@ void checkCrashRelaunch(char** argv, QCoreApplication* coreApplication) {
+ 		    info.logRules
+ 		);
+ 
+-		qCritical().nospace() << "Quickshell has crashed under pid "
+-		                      << qEnvironmentVariable("__QUICKSHELL_CRASH_DUMP_PID").toInt()
++		qCritical().nospace() << "Quickshell has crashed under pid " << crashPid
+ 		                      << " (Coredumps will be available under that pid.)";
+ 
+ 		qCritical() << "Further crash information is stored under"
+-- 
+2.55.0
+
