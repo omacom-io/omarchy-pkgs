@@ -1,7 +1,7 @@
 # Maintainer: quellen <lodgerz@gmail.com>
 
 pkgname=libretro-uae-git
-pkgver=443.be625e3
+pkgver=1720.232ec89b
 pkgrel=1
 pkgdesc="A port of the Commodore Amiga Emulator to libretro (WIP)"
 arch=('i686' 'x86_64' 'arm' 'armv6h' 'armv7h')
@@ -13,7 +13,9 @@ makedepends=('git')
 
 _libname=puae_libretro
 _gitname=libretro-uae
-source=("git+https://github.com/libretro/${_gitname}.git")
+# Intentionally pinned to the latest successful repository build.
+_commit=232ec89b068f104caa20853ea058529c36157b82
+source=("git+https://github.com/libretro/${_gitname}.git#commit=$_commit")
 sha256sums=('SKIP')
 
 pkgver() {

@@ -1,8 +1,10 @@
 # Maintainer: Alexandre Bouvier <contact@amb.tf>
 # Contributor: Oliver Jaksch <arch-aur@com-in.de>
 _pkgname=libretro-cap32
+# Intentionally pinned to the latest successful repository build.
+_commit=4abfb8be233bec630f369379fb6c1d92d31f1c7d
 pkgname=$_pkgname-git
-pkgver=4.5.4.r43.g54eabbb
+pkgver=4.5.4.r51.g4abfb8b
 pkgrel=1
 epoch=1
 pkgdesc="Amstrad CPC core"
@@ -14,7 +16,7 @@ depends=('glibc' 'libretro-core-info')
 makedepends=('git')
 provides=("$_pkgname")
 conflicts=("$_pkgname")
-source=("$_pkgname::git+$url.git")
+source=("$_pkgname::git+$url.git#commit=$_commit")
 b2sums=('SKIP')
 
 pkgver() {

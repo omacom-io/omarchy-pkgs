@@ -3,9 +3,11 @@
 # Contributor: quellen <lodgerz@gmail.com>
 # Contributor: Daniel Menelkir <menelkir@itroll.org>
 _pkgbase=libretro-vice
+# Intentionally pinned to the latest successful repository build.
+_commit=fdda9d0cb32604519dbc7fb127058469cb9472be
 pkgname=("$_pkgbase"-{x128,x64,x64dtv,x64sc,xcbm2,xcbm5x0,xpet,xplus4,xscpu64,xvic}-git)
 pkgbase=$_pkgbase-git
-pkgver=r21243.cd9b682
+pkgver=r21255.fdda9d0
 pkgrel=1
 arch=('aarch64' 'armv7h' 'i486' 'i686' 'pentium4' 'x86_64')
 url="https://github.com/libretro/vice-libretro"
@@ -14,7 +16,7 @@ groups=('libretro')
 depends=('glibc' 'libretro-core-info')
 makedepends=('git' 'libgcc' 'libstdc++')
 conflicts=("$pkgbase")
-source=("$_pkgbase::git+$url.git")
+source=("$_pkgbase::git+$url.git#commit=$_commit")
 b2sums=('SKIP')
 
 pkgver() {
