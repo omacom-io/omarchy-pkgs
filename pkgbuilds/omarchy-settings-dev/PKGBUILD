@@ -320,6 +320,10 @@ EOF
     "$pkgdir/etc/skel/.local/share/nautilus-python/extensions/localsend.py"
   install -Dm644 default/nautilus-python/extensions/transcode.py \
     "$pkgdir/etc/skel/.local/share/nautilus-python/extensions/transcode.py"
+  # Tensaku asks for an annotation size on first run unless its persisted
+  # state already names one; seeding it keeps the first screenshot quiet.
+  install -Dm644 default/tensaku/state.toml \
+    "$pkgdir/etc/skel/.local/state/tensaku/state.toml"
 
   # Support binaries needed before the full omarchy package is installed
   # (used by ISO/recovery flows).
