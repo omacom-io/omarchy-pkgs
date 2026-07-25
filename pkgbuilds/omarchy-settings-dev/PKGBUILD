@@ -158,6 +158,7 @@ package() {
   install -Dm644 default/systemd/user/omarchy-recover-internal-monitor.service "$pkgdir/usr/lib/systemd/user/omarchy-recover-internal-monitor.service"
   install -Dm644 default/systemd/user/omarchy-update-user-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"
   install -Dm644 default/systemd/user/omarchy-update-user-notify.path "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.path"
+  install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
 
   # Same for applications/** — used by omarchy-refresh-applications,
   # omarchy-install-gaming-*, etc. to copy .desktop files into ~/.local/share.
