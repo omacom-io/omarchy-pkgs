@@ -62,6 +62,7 @@ backup=(
   'etc/systemd/system/plocate-updatedb.service.d/ac-only.conf'
   'etc/systemd/system.conf.d/20-omarchy-nofile.conf'
   'etc/systemd/user.conf.d/20-omarchy-nofile.conf'
+  'etc/systemd/zram-generator.conf'
   'etc/sddm.conf.d/10-theme.conf'
   'etc/sddm.conf.d/10-wayland.conf'
   'etc/udev/rules.d/99-omarchy-power-profile.rules'
@@ -75,6 +76,7 @@ optdepends=(
   'limine: Bootloader the shipped /etc/mkinitcpio.conf.d/ and /etc/limine-entry-tool.d/ drop-ins are for'
   'limine-mkinitcpio-hook: Picks up the shipped /etc/mkinitcpio.conf.d/omarchy_hooks.conf'
   'limine-snapper-sync: Boot-entry sync for snapper snapshots'
+  'zram-generator: Reads the shipped /etc/systemd/zram-generator.conf to create the compressed swap device'
   'snapper: Used with the shipped /etc/snapper/config-templates/omarchy template'
 )
 
