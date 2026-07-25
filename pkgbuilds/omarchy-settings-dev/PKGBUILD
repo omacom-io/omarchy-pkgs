@@ -53,6 +53,7 @@ backup=(
   'etc/sysctl.d/90-omarchy-file-watchers.conf'
   'etc/modprobe.d/omarchy-usb-autosuspend.conf'
   'etc/systemd/logind.conf.d/10-ignore-power-button.conf'
+  'etc/systemd/logind.conf.d/20-inhibit-delay.conf'
   'etc/systemd/resolved.conf.d/10-disable-multicast.conf'
   'etc/systemd/resolved.conf.d/20-docker-dns.conf'
   'etc/systemd/system.conf.d/10-faster-shutdown.conf'
