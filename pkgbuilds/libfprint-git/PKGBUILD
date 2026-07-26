@@ -1,15 +1,13 @@
 # Maintainer: Mikko Nyman <mikko@nyman.xyz>
 # Based on the Arch libfprint package by Jan Alexander Steffens (heftig).
 #
-# Tracks libfprint master to expose the focaltech_moc driver updates for
-# ASUS laptops with FocalTech MOC (Match-on-Chip) fingerprint sensors.
-# Mainline libfprint releases (1.94.x) do not yet ship the latest device
-# IDs, including USB ID 2808:a97a (FocalTech FT9349 ESS, ASUS ExpertBook
-# Ultra B9406CAA). The patch for 2808:a97a has landed upstream; keep the
-# fallback patch only for older refs where the ID is still missing.
+# Carried the focaltech_moc driver and the FocalTech FT9349 device ID
+# (USB 2808:a97a, ASUS ExpertBook Ultra B9406CAA) while mainline libfprint
+# releases (1.94.x) lacked them. libfprint 1.94.100 ships both, so Omarchy
+# has moved back to stock libfprint and no longer installs this package.
 #
-# Once Arch's libfprint catches up, this package can be removed from the
-# OPR repo and Omarchy can install stock libfprint.
+# Kept around pinned to the last known good commit as an escape hatch;
+# the fallback patch stays for the conditional in prepare().
 
 pkgname=libfprint-git
 pkgver=1.94.10.r12.gd79f157
@@ -45,7 +43,7 @@ provides=(libfprint libfprint-2.so)
 conflicts=(libfprint)
 groups=(fprint)
 source=(
-  "git+https://gitlab.freedesktop.org/libfprint/libfprint.git"
+  "git+https://gitlab.freedesktop.org/libfprint/libfprint.git#commit=d79f157282085738ea8ffbe8c2ae96fb8b3ad831"
   "focaltech_moc-add-pid-0xA97A.patch"
 )
 b2sums=(
