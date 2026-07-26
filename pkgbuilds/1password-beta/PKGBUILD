@@ -1,6 +1,6 @@
 pkgname=1password-beta
 
-_tarver=8.12.24-31.BETA
+_tarver=8.12.30-19.BETA
 case "${CARCH}" in
     x86_64)
         _archdir="x64"
@@ -10,7 +10,7 @@ case "${CARCH}" in
         ;;
 esac
 pkgver=${_tarver//-/_}
-pkgrel=31.1
+pkgrel=19.1
 conflicts=('1password' '1password-beta-bin')
 pkgdesc="Password manager and secure wallet"
 arch=('x86_64' 'aarch64')
@@ -22,10 +22,10 @@ source=()
 sha256sums=()
 source_x86_64=(https://downloads.1password.com/linux/tar/beta/x86_64/1password-${_tarver}.x64.tar.gz{,.sig})
 source_aarch64=(https://downloads.1password.com/linux/tar/beta/aarch64/1password-${_tarver}.arm64.tar.gz{,.sig})
-sha256sums_x86_64=('67c9d0ccbe59d0ffcbab5a9cc9a326912e011d184572e653878f9bc6b8cea059'
-                   '2009e5282afb6f4d4fdb1f3537193de7fc30d37b2781534f5aebc7291f677327')
-sha256sums_aarch64=('46f37c269ff95d94aa260338965dc5e3c9b4989ab1ae00f7243bd9e49a8d4635'
-                    '9516c04b69fada825d520aa421e27e4642c624a077aa74bcee58272e470b7904')
+sha256sums_x86_64=('5436009feee46e985da362f95578d7201a985cba4bf0eef015bcae99e49ed691'
+                   '418350d51a156dafa1273fe97ccad110de1d066800d2a69389c0c5385a6f5a2d')
+sha256sums_aarch64=('140d4d62c0e135fb2855c90d839fa0bcbf6faecd65692d53ec5039c9d399c4cd'
+                    'e71864baedce1e01b7a1ceb968b274cf79ed0c53a052dfe650e2f9e6348b53d3')
 validpgpkeys=('3FEF9748469ADBE15DA7CA80AC2D62742012EA22')
 
 package() {
