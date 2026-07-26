@@ -156,8 +156,14 @@ package() {
   install -Dm644 default/systemd/user/bt-agent.service "$pkgdir/usr/lib/systemd/user/bt-agent.service"
   install -Dm644 default/systemd/user/omarchy-sleep-lock.service "$pkgdir/usr/lib/systemd/user/omarchy-sleep-lock.service"
   install -Dm644 default/systemd/user/omarchy-recover-internal-monitor.service "$pkgdir/usr/lib/systemd/user/omarchy-recover-internal-monitor.service"
-  install -Dm644 default/systemd/user/omarchy-update-user-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"
-  install -Dm644 default/systemd/user/omarchy-update-user-notify.path "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.path"
+  install -Dm644 default/systemd/user/omarchy-migrate-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-migrate-notify.service"
+  # Compatibility alias for the old unit name. Existing users have an absolute
+  # graphical-session.target.wants symlink to this path from when they were set
+  # up, and the migration that repoints it only runs for users who actually run
+  # an update -- which is the opposite of who this notifier is for. Without the
+  # alias their symlink dangles and they are never told about pending
+  # migrations. Droppable once installs have run migration 1785095882.
+  ln -sfn omarchy-migrate-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"
   install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
 
   # Same for applications/** — used by omarchy-refresh-applications,
