@@ -21,6 +21,14 @@ if [[ "$DRY_RUN" != true ]]; then
 
   mkdir -p "$BUILD_OUTPUT_DIR" "$FINAL_OUTPUT_DIR"
 
+  # Bring the container up to date before any makedepends are installed. The
+  # image is layer-cached, so its glibc drifts behind the mirror while makepkg
+  # -s pulls makedepends from the freshly synced database -- a partial upgrade
+  # that breaks the new packages (imagemagick wanting GLIBC_2.44, etc).
+  # Done before the Omarchy repos are added so only core/extra participate.
+  echo "==> Updating build container packages..."
+  sudo pacman -Syu --noconfirm
+
   # Configure Omarchy repositories for dependency resolution
   echo "==> Configuring Omarchy repositories for dependency resolution..."
 
