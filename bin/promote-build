@@ -109,28 +109,60 @@ else
     exit 1
   fi
 
+  # VCS packages (omarchy-dev and friends) are versioned off the upstream commit,
+  # so rebuilding the same commit produces the same filename. That is harmless
+  # when the artifact is identical — a run that promoted but died before the
+  # database was updated leaves exactly this state, and failing here would wedge
+  # every later run. Re-promoting *different* content under a published filename
+  # is the real hazard, so only that aborts.
   echo "==> Checking for existing files in production..."
   CONFLICTS=()
+  declare -A ALREADY_PROMOTED=()
   for pkg_file in *.pkg.tar.*; do
     # Skip build database files
     [[ "$pkg_file" == omarchy-build.db* ]] && continue
     [[ "$pkg_file" == omarchy-build.files* ]] && continue
+    [[ "$pkg_file" == *.sig ]] && continue
     [[ ! -f "$pkg_file" ]] && continue
 
     if [[ -f "$REPO_DIR/$pkg_file" ]]; then
+      if cmp -s "$pkg_file" "$REPO_DIR/$pkg_file"; then
+        ALREADY_PROMOTED["$pkg_file"]=1
+      else
+        CONFLICTS+=("$pkg_file")
+      fi
+    fi
+  done
+
+  # Signatures carry a timestamp, so a re-signed package never matches byte for
+  # byte. Judge them by the package they sign and keep the published signature.
+  for pkg_file in *.pkg.tar.*.sig; do
+    [[ ! -f "$pkg_file" ]] && continue
+    [[ -f "$REPO_DIR/$pkg_file" ]] || continue
+
+    if [[ -n "${ALREADY_PROMOTED[${pkg_file%.sig}]:-}" ]]; then
+      ALREADY_PROMOTED["$pkg_file"]=1
+    else
       CONFLICTS+=("$pkg_file")
     fi
   done
 
   if [[ ${#CONFLICTS[@]} -gt 0 ]]; then
     echo ""
-    print_error "ERROR: The following packages already exist in production:"
+    print_error "ERROR: The following packages already exist in production with different contents:"
     for conflict in "${CONFLICTS[@]}"; do
       echo "  - $conflict"
     done
     echo ""
-    print_error "Packages already exist in pkgs.omarchy.org!"
+    print_error "Refusing to replace published packages in pkgs.omarchy.org!"
     exit 1
+  fi
+
+  if [[ ${#ALREADY_PROMOTED[@]} -gt 0 ]]; then
+    print_info "Already in production (identical, skipping): ${#ALREADY_PROMOTED[@]} file(s)"
+    for promoted in "${!ALREADY_PROMOTED[@]}"; do
+      echo "  - $promoted"
+    done
   fi
 
   print_info "Moving packages to production..."
@@ -141,6 +173,7 @@ else
     [[ "$pkg_file" == omarchy-build.db* ]] && continue
     [[ "$pkg_file" == omarchy-build.files* ]] && continue
     [[ ! -f "$pkg_file" ]] && continue
+    [[ -n "${ALREADY_PROMOTED[$pkg_file]:-}" ]] && continue
 
     # Use mv to prevent race condition caused by cp
     if mv -v "$pkg_file" "$REPO_DIR/"; then
