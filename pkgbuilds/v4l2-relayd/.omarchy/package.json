@@ -1,5 +1,6 @@
 {
   "source": "aur",
+  "sync": false,
   "pkgrel": {
     "suffix": 2,
     "offset": 1
