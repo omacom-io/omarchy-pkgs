@@ -1,9 +1,9 @@
 [Unit]
-Description=Check package versions every 6 hours
+Description=Check package versions every hour
 
 [Timer]
-# Run every 6 hours at :30 (after GitHub sync at :00)
-OnCalendar=*-*-* 00,06,12,18:30:00 America/New_York
+# Run hourly at :30 (after GitHub sync at :00)
+OnCalendar=*-*-* *:30:00 America/New_York
 Persistent=true
 
 [Install]
