@@ -165,6 +165,7 @@ package() {
   # migrations. Droppable once installs have run migration 1785095882.
   ln -sfn omarchy-migrate-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"
   install -Dm644 default/systemd/user/omarchy-tailscale-receive.service "$pkgdir/usr/lib/systemd/user/omarchy-tailscale-receive.service"
+  install -Dm644 default/systemd/user/omarchy-fcitx5.service "$pkgdir/usr/lib/systemd/user/omarchy-fcitx5.service"
   install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
 
   # Same for applications/** — used by omarchy-refresh-applications,
