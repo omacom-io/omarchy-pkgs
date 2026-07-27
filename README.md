@@ -385,13 +385,13 @@ The repository includes GitHub workflows and systemd services for automated rele
 
 #### GitHub Workflows
 
-1. **sync-aur.yml** (Every 6 hours): Syncs AUR packages according to `.omarchy/package.json` and opens a PR when changes are found.
+1. **sync-aur.yml** (Hourly): Syncs AUR packages according to `.omarchy/package.json` and opens a PR when changes are found.
 
 #### Systemd Services
 
-1. **check-versions** (Every 6 hours at :30): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
-2. **auto-release-edge** (Every 6 hours at +1:00): If state file exists, builds all edge packages that need updates
-3. **auto-release-stable** (Every 6 hours at +1:00): If state file exists, builds `release_ring=fast` packages for stable (runs in parallel with edge)
+1. **check-versions** (Hourly at :30): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
+2. **auto-release-edge** (Hourly at :00): If state file exists, builds all edge packages that need updates
+3. **auto-release-stable** (Hourly at :00): If state file exists, builds `release_ring=fast` packages for stable (runs in parallel with edge)
 
 State files are stored in `/root/.state/`:
 - `.sync-needed-edge`
@@ -401,8 +401,8 @@ State files are stored in `/root/.state/`:
 
 | Time | Action |
 |------|--------|
-| 00:30, 06:30, 12:30, 18:30 | check-versions (git pull + creates state files) |
-| 01:00, 07:00, 13:00, 19:00 | auto-release-edge + auto-release-stable (parallel) |
+| Every hour at :30 | check-versions (git pull + creates state files) |
+| Every hour at :00 | auto-release-edge + auto-release-stable (parallel) |
 
 ### Installation
 
