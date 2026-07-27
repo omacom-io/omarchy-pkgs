@@ -1,6 +1,6 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=omarchy-nvim
-pkgver=2026.7.23
+pkgver=2026.7.27
 pkgrel=1
 pkgdesc="Pre-built LazyVim configuration with cached plugins"
 arch=('any')
@@ -78,6 +78,12 @@ package() {
   cp -a "$pkgdir/usr/share/$pkgname/data" "$pkgdir/etc/skel/.local/share/nvim"
   ln -snf "../../../../.local/state/omarchy/current/theme/neovim.lua" \
     "$pkgdir/etc/skel/.config/nvim/lua/plugins/theme.lua"
+
+  # Ship the plugin cache once, now that /etc/skel has its copy. Keeping a
+  # second one under /usr/share made omarchy-nvim the largest package in an
+  # Omarchy install after noto-fonts-cjk — ~116 MiB installed, ~88 MB of it read
+  # off the ISO on every install. config/ stays: migrations read it from there.
+  rm -rf "$pkgdir/usr/share/$pkgname/data"
 
   # Install setup/refresh commands to /usr/bin. setup fills missing pieces;
   # refresh explicitly backs up and overwrites with the same /etc/skel defaults

@@ -49,14 +49,15 @@ EOF
 done
 
 # Prefer /etc/skel so legacy setup/refresh uses the exact seed copied into new
-# users' homes. Fall back to the package share dir for older package layouts.
-if [[ ! -d "$CONFIG_SOURCE_DIR" || ! -d "$DATA_SOURCE_DIR" ]]; then
+# users' homes. Only the config tree still has a package-dir copy to fall back
+# on for older package layouts; the plugin cache ships once, in /etc/skel.
+if [[ ! -d "$CONFIG_SOURCE_DIR" ]]; then
   CONFIG_SOURCE_DIR="$PACKAGE_DIR/config"
-  DATA_SOURCE_DIR="$PACKAGE_DIR/data"
 fi
 
 if [[ ! -d "$CONFIG_SOURCE_DIR" || ! -d "$DATA_SOURCE_DIR" ]]; then
-  echo "Error: omarchy-nvim defaults not found; is omarchy-nvim installed?" >&2
+  echo "Error: omarchy-nvim defaults not found in $CONFIG_SOURCE_DIR / $DATA_SOURCE_DIR." >&2
+  echo "The package owns both; restore them with: sudo pacman -S omarchy-nvim" >&2
   exit 1
 fi
 
