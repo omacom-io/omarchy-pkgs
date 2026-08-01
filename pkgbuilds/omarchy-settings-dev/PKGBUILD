@@ -62,6 +62,7 @@ backup=(
   'etc/systemd/system/plocate-updatedb.service.d/ac-only.conf'
   'etc/systemd/system.conf.d/20-omarchy-nofile.conf'
   'etc/systemd/user.conf.d/20-omarchy-nofile.conf'
+  'etc/systemd/oomd.conf.d/10-omarchy.conf'
   'etc/systemd/zram-generator.conf'
   'etc/sddm.conf.d/10-theme.conf'
   'etc/sddm.conf.d/10-wayland.conf'
@@ -168,6 +169,10 @@ package() {
   ln -sfn omarchy-migrate-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"
   install -Dm644 default/systemd/user/omarchy-tailscale-receive.service "$pkgdir/usr/lib/systemd/user/omarchy-tailscale-receive.service"
   install -Dm644 default/systemd/user/omarchy-fcitx5.service "$pkgdir/usr/lib/systemd/user/omarchy-fcitx5.service"
+  # Marks app.slice (and only app.slice) as a systemd-oomd kill candidate, so
+  # memory pressure costs one app scope instead of the compositor session.
+  # Thresholds live in etc/systemd/oomd.conf.d/10-omarchy.conf.
+  install -Dm644 default/systemd/user/app.slice.d/10-oomd.conf "$pkgdir/usr/lib/systemd/user/app.slice.d/10-oomd.conf"
   install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
 
   # Same for applications/** — used by omarchy-refresh-applications,
