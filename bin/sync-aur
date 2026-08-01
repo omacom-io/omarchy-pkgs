@@ -272,6 +272,27 @@ apply_pkgrel_override() {
   return 0
 }
 
+clone_aur_package() {
+  local aur_package="$1"
+  local dest="$2"
+  local clone_log="$TEMP_DIR/clone.log"
+  local attempt
+
+  for attempt in 1 2 3; do
+    rm -rf "$dest"
+    if git clone "https://aur.archlinux.org/${aur_package}.git" "$dest" >"$clone_log" 2>&1; then
+      return 0
+    fi
+    if [[ $attempt -lt 3 ]]; then
+      print_warning "Clone of $aur_package failed (attempt $attempt/3), retrying in 10s..."
+      sleep 10
+    fi
+  done
+
+  print_warning "Failed to clone $aur_package after 3 attempts: $(tail -n 1 "$clone_log")"
+  return 1
+}
+
 sync_package() {
   local package="$1"
   local package_dir="$PKGBUILDS_DIR/$package"
@@ -310,10 +331,14 @@ sync_package() {
   fi
 
   cd "$TEMP_DIR"
-  rm -rf "$aur_package"
 
-  if ! git clone "https://aur.archlinux.org/${aur_package}.git" "$aur_package" >/dev/null 2>&1; then
-    print_warning "Failed to clone $aur_package (may not exist in AUR)"
+  if ! clone_aur_package "$aur_package" "$TEMP_DIR/$aur_package"; then
+    ((++FAILED))
+    return 0
+  fi
+
+  if [[ ! -f "$TEMP_DIR/$aur_package/PKGBUILD" ]]; then
+    print_warning "AUR repository for $aur_package is empty (package does not exist in AUR)"
     ((++FAILED))
     return 0
   fi
