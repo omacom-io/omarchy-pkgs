@@ -1,6 +1,6 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=omarchy-nvim
-pkgver=2026.7.27
+pkgver=2026.8.1
 pkgrel=1
 pkgdesc="Pre-built LazyVim configuration with cached plugins"
 arch=('any')
@@ -38,6 +38,52 @@ build() {
   nvim --headless \
     "+Lazy! sync" \
     "+qa!" || true
+
+  echo "Slimming plugin repos..."
+  slim_lazy_repos "$XDG_DATA_HOME/nvim"
+}
+
+slim_lazy_repos() {
+  local data_dir="$1"
+  local dir
+
+  for dir in "$data_dir"/lazy/*/; do
+    [[ -d "$dir/.git" ]] || continue
+
+    # Exclude test suites via sparse-checkout rather than rm: the worktree
+    # stays clean, so the restore pass in package() does not resurrect them
+    # and future :Lazy checkouts keep honoring the exclusion. snacks.nvim
+    # alone ships 18 MB of tests.
+    git -C "$dir" sparse-checkout set --no-cone '/*' '!/test/' '!/tests/' '!/spec/'
+
+    # Cut history down to the checked-out tips: drop the refs that pin older
+    # objects, mark every remaining tip as a shallow boundary, then gc. This
+    # is half the package -- ~70 MB of .git across the plugins. `git fetch`
+    # into a shallow repo stays shallow and re-fetches tags, so :Lazy update
+    # still works.
+    git -C "$dir" symbolic-ref -d refs/remotes/origin/HEAD 2>/dev/null || true
+    git -C "$dir" for-each-ref --format='%(refname)' refs/remotes refs/tags |
+      while IFS= read -r ref; do
+        git -C "$dir" update-ref -d "$ref"
+      done
+    rm -f "$dir/.git/FETCH_HEAD" "$dir/.git/ORIG_HEAD"
+    {
+      git -C "$dir" rev-parse HEAD
+      git -C "$dir" for-each-ref --format='%(objectname)' refs/heads
+    } | sort -u >"$dir/.git/shallow"
+    git -C "$dir" reflog expire --expire=all --all
+
+    # lazy.nvim clones with --filter=blob:none, which marks the pack as a
+    # promisor pack that gc refuses to repack or prune. The repo is shallow
+    # at its tips now, so everything reachable exists locally: drop the
+    # promisor markers and the stale commit-graph, then gc for real. Future
+    # fetches simply run unfiltered.
+    git -C "$dir" config --unset-all remote.origin.promisor || true
+    git -C "$dir" config --unset-all remote.origin.partialclonefilter || true
+    rm -f "$dir/.git/objects/pack/"*.promisor "$dir/.git/objects/info/commit-graph"
+    rm -rf "$dir/.git/objects/info/commit-graphs"
+    git -C "$dir" -c gc.writeCommitGraph=false gc --prune=now --quiet
+  done
 }
 
 restore_lazy_worktrees() {
