@@ -1,7 +1,7 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
 pkgname=omacalc
-pkgver=0.1.1
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='Dead-simple calculator built with Qt Quick'
 arch=('x86_64' 'aarch64')
@@ -24,7 +24,7 @@ makedepends=(
 source=("$pkgname-$pkgver.tar.gz::https://github.com/omacom-io/omacalc/archive/refs/tags/v$pkgver.tar.gz"
         'omacalc.desktop'
         'omacalc.svg')
-sha256sums=('34e354cac96549b457d52c24da71c98c3a6cfad01c625162d4c67e91193d81b1'
+sha256sums=('4f15ddada96a6e7f1b64b9c214efbdcebd316ae2643f7db08d11fe6c790b66bc'
             'a8697a8606ab2ff6323e2923a835b1d3312e03f20614b71b1d5db57c84c93306'
             'a6366f7167e657dd3be9c129a533fccc007dfb644db505f07068ad5a5986d34d')
 
