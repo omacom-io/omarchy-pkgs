@@ -130,7 +130,7 @@ jq_filter='{source: $source}'
 
 if [[ "$SOURCE" == "aur" && -n "$AUR_PACKAGE" && "$AUR_PACKAGE" != "$PACKAGE" ]]; then
   jq_args+=(--arg aur "$AUR_PACKAGE")
-  jq_filter="$jq_filter + {aur: $aur}"
+  jq_filter="$jq_filter + {aur: \$aur}"
 fi
 
 if [[ "$SOURCE" == "aur" && "$SYNC" == "false" ]]; then
@@ -139,7 +139,7 @@ fi
 
 if [[ -n "$RELEASE_RING" ]]; then
   jq_args+=(--arg release_ring "$RELEASE_RING")
-  jq_filter="$jq_filter + {release_ring: $release_ring}"
+  jq_filter="$jq_filter + {release_ring: \$release_ring}"
 fi
 
 jq -n "${jq_args[@]}" "$jq_filter" > "$METADATA_FILE"
