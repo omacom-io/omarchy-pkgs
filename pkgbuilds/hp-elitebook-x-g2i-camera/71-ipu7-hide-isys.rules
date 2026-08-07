@@ -1,0 +1,16 @@
+# Hide raw IPU7 ISYS capture devices from applications.
+#
+# The IPU7 exposes 32 raw ISYS nodes (/dev/video0..31). They carry raw Bayer and
+# cannot produce usable frames on their own, but browsers offer every one of
+# them as a selectable camera. The usable device is /dev/video50, fed by
+# hp-elitebook-x-g2i-camera.service.
+#
+# This rule MUST run after 70-uaccess.rules (which adds TAG="uaccess" to
+# video4linux) but BEFORE 73-seat-late.rules (which applies per-user ACLs from
+# that tag), hence the 71- prefix. MODE=0600 + GROUP=root blocks even users in
+# the 'video' group; the service reads these nodes as root.
+#
+# Same rule as intel-ipu7-camera ships. Only one of the two packages is ever
+# installed on a given machine (they are gated on different sensors), and the
+# file name matches so they cannot both land.
+SUBSYSTEM=="video4linux", ATTR{name}=="Intel IPU7 ISYS Capture *", TAG-="uaccess", TAG-="seat", MODE="0600", GROUP="root"

@@ -1,0 +1,282 @@
+#!/bin/bash
+# HP EliteBook X G2i — CamHAL-free webcam pipeline.
+#
+# WHY: Intel's CamHAL/psys stack cannot work on this machine. Root cause found
+# 2026-08-06 with cameraDebug=0xFF: the graph settings binary
+# (OV05C10_CJFPE50.IPU75XA.bin) is built for a 2944-wide sensor readout, but
+# ov05c10 exposes 2888x1808. CamHAL computes "Isp raw crop [0, 88, -56, 88],
+# wxh [2944 x 1632]" -- a negative crop -- and psys processes frames from an
+# impossible region, emitting black. psys itself is fine (it logs "frame id N is
+# done"). Correct graph settings need Intel's internal tooling; HP's Windows
+# binary loads but contains no matching settings. So bypass psys and CamHAL:
+#
+#   ov05c10 -> CSI2 -> ISYS (raw Bayer) -> debayer/scale -> FIFO -> v4l2loopback
+#
+# ARCHITECTURE — why the FIFO. Two constraints have to hold at once:
+#
+#   1. Chrome only lists a V4L2 device that advertises CAPTURE *without* OUTPUT.
+#      That needs v4l2loopback exclusive_caps=1, which reports capture-only only
+#      while a writer is attached. So a writer must exist AT ALL TIMES, even when
+#      nothing is using the camera. (With exclusive_caps=0 the device reports
+#      Capture+Output and Chrome ignores it entirely -- Firefox and OBS do not
+#      care, which is why they worked when Chrome did not.)
+#   2. The privacy LED follows the SENSOR, not the writer. Keeping the sensor
+#      streaming just to keep a writer alive left the LED lit from login onwards.
+#
+# So: ONE persistent ffmpeg holds $LOOP open forever, reading NV12 from a FIFO.
+# The script keeps the FIFO's write end open (fd 3) so that ffmpeg never sees
+# EOF. A source feeder writes into fd 3 and is what switches:
+#   idle   -> black frames, sensor powered down, LED off
+#   in use -> real sensor pipeline
+# Swapping the feeder never disturbs the loopback writer, so consumers are not
+# interrupted. An earlier design swapped the writer itself and camera opens fell
+# to 0/5.
+#
+# NOTE: raw buffer stride is 5824 bytes, not 2888*2=5776 -- decode 2912 wide and
+# crop. 10-bit data sits in 16-bit containers, hence the x64 level scale.
+
+set -u
+RAW=${RAW:-/dev/video0}
+LOOP=${LOOP:-/dev/video50}
+SUBDEV=${SUBDEV:-/dev/v4l-subdev4}
+M=${M:-/dev/media0}
+SENSOR="ov05c10 1-0010"
+CSI="Intel IPU7 CSI2 0"
+CAP="Intel IPU7 ISYS Capture 0"
+FMT=SGRBG10_1X10/2888x1808
+OUT_W=${OUT_W:-1920}
+OUT_H=${OUT_H:-1080}
+
+# Static white balance (CamHAL's AWB is bypassed and this sensor exposes no
+# V4L2_CID_RED_BALANCE/BLUE_BALANCE). Gray-world gains measured on this camera:
+# raw means R 78.1 / G 104.2 / B 89.5 => R x1.5, B x1.25 to equalise.
+WB_R=${WB_R:-1.50}
+WB_B=${WB_B:-1.25}
+
+# AE
+AE_TARGET=${AE_TARGET:-105}
+AE_TOL=${AE_TOL:-14}
+AE_INTERVAL=${AE_INTERVAL:-3}
+EXP_MIN=6; EXP_MAX=3687
+GAIN_MIN=16; GAIN_MAX=248
+# Digital gain was previously never used and sat at its minimum (64), so in a dim
+# room AE pinned exposure+analogue gain at max and still delivered a dark frame.
+# Last resort after both of those max out (it amplifies noise too).
+DGAIN_MIN=64; DGAIN_MAX=256
+
+IDLE_STOP=${IDLE_STOP:-5}     # seconds without a consumer before powering the sensor down
+POLL=${POLL:-1}
+
+SRCFIFO=$(mktemp -u /tmp/hp-g2i-src-XXXX.fifo)
+STOPFLAG=$(mktemp -u /tmp/hp-g2i-stop-XXXX)
+BLACKFRAME=$(mktemp /tmp/hp-g2i-black-XXXX.nv12)
+AE_STATS=$(mktemp /tmp/hp-g2i-ae-XXXX.log)
+WRITER=""; SENSORFEED=""; IDLEFEED=""; AE=""; SEEDED=0
+
+log() { echo "$(date +%T) $*"; }
+
+# Filter kills by /proc/PID/comm so a shell can never be a target -- pkill -f
+# repeatedly matched the calling shell's own command line during development.
+kill_by_comm() {
+  local pat="$1"; shift
+  local p c a
+  for p in $(pgrep -f "$pat" 2>/dev/null); do
+    c=$(tr -d '\0' </proc/"$p"/comm 2>/dev/null)
+    for a in "$@"; do [ "$c" = "$a" ] && kill -9 "$p" 2>/dev/null; done
+  done
+}
+
+cleanup() {
+  [ -n "$SENSORFEED" ] && kill -9 "$SENSORFEED" 2>/dev/null
+  [ -n "$IDLEFEED" ]   && kill -9 "$IDLEFEED"   2>/dev/null
+  [ -n "$AE" ]         && kill -9 "$AE"         2>/dev/null
+  [ -n "$WRITER" ]     && kill -9 "$WRITER"     2>/dev/null
+  kill_by_comm "v4l2-ctl -d $RAW --stream-mmap" v4l2-ctl
+  kill_by_comm "bayer_grbg16le" ffmpeg
+  exec 3>&- 2>/dev/null
+  rm -f "$SRCFIFO" "$BLACKFRAME" "$AE_STATS" "$AE_STATS.tmp" "$STOPFLAG"
+}
+trap cleanup EXIT INT TERM
+
+# --- one proper black NV12 frame (Y=16, UV=128; all-zero NV12 renders green) ---
+make_black_frame() {
+  local ysz=$(( OUT_W * OUT_H )) uvsz=$(( OUT_W * OUT_H / 2 ))
+  head -c "$ysz"  /dev/zero | tr '\0' '\020' >  "$BLACKFRAME"
+  head -c "$uvsz" /dev/zero | tr '\0' '\200' >> "$BLACKFRAME"
+}
+
+# Stop whatever is feeding the FIFO WITHOUT leaving a partial frame in it.
+stop_feeders() {
+  if [ -n "$IDLEFEED" ]; then
+    touch "$STOPFLAG"                      # let it finish the current frame
+    local w=0
+    while kill -0 "$IDLEFEED" 2>/dev/null && [ $w -lt 30 ]; do sleep 0.1; w=$((w+1)); done
+    kill -9 "$IDLEFEED" 2>/dev/null
+    IDLEFEED=""
+  fi
+  if [ -n "$SENSORFEED" ]; then
+    # SIGTERM so ffmpeg flushes the frame it is mid-way through, then exits.
+    kill -TERM "$SENSORFEED" 2>/dev/null
+    kill_by_comm "v4l2-ctl -d $RAW --stream-mmap" v4l2-ctl
+    local w=0
+    while kill -0 "$SENSORFEED" 2>/dev/null && [ $w -lt 40 ]; do sleep 0.1; w=$((w+1)); done
+    kill -9 "$SENSORFEED" 2>/dev/null
+    SENSORFEED=""
+  fi
+  [ -n "$AE" ] && kill -9 "$AE" 2>/dev/null
+  AE=""
+  kill_by_comm "v4l2-ctl -d $RAW --stream-mmap" v4l2-ctl
+  kill_by_comm "bayer_grbg16le" ffmpeg
+  rm -f "$STOPFLAG"
+}
+
+start_idlefeed() {
+  [ -n "$IDLEFEED" ] && return
+  rm -f "$STOPFLAG"
+  # MUST exit on a frame boundary. The FIFO carries raw NV12 with no framing, so
+  # a partial write desyncs the stream permanently -- every later frame ends up
+  # split across two, which shows as a torn image with green/magenta bands
+  # (Y and UV planes misaligned). Hence a flag checked between whole frames
+  # rather than a kill.
+  ( while [ ! -e "$STOPFLAG" ]; do
+      cat "$BLACKFRAME" >&3 2>/dev/null || exit 0
+      sleep 0.5
+    done ) &
+  IDLEFEED=$!
+  log "sensor idle — feeding black (LED off)"
+}
+
+configure_sensor() {
+  # A previous stop leaves this link disabled; it MUST be re-enabled or
+  # VIDIOC_STREAMON returns ENOLINK ("Link has been severed").
+  media-ctl -d "$M" -l "\"$CSI\":1 -> \"$CAP\":0 [1]"      >/dev/null 2>&1
+  media-ctl -d "$M" -V "\"$SENSOR\":0 [fmt:$FMT]"          >/dev/null 2>&1
+  media-ctl -d "$M" -V "\"$CSI\":0 [fmt:$FMT]"             >/dev/null 2>&1
+  media-ctl -d "$M" -V "\"$CSI\":1 [fmt:$FMT]"             >/dev/null 2>&1
+  v4l2-ctl -d "$RAW" --set-fmt-video=width=2888,height=1808,pixelformat=BA10 >/dev/null 2>&1
+  # Seed AE once; the sensor retains exposure/gain across stop/start, so
+  # re-seeding every session made each one start dark and re-converge.
+  if [ "$SEEDED" = 0 ]; then
+    v4l2-ctl -d "$SUBDEV" --set-ctrl=exposure=1800    >/dev/null 2>&1
+    v4l2-ctl -d "$SUBDEV" --set-ctrl=analogue_gain=90 >/dev/null 2>&1
+    SEEDED=1
+  fi
+}
+
+start_sensorfeed() {
+  if [ -n "$IDLEFEED" ]; then
+    touch "$STOPFLAG"
+    local w=0
+    while kill -0 "$IDLEFEED" 2>/dev/null && [ $w -lt 30 ]; do sleep 0.1; w=$((w+1)); done
+    kill -9 "$IDLEFEED" 2>/dev/null
+    IDLEFEED=""
+    rm -f "$STOPFLAG"
+  fi
+  configure_sensor
+  log "consumer present — starting sensor (LED on)"
+  # metadata=print logs via av_log at INFO level, so -loglevel error would
+  # discard it. The split branch feeds AE without opening $LOOP again: sampling
+  # the device competed with real consumers (opens fell to 2/10).
+  ( ffmpeg -hide_banner -loglevel info -nostdin \
+      -f rawvideo -pix_fmt bayer_grbg16le -s 2912x1808 -framerate 30 \
+      -i <(v4l2-ctl -d "$RAW" --stream-mmap --stream-count=0 --stream-to=- 2>/dev/null) \
+      -filter_complex "[0:v]crop=2888:1808:0:0,format=rgb48le,colorlevels=rimax=0.0156:gimax=0.0156:bimax=0.0156,colorchannelmixer=rr=${WB_R}:gg=1.0:bb=${WB_B},scale=${OUT_W}:${OUT_H},format=nv12,split=2[out][st];[st]select='not(mod(n\,60))',signalstats,metadata=print,null[stats]" \
+      -map "[out]" -f rawvideo -pix_fmt nv12 pipe:1 \
+      -map "[stats]" -f null /dev/null 2>"$AE_STATS" >&3 ) &
+  SENSORFEED=$!
+
+  ( sleep 6
+    while kill -0 "$SENSORFEED" 2>/dev/null; do
+      mean=$(grep -a 'YAVG' "$AE_STATS" 2>/dev/null | tail -1 | sed 's/.*YAVG=//')
+      mean=${mean%%.*}
+      if [ "$(stat -c%s "$AE_STATS" 2>/dev/null || echo 0)" -gt 500000 ]; then
+        tail -c 20000 "$AE_STATS" > "$AE_STATS.tmp" 2>/dev/null && mv "$AE_STATS.tmp" "$AE_STATS"
+      fi
+      if [ -n "$mean" ] 2>/dev/null; then
+        exp=$(v4l2-ctl -d "$SUBDEV" --get-ctrl=exposure 2>/dev/null | grep -oE '[0-9]+$')
+        gain=$(v4l2-ctl -d "$SUBDEV" --get-ctrl=analogue_gain 2>/dev/null | grep -oE '[0-9]+$')
+        dg=$(v4l2-ctl -d "$SUBDEV" --get-ctrl=digital_gain 2>/dev/null | grep -oE '[0-9]+$')
+        [ -z "$exp" ] && exp=1800; [ -z "$gain" ] && gain=90; [ -z "$dg" ] && dg=$DGAIN_MIN
+        diff=$((AE_TARGET - mean))
+        if [ "${diff#-}" -gt "$AE_TOL" ]; then
+          step=$(( diff * exp / (mean > 8 ? mean : 8) / 2 ))
+          new=$(( exp + step ))
+          [ "$new" -lt $EXP_MIN ] && new=$EXP_MIN
+          [ "$new" -gt $EXP_MAX ] && new=$EXP_MAX
+          v4l2-ctl -d "$SUBDEV" --set-ctrl=exposure=$new >/dev/null 2>&1
+          if [ "$new" -ge $EXP_MAX ] && [ "$diff" -gt 0 ]; then
+            if [ "$gain" -lt $GAIN_MAX ]; then
+              g=$(( gain + 24 )); [ "$g" -gt $GAIN_MAX ] && g=$GAIN_MAX
+              v4l2-ctl -d "$SUBDEV" --set-ctrl=analogue_gain=$g >/dev/null 2>&1
+            else
+              d=$(( dg + 32 )); [ "$d" -gt $DGAIN_MAX ] && d=$DGAIN_MAX
+              v4l2-ctl -d "$SUBDEV" --set-ctrl=digital_gain=$d >/dev/null 2>&1
+            fi
+          elif [ "$diff" -lt 0 ]; then
+            if [ "$dg" -gt $DGAIN_MIN ]; then
+              d=$(( dg - 32 )); [ "$d" -lt $DGAIN_MIN ] && d=$DGAIN_MIN
+              v4l2-ctl -d "$SUBDEV" --set-ctrl=digital_gain=$d >/dev/null 2>&1
+            elif [ "$gain" -gt $GAIN_MIN ]; then
+              g=$(( gain - 24 )); [ "$g" -lt $GAIN_MIN ] && g=$GAIN_MIN
+              v4l2-ctl -d "$SUBDEV" --set-ctrl=analogue_gain=$g >/dev/null 2>&1
+            fi
+          fi
+        fi
+      fi
+      sleep "$AE_INTERVAL"
+    done ) &
+  AE=$!
+}
+
+# Consumers of $LOOP other than our own persistent writer.
+consumers() {
+  local n=0 p
+  for p in $(fuser "$LOOP" 2>/dev/null); do
+    [ "$p" = "$WRITER" ] && continue
+    n=$((n+1))
+  done
+  echo "$n"
+}
+
+# ---------------------------------------------------------------------------
+make_black_frame
+mkfifo "$SRCFIFO"
+
+# Persistent writer: holds $LOOP open forever so exclusive_caps=1 keeps
+# advertising capture-only (what Chrome requires) even with the sensor off.
+ffmpeg -hide_banner -loglevel error -nostdin \
+  -f rawvideo -pix_fmt nv12 -s "${OUT_W}x${OUT_H}" -framerate 30 \
+  -re -i "$SRCFIFO" -f v4l2 "$LOOP" >/dev/null 2>&1 &
+WRITER=$!
+
+# Keep the write end open ourselves, or ffmpeg would see EOF each time a feeder
+# exits and tear the writer down.
+exec 3>"$SRCFIFO"
+sleep 1
+start_idlefeed
+log "ready — writer up (capture-only advertised), sensor off"
+
+idle=0
+while sleep "$POLL"; do
+  if ! kill -0 "$WRITER" 2>/dev/null; then
+    log "writer died — exiting so systemd restarts us"
+    exit 1
+  fi
+  c=$(consumers)
+  if [ -n "$SENSORFEED" ] && ! kill -0 "$SENSORFEED" 2>/dev/null; then
+    log "sensor feed died — falling back to idle"
+    stop_feeders; start_idlefeed
+  fi
+  if [ "$c" -gt 0 ]; then
+    idle=0
+    [ -z "$SENSORFEED" ] && start_sensorfeed
+  else
+    if [ -n "$SENSORFEED" ]; then
+      idle=$((idle + POLL))
+      if [ "$idle" -ge "$IDLE_STOP" ]; then
+        log "no consumers for ${idle}s — powering sensor down"
+        stop_feeders; start_idlefeed; idle=0
+      fi
+    fi
+  fi
+done

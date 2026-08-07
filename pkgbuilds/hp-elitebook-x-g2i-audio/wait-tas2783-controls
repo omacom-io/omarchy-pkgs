@@ -1,0 +1,15 @@
+#!/bin/bash
+# HP EliteBook X G2i: delay WirePlumber start until the TAS2783 amp kcontrols
+# exist. The amps download firmware asynchronously at boot; if WirePlumber's
+# ACP enumerates the sof_sdw card before 'tas2783-1 Speaker Volume' appears,
+# the UCM Speaker device is skipped and the whole HiFi profile comes up
+# unavailable (card stuck on profile "off", no sinks/sources) until a manual
+# wireplumber restart. Waits up to 12s, then proceeds regardless (never blocks
+# login; headphones-only or fastpath boots stay fine).
+for _ in $(seq 1 60); do
+  if amixer -c 0 controls 2>/dev/null | grep -q "tas2783-1 Speaker Volume"; then
+    sleep 4; exit 0
+  fi
+  sleep 0.2
+done
+exit 0

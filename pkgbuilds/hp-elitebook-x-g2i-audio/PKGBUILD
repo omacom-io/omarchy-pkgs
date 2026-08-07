@@ -1,0 +1,64 @@
+# Maintainer: Meir Dick <mdick85@gmail.com>
+#
+# Speakers and microphone for the HP EliteBook X G2i (Panther Lake).
+#
+# Without this package the machine has no Speaker device. The board pairs an
+# RT712 SDCA codec with four TAS2783 smart amps, a combination with no entry in
+# the kernel's Panther Lake ACPI match table, so SOF falls back to a barebones
+# machine driver and never instantiates the amps.
+#
+# The match-table entry and the UCM profile are being filed upstream (Linux
+# soc-acpi-intel-ptl-match.c and alsa-ucm-conf), and the firmware naming as a
+# linux-firmware bug. This package is the interim, like dell-xps-touchpad-haptics.
+#
+# It carries no vendor tuning data. The perceptual voicing ships separately as
+# an Omarchy audio tuning.
+
+pkgname=hp-elitebook-x-g2i-audio
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Speaker and microphone support for HP EliteBook X G2i (TAS2783 + RT712)"
+arch=('x86_64')
+url="https://github.com/omacom-io/omarchy-pkgs"
+license=('GPL-2.0-or-later')
+depends=('dkms' 'linux-headers' 'alsa-ucm-conf' 'sof-firmware')
+install=hp-elitebook-x-g2i-audio.install
+options=('!debug')
+# The DKMS tree comes from the enablement repo at a pinned commit; the repo
+# here gitignores archives, and this matches how macbook12-spi-driver-dkms
+# sources its driver.
+_srcrepo="https://github.com/meirdick/hp-elitebook-x-g2i.git"
+_srccommit="e3e260ea9bb30fe904708aaf2fa31aefc5d09753"
+
+source=(
+  "hp-elitebook-x-g2i::git+${_srcrepo}#commit=${_srccommit}"
+  '50-wait-tas2783.conf'
+  'README.package.md'
+  'hp-elitebook-x-g2i-audio.install'
+  'sof-soundwire.conf'
+  'tas2783.conf'
+  'wait-tas2783-controls'
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  # Match-table module, as DKMS. A copied .ko stops applying at the next kernel
+  # upgrade and regresses to no speakers with no warning. The pinned git
+  # checkout is in $srcdir/hp-elitebook-x-g2i.
+  install -dm755 "${pkgdir}/usr/src/snd-soc-acpi-intel-match-hp-g2i-1.0"
+  cp -a hp-elitebook-x-g2i/dkms/snd-soc-acpi-intel-match-hp-g2i/. \
+    "${pkgdir}/usr/src/snd-soc-acpi-intel-match-hp-g2i-1.0/"
+
+  # UCM profile, so HiFi exposes Speaker and Mic devices.
+  install -Dm644 sof-soundwire.conf "${pkgdir}/usr/share/alsa/ucm2/sof-soundwire/sof-soundwire.conf"
+  install -Dm644 tas2783.conf "${pkgdir}/usr/share/alsa/ucm2/sof-soundwire/tas2783.conf"
+
+  # WirePlumber can start before the TAS2783 kcontrols exist, which leaves the
+  # card on profile "off" with no sinks and no sources on a random subset of
+  # boots. This waits up to 12s for the kcontrol and returns at once when it is
+  # already present, so it never delays login.
+  install -Dm755 wait-tas2783-controls "${pkgdir}/usr/bin/wait-tas2783-controls"
+  install -Dm644 50-wait-tas2783.conf "${pkgdir}/usr/lib/systemd/user/wireplumber.service.d/50-wait-tas2783.conf"
+
+  install -Dm644 README.package.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}

@@ -1,0 +1,79 @@
+# Maintainer: Meir Dick <mdick85@gmail.com>
+#
+# Webcam support for the HP EliteBook X G2i (Panther Lake, IPU7 + OV05C10).
+#
+# This is a bypass of Intel's CamHAL, not a fix. CamHAL cannot drive this
+# camera: the graph settings binary shipped for OV05C10_CJFPE50 expects a
+# 2944-wide sensor readout, while the ov05c10 driver exposes 2888x1808. CamHAL
+# computes "Isp raw crop [0, 88, -56, 88], wxh [2944 x 1632]", a negative crop,
+# and psys then processes frames from a region the sensor never sends, so the
+# output is black. psys itself works and logs "frame id N is done". Correct
+# graph settings need Intel's tooling, so this cannot be fixed downstream.
+#
+# The package runs the ISP in userspace instead:
+#   ov05c10 -> CSI2 -> ISYS (raw Bayer) -> debayer, AE, WB -> v4l2loopback
+#
+# Not folded into intel-ipu7-camera: that package targets OV08X40 with a working
+# hardware ISP, and its install gate already excludes this machine.
+
+pkgname=hp-elitebook-x-g2i-camera
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL bypass)"
+arch=('x86_64')
+url="https://github.com/omacom-io/omarchy-pkgs"
+license=('GPL-2.0-or-later')
+# ffmpeg does the debayer and scale. v4l-utils provides v4l2-ctl and media-ctl,
+# which configure the ISYS pipeline. v4l2loopback-dkms provides /dev/video50.
+depends=('ffmpeg' 'v4l-utils' 'v4l2loopback-dkms' 'dkms' 'linux-headers')
+# Both packages drive the same IPU7 and would fight over /dev/video50 and the
+# sensor. They are gated on different sensors, so this should never trigger.
+conflicts=('intel-ipu7-camera')
+install=hp-elitebook-x-g2i-camera.install
+options=('!debug')
+# The DKMS tree comes from the enablement repo at a pinned commit; the repo here
+# gitignores archives, and this matches macbook12-spi-driver-dkms.
+_srcrepo="https://github.com/meirdick/hp-elitebook-x-g2i.git"
+_srccommit="e3e260ea9bb30fe904708aaf2fa31aefc5d09753"
+
+source=(
+  "hp-elitebook-x-g2i::git+${_srcrepo}#commit=${_srccommit}"
+  '71-ipu7-hide-isys.rules'
+  '99-hp-elitebook-x-g2i-camera.conf'
+  '99-hp-elitebook-x-g2i-v4l2loopback.conf'
+  'README.package.md'
+  'hp-elitebook-x-g2i-camera'
+  'hp-elitebook-x-g2i-camera.install'
+  'hp-elitebook-x-g2i-camera.service'
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -Dm755 hp-elitebook-x-g2i-camera "${pkgdir}/usr/bin/hp-elitebook-x-g2i-camera"
+  install -Dm644 hp-elitebook-x-g2i-camera.service "${pkgdir}/usr/lib/systemd/system/hp-elitebook-x-g2i-camera.service"
+
+  # Hides the 32 raw ISYS nodes. Must sort after 70-uaccess.rules and before
+  # 73-seat-late.rules, hence the 71- prefix.
+  install -Dm644 71-ipu7-hide-isys.rules "${pkgdir}/usr/lib/udev/rules.d/71-ipu7-hide-isys.rules"
+
+  # INT3472 is the camera PMIC that owns the sensor's 19.2 MHz clock and rails.
+  # It and intel_cvs must load before intel_ipu7, or the sensor is never clocked.
+  install -Dm644 99-hp-elitebook-x-g2i-camera.conf "${pkgdir}/usr/lib/modprobe.d/99-hp-elitebook-x-g2i-camera.conf"
+
+  # exclusive_caps=1 is required for Chrome, which lists only V4L2 devices that
+  # advertise CAPTURE without OUTPUT. It reports capture-only while a writer is
+  # attached, so it depends on the service above holding the device open. The
+  # two are a pair; see README.package.md.
+  install -Dm644 99-hp-elitebook-x-g2i-v4l2loopback.conf "${pkgdir}/usr/lib/modprobe.d/99-hp-elitebook-x-g2i-v4l2loopback.conf"
+
+  # ov05c10 sensor driver plus an ipu-bridge patch widening the OVTI05C1 entry
+  # from one link frequency to two. No ov05c10 driver exists in mainline or in
+  # intel-ipu7-camera, and without the patch probing fails with
+  # "no link frequency 900000000 supported". The pinned git checkout is in
+  # $srcdir/hp-elitebook-x-g2i.
+  install -dm755 "${pkgdir}/usr/src/ipu7-ov05c10-hp-g2i-1.0"
+  cp -a hp-elitebook-x-g2i/dkms/ipu7-ov05c10-hp-g2i/. \
+    "${pkgdir}/usr/src/ipu7-ov05c10-hp-g2i-1.0/"
+
+  install -Dm644 README.package.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}
