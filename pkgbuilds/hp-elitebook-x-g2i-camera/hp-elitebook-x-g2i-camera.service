@@ -1,0 +1,29 @@
+[Unit]
+Description=HP EliteBook X G2i webcam (raw ISYS -> v4l2loopback, bypassing CamHAL)
+Documentation=file:/usr/share/doc/hp-elitebook-x-g2i-camera/README.md
+# Intel's CamHAL relay cannot drive this sensor and would fight us for both
+# /dev/video50 and the sensor itself.
+Conflicts=v4l2-relayd@ipu7.service
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hp-elitebook-x-g2i-camera
+# Restart=always, not on-failure. v4l2loopback runs with exclusive_caps=1, which
+# reports capture-only ONLY while a writer is attached -- if this service stops
+# for any reason, every camera application starts failing with
+# "VIDIOC_STREAMON: Input/output error". Self-healing matters more here than it
+# would for an ordinary daemon.
+Restart=always
+RestartSec=5
+# Needs the raw ISYS nodes and the media device
+DevicePolicy=auto
+
+# Tuning knobs, all optional -- see the script header
+# Environment=AE_TARGET=105
+# Environment=WB_R=1.50
+# Environment=WB_B=1.25
+# Environment=IDLE_STOP=5
+
+[Install]
+WantedBy=multi-user.target
