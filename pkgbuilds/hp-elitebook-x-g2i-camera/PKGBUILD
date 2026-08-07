@@ -33,11 +33,11 @@ install=hp-elitebook-x-g2i-camera.install
 options=('!debug')
 # The DKMS tree comes from the enablement repo at a pinned commit; the repo here
 # gitignores archives, and this matches macbook12-spi-driver-dkms.
-_srcrepo="https://github.com/meirdick/hp-elitebook-x-g2i.git"
-_srccommit="e3e260ea9bb30fe904708aaf2fa31aefc5d09753"
+_srcrepo="https://github.com/meirdick/hp-elitebook-x-g2i-dkms.git"
+_srccommit="8f1556b366d1e5cf27f57a90dbcf9916913b3ab3"
 
 source=(
-  "hp-elitebook-x-g2i::git+${_srcrepo}#commit=${_srccommit}"
+  "hp-elitebook-x-g2i-dkms::git+${_srcrepo}#commit=${_srccommit}"
   '71-ipu7-hide-isys.rules'
   '99-hp-elitebook-x-g2i-camera.conf'
   '99-hp-elitebook-x-g2i-v4l2loopback.conf'
@@ -70,9 +70,9 @@ package() {
   # from one link frequency to two. No ov05c10 driver exists in mainline or in
   # intel-ipu7-camera, and without the patch probing fails with
   # "no link frequency 900000000 supported". The pinned git checkout is in
-  # $srcdir/hp-elitebook-x-g2i.
+  # $srcdir/hp-elitebook-x-g2i-dkms.
   install -dm755 "${pkgdir}/usr/src/ipu7-ov05c10-hp-g2i-1.0"
-  cp -a hp-elitebook-x-g2i/dkms/ipu7-ov05c10-hp-g2i/. \
+  cp -a hp-elitebook-x-g2i-dkms/ipu7-ov05c10-hp-g2i/. \
     "${pkgdir}/usr/src/ipu7-ov05c10-hp-g2i-1.0/"
 
   install -Dm644 README.package.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
