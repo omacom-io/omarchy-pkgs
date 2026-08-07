@@ -27,11 +27,11 @@ options=('!debug')
 # The DKMS tree comes from the enablement repo at a pinned commit; the repo
 # here gitignores archives, and this matches how macbook12-spi-driver-dkms
 # sources its driver.
-_srcrepo="https://github.com/meirdick/hp-elitebook-x-g2i.git"
-_srccommit="e3e260ea9bb30fe904708aaf2fa31aefc5d09753"
+_srcrepo="https://github.com/meirdick/hp-elitebook-x-g2i-dkms.git"
+_srccommit="8f1556b366d1e5cf27f57a90dbcf9916913b3ab3"
 
 source=(
-  "hp-elitebook-x-g2i::git+${_srcrepo}#commit=${_srccommit}"
+  "hp-elitebook-x-g2i-dkms::git+${_srcrepo}#commit=${_srccommit}"
   '50-wait-tas2783.conf'
   'README.package.md'
   'hp-elitebook-x-g2i-audio.install'
@@ -44,9 +44,9 @@ sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 package() {
   # Match-table module, as DKMS. A copied .ko stops applying at the next kernel
   # upgrade and regresses to no speakers with no warning. The pinned git
-  # checkout is in $srcdir/hp-elitebook-x-g2i.
+  # checkout is in $srcdir/hp-elitebook-x-g2i-dkms.
   install -dm755 "${pkgdir}/usr/src/snd-soc-acpi-intel-match-hp-g2i-1.0"
-  cp -a hp-elitebook-x-g2i/dkms/snd-soc-acpi-intel-match-hp-g2i/. \
+  cp -a hp-elitebook-x-g2i-dkms/snd-soc-acpi-intel-match-hp-g2i/. \
     "${pkgdir}/usr/src/snd-soc-acpi-intel-match-hp-g2i-1.0/"
 
   # UCM profile, so HiFi exposes Speaker and Mic devices.
