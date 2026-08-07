@@ -1,9 +1,17 @@
--- Clipboard for sessions whose yanks may need to reach another machine:
--- every copy is emitted as OSC 52 (inside tmux this becomes a tmux buffer,
--- rebroadcast to every attached client, local or SSH). Paste prefers the
--- local Wayland clipboard when one is available, so content copied in other
--- apps remains pasteable; without a display, paste is an OSC 52 query that
--- tmux (or the terminal) answers.
+-- Clipboard for sessions whose yanks may need to reach another machine, so that
+-- yanking, deleting and putting behave the same whether Neovim is local, in
+-- tmux, over SSH, or any combination of those. LazyVim empties 'clipboard'
+-- whenever SSH_CONNECTION is set, which leaves a plain `y` in the unnamed
+-- register; this restores 'unnamedplus' and backs it with a provider that has a
+-- fast path in every one of those environments.
+--
+-- Writes go to whichever transports the session has: the local Wayland
+-- clipboard when there is a display, and the terminal on the other end of the
+-- connection via OSC 52 -- emitted by tmux itself where possible, since `tmux
+-- load-buffer -w` keeps the payload out of tmux's own input parser and its size
+-- limit. Reads prefer whichever clipboard the person is actually sitting in
+-- front of, and fall back to the last value this Neovim copied rather than
+-- blocking on an OSC 52 query that most terminals refuse to answer.
 local M = {}
 
 local function proc_lines(pid, file)
@@ -40,6 +48,10 @@ local function ancestor_process_named(name)
   return false
 end
 
+local function empty(lines)
+  return lines == nil or #lines == 0 or (#lines == 1 and lines[1] == "")
+end
+
 function M.setup()
   local in_tmux = vim.env.TMUX ~= nil
   local in_ssh = vim.env.SSH_TTY ~= nil or vim.env.SSH_CONNECTION ~= nil
@@ -53,11 +65,20 @@ function M.setup()
   local has_wayland = vim.env.WAYLAND_DISPLAY ~= nil
     and vim.fn.executable("wl-copy") == 1
     and vim.fn.executable("wl-paste") == 1
+  local has_tmux = in_tmux and vim.fn.executable("tmux") == 1
+
+  -- The last value this Neovim put on the clipboard, per register, as
+  -- { lines, regtype }. A session with no readable clipboard still has to
+  -- answer a put, and answering it with our own last copy keeps `"+y` `"+p`
+  -- working instead of failing with E353.
+  local last_copy = {}
 
   local function copy(register)
     local emit = osc52.copy(register)
 
-    return function(lines)
+    return function(lines, regtype)
+      last_copy[register] = { lines, regtype or "" }
+
       if has_wayland then
         local cmd = { "wl-copy", "--sensitive", "--type", "text/plain" }
         if register == "*" then
@@ -66,25 +87,80 @@ function M.setup()
         vim.fn.system(cmd, lines)
       end
 
-      if vim.g.omarchy_remote_clipboard_osc52 ~= false then
+      if vim.g.omarchy_remote_clipboard_osc52 == false then
+        return
+      end
+
+      -- tmux has no notion of a primary selection, so `*` keeps using the
+      -- escape sequence directly.
+      if has_tmux and register == "+" then
+        vim.fn.system({ "tmux", "load-buffer", "-w", "-" }, lines)
+      else
         emit(lines)
       end
     end
   end
 
-  local function paste(register)
-    if not has_wayland then
-      return osc52.paste(register)
+  local function read_wayland(register)
+    local cmd = { "wl-paste", "--no-newline" }
+    if register == "*" then
+      cmd[#cmd + 1] = "--primary"
     end
 
+    local lines = vim.fn.systemlist(cmd, "", 1)
+    if vim.v.shell_error == 0 then
+      return lines
+    end
+  end
+
+  -- `refresh-client -l` asks the attached client for its clipboard; the short
+  -- sleep gives the reply time to land before the buffer is read. A terminal
+  -- that refuses simply leaves tmux's newest buffer in place, so this returns
+  -- something useful either way and never blocks the way an OSC 52 query does.
+  local function read_tmux()
+    local lines = vim.fn.systemlist(
+      { "sh", "-c", "tmux refresh-client -l 2>/dev/null; sleep 0.05; tmux save-buffer -" },
+      "",
+      1
+    )
+    if vim.v.shell_error == 0 then
+      return lines
+    end
+  end
+
+  local function read_osc52(register)
+    if not (vim.g.termfeatures or {}).osc52 then
+      return
+    end
+
+    local result = osc52.paste(register)()
+    if type(result) == "table" then
+      return result
+    end
+  end
+
+  local function paste(register)
     return function()
-      local cmd = { "wl-paste", "--no-newline" }
-      if register == "*" then
-        cmd[#cmd + 1] = "--primary"
+      local lines
+
+      -- Over SSH the clipboard worth reading is the one on the machine the
+      -- person is sitting at, which is the far end of the connection, not the
+      -- display this Neovim happens to have.
+      if in_ssh and has_tmux then
+        lines = read_tmux()
+      elseif has_wayland then
+        lines = read_wayland(register)
+      elseif has_tmux then
+        lines = read_tmux()
+      else
+        lines = read_osc52(register)
       end
 
-      local lines = vim.fn.systemlist(cmd, "", 1)
-      return vim.v.shell_error == 0 and lines or {}
+      if not empty(lines) then
+        return lines
+      end
+
+      return last_copy[register] or { vim.fn.getreg('"', 1, true), vim.fn.getregtype('"') }
     end
   end
 
@@ -94,6 +170,10 @@ function M.setup()
     paste = { ["+"] = paste("+"), ["*"] = paste("*") },
     cache_enabled = 0,
   }
+
+  -- LazyVim empties this whenever SSH_CONNECTION is set. Restore it so yanking,
+  -- deleting and putting reach the clipboard exactly as they do locally.
+  vim.opt.clipboard = "unnamedplus"
 end
 
 return M
