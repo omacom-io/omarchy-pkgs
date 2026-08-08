@@ -1,0 +1,7 @@
+post_install() {
+  setcap 'cap_perfmon=+ep cap_dac_read_search=+ep' /usr/bin/btop 2>/dev/null || true
+}
+
+post_upgrade() {
+  post_install
+}
