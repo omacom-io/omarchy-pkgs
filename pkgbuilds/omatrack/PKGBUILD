@@ -1,0 +1,38 @@
+# Maintainer: David Heinemeier Hansson <david@hey.com>
+
+pkgname=omatrack
+pkgver=0.9.0
+pkgrel=1
+pkgdesc="Cross-format motorsport telemetry analysis workstation"
+arch=('x86_64' 'aarch64')
+url="https://github.com/tobi/omatrack"
+license=('MIT')
+depends=('qt6-base' 'qt6-declarative' 'mpv' 'libyaml' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
+makedepends=('cmake' 'ninja' 'rust')
+options=('!debug' '!lto')
+
+_commit=8ade6b45de53a59e45cb46777c50422d31bde86f
+source=("omatrack-$_commit.tar.gz::$url/archive/$_commit.tar.gz")
+sha256sums=('f295a1aa7c3cd7b2eba1650db10e59ac722b5d69e49db3e0d40ad6bbac538191')
+
+prepare() {
+  cd "omatrack-$_commit/third_party/motorsport-telemetry"
+
+  cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+  cd "omatrack-$_commit"
+
+  cmake -B build -S . -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build
+}
+
+package() {
+  cd "omatrack-$_commit"
+
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
