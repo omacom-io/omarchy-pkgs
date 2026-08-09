@@ -2,7 +2,7 @@
 # Based on Arch Linux linux package by Jan Alexander Steffens (heftig)
 
 pkgbase=linux-ptl
-pkgver=7.1.3.arch1
+pkgver=7.1.5.arch1
 pkgrel=2
 pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, PSR2, Panel Replay SU, IPU7 camera)'
 url='https://github.com/archlinux/linux'
@@ -56,9 +56,9 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
   83BC8889351B5DEBBB68416EB8AC08600F108CDF  # Jan Alexander Steffens (heftig)
 )
-b2sums=('b6466e2798627522f0339c670a223b21266f4d4ede39163867c0f122295e54c5d24093abb51d5c6c6c917de0cb199836e81f45f7c391a5cc138cac2a519438e8'
+b2sums=('d1dcf9b2a7ba1ed431d2b2c785ffc9a4ce729e4a004629061a73451a471316f437212004fe128157b5fc56b58bb06e60e758124a88c408e0b9124592c6a2d886'
         'SKIP'
-        'b402dbf0b29131c2c3fe80406c5560e3e1a5c1384d6a1ba670793b343d57300ec312da7d3a4f7b3f44a6615b015d7fbebb2c7df832a99aa0e1941faef0481baa'
+        'a4c870cb5a22b410432d0aa773b591ed7778e8ef5ac46f589a26518d0c0650d7cd2e34566cf850dc827eb0b21f19957a4e50179298ca69c3a55da9a178d942e8'
         'SKIP'
         'b5c40077f538e67496f1c274774976d31c48af36a6bd0a5df570eddf097b18f79812ee811392534dae8b911dc1f2a9949d969f90ce4ad7bdf62692456908c1be'
         'f893d63ef7b9e3ab05907117b561971a54c07422c46f7ec4511470b5dc81ab53815b6c73fac2b829fac43f4c480caa2f26741d604ad9ea5ecb460f7750f71635'
@@ -72,9 +72,9 @@ b2sums=('b6466e2798627522f0339c670a223b21266f4d4ede39163867c0f122295e54c5d24093a
 b2sums_x86_64=('f08103d44e5506637ed115067c714e6184e0de538eea1c45a3d2ee8160a36d91755ca5f6cf1f4d7bc4500ed62bc69ca51fa21bef26a40c3a49c4e0f8df835c16')
 
 # https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
-sha256sums=('be41c068e88f5242a19bccdbffbe077b18c47b45f627e2325504b4fab79dd1dc'
+sha256sums=('22a0196b3cbcdf34dc27b77561f4d040585fd3447edc9ab3531a1ac79e3041e7'
             'SKIP'
-            '861ea54a40c1d25296422fd48eac2e02b46e0071b3d99a6c28555ae3acc8edd7'
+            '04efe829f7b0df735f18fd8c4a0f5025fb2811012a3c8cd20b6c88350171437d'
             'SKIP'
             '167446c23001fe9d8dbe017e57a36f7f6e69f67a6b501ccbd9f4301ff08f8a47'
             'a65fb17db3c5c44a9d1728d0bf182f20e0867eaabcdc20c76329e65d5cae2dd1'
@@ -85,7 +85,6 @@ sha256sums=('be41c068e88f5242a19bccdbffbe077b18c47b45f627e2325504b4fab79dd1dc'
             '18ad3e3ef72ec7d7451b8265d685325a1683454bf16c6a940e23ce41d5841a12'
             'a196f9af1751691452ceecc5b06ef815d1130bc3547592b78ce344a102829b69'
             'ec9bc5f46e06b68d03eeaf0b574de42d972caa82e7dc161c282f5d9f6dcf2037')
-
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
 export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"
