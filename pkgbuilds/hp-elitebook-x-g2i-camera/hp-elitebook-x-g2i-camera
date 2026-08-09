@@ -36,16 +36,96 @@
 # crop. 10-bit data sits in 16-bit containers, hence the x64 level scale.
 
 set -u
-RAW=${RAW:-/dev/video0}
 LOOP=${LOOP:-/dev/video50}
-SUBDEV=${SUBDEV:-/dev/v4l-subdev4}
-M=${M:-/dev/media0}
-SENSOR="ov05c10 1-0010"
-CSI="Intel IPU7 CSI2 0"
-CAP="Intel IPU7 ISYS Capture 0"
 FMT=SGRBG10_1X10/2888x1808
 OUT_W=${OUT_W:-1920}
 OUT_H=${OUT_H:-1080}
+
+log() { echo "$(date +%T) $*"; }
+
+# --- device discovery ---------------------------------------------------------
+# Every node and entity below is derived from the live media graph rather than
+# assumed. /dev/video0, /dev/v4l-subdev4 and /dev/media0 are what this machine
+# happens to enumerate today; they are ordering artifacts, and a kernel that
+# probes in a different order renames all of them while the topology stays the
+# same. Each can still be pinned by environment variable for debugging.
+
+find_media_device() {
+  local dev
+  for dev in /dev/media*; do
+    [ -e "$dev" ] || continue
+    if media-ctl -d "$dev" -p 2>/dev/null | grep -qE '^driver[[:space:]]+intel-ipu7$'; then
+      echo "$dev"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Flatten `media-ctl -p` into tab separated records, because entity names
+# contain spaces and everything below is looked up by name:
+#   E <name> <subtype> <devnode>
+#   L <owner> <ownerpad> <dir> <peer> <peerpad> <enabled>
+topology_records() {
+  awk '
+    /^- entity [0-9]+: / {
+      name = $0
+      sub(/^- entity [0-9]+: /, "", name)
+      sub(/ \([0-9]+ pad.*$/, "", name)
+      subtype = ""
+      next
+    }
+    /subtype [A-Za-z]+/ {
+      for (i = 1; i < NF; i++) if ($i == "subtype") subtype = $(i + 1)
+      next
+    }
+    /device node name / { printf "E\t%s\t%s\t%s\n", name, subtype, $NF; next }
+    /^\tpad[0-9]+:/ { pad = $1; sub(/^pad/, "", pad); sub(/:.*$/, "", pad); next }
+    /^\t\t(<-|->) "/ {
+      dir = ($0 ~ /<-/) ? "in" : "out"
+      peer = $0; sub(/^[^"]*"/, "", peer)
+      peerpad = peer
+      sub(/".*$/, "", peer)
+      sub(/^[^"]*":/, "", peerpad); sub(/ .*$/, "", peerpad)
+      printf "L\t%s\t%s\t%s\t%s\t%s\t%s\n", \
+        name, pad, dir, peer, peerpad, ($0 ~ /ENABLED/) ? "1" : "0"
+    }
+  '
+}
+
+M=${M:-$(find_media_device)}
+if [ -z "$M" ]; then
+  log "no intel-ipu7 media device found - is intel-ipu7-drivers installed and loaded?"
+  exit 1
+fi
+
+records=$(media-ctl -d "$M" -p 2>/dev/null | topology_records)
+
+SENSOR=$(awk -F'\t' '$1=="E" && $3=="Sensor" && index($2,"ov05c10")==1 {print $2; exit}' <<<"$records")
+if [ -z "$SENSOR" ]; then
+  log "no ov05c10 sensor subdev on $M - the sensor driver did not bind."
+  log "check: dmesg | grep -i ov05c10, and that ACPI device OVTI05C1 is present"
+  exit 1
+fi
+
+SUBDEV=${SUBDEV:-$(awk -F'\t' -v s="$SENSOR" '$1=="E" && $2==s {print $4; exit}' <<<"$records")}
+CSI=$(awk -F'\t' -v s="$SENSOR" '$1=="L" && $4=="in" && $5==s {print $2; exit}' <<<"$records")
+
+# Several capture entities hang off the receiver, one per virtual channel. Take
+# the link that is already enabled, else the one on the lowest source pad.
+_link=$(awk -F'\t' -v c="$CSI" '$1=="L" && $4=="in" && $5==c {print $7"\t"$6"\t"$2"\t"$3}' <<<"$records" |
+        sort -k1,1r -k2,2n | head -1)
+CSI_PAD=$(cut -f2 <<<"$_link")
+CAP=$(cut -f3 <<<"$_link")
+CAP_PAD=$(cut -f4 <<<"$_link")
+RAW=${RAW:-$(awk -F'\t' -v e="$CAP" '$1=="E" && $2==e {print $4; exit}' <<<"$records")}
+
+if [ -z "$CSI" ] || [ -z "$CAP" ] || [ -z "$RAW" ]; then
+  log "incomplete media graph: sensor='$SENSOR' csi='$CSI' capture='$CAP' raw='$RAW'"
+  exit 1
+fi
+
+log "graph: $SENSOR ($SUBDEV) -> $CSI:$CSI_PAD -> $CAP:$CAP_PAD ($RAW) -> $LOOP"
 
 # Static white balance (CamHAL's AWB is bypassed and this sensor exposes no
 # V4L2_CID_RED_BALANCE/BLUE_BALANCE). Gray-world gains measured on this camera:
@@ -67,13 +147,17 @@ DGAIN_MIN=64; DGAIN_MAX=256
 IDLE_STOP=${IDLE_STOP:-5}     # seconds without a consumer before powering the sensor down
 POLL=${POLL:-1}
 
-SRCFIFO=$(mktemp -u /tmp/hp-g2i-src-XXXX.fifo)
-STOPFLAG=$(mktemp -u /tmp/hp-g2i-stop-XXXX)
-BLACKFRAME=$(mktemp /tmp/hp-g2i-black-XXXX.nv12)
-AE_STATS=$(mktemp /tmp/hp-g2i-ae-XXXX.log)
+# Runtime state lives in the unit's RuntimeDirectory, not /tmp: these are fixed
+# names in a root-owned 0700 directory, so no other user can pre-create the FIFO
+# the sensor feed writes into. RUNDIR is set for a manual run outside systemd.
+RUNDIR=${RUNTIME_DIRECTORY:-${RUNDIR:-/run/hp-elitebook-x-g2i-camera}}
+mkdir -p "$RUNDIR" && chmod 700 "$RUNDIR"
+SRCFIFO="$RUNDIR/src.fifo"
+STOPFLAG="$RUNDIR/stop"
+BLACKFRAME="$RUNDIR/black.nv12"
+AE_STATS="$RUNDIR/ae.log"
+rm -f "$SRCFIFO" "$STOPFLAG" "$BLACKFRAME" "$AE_STATS" "$AE_STATS.tmp"
 WRITER=""; SENSORFEED=""; IDLEFEED=""; AE=""; SEEDED=0
-
-log() { echo "$(date +%T) $*"; }
 
 # Filter kills by /proc/PID/comm so a shell can never be a target -- pkill -f
 # repeatedly matched the calling shell's own command line during development.
@@ -149,10 +233,10 @@ start_idlefeed() {
 configure_sensor() {
   # A previous stop leaves this link disabled; it MUST be re-enabled or
   # VIDIOC_STREAMON returns ENOLINK ("Link has been severed").
-  media-ctl -d "$M" -l "\"$CSI\":1 -> \"$CAP\":0 [1]"      >/dev/null 2>&1
+  media-ctl -d "$M" -l "\"$CSI\":$CSI_PAD -> \"$CAP\":$CAP_PAD [1]" >/dev/null 2>&1
   media-ctl -d "$M" -V "\"$SENSOR\":0 [fmt:$FMT]"          >/dev/null 2>&1
   media-ctl -d "$M" -V "\"$CSI\":0 [fmt:$FMT]"             >/dev/null 2>&1
-  media-ctl -d "$M" -V "\"$CSI\":1 [fmt:$FMT]"             >/dev/null 2>&1
+  media-ctl -d "$M" -V "\"$CSI\":$CSI_PAD [fmt:$FMT]"      >/dev/null 2>&1
   v4l2-ctl -d "$RAW" --set-fmt-video=width=2888,height=1808,pixelformat=BA10 >/dev/null 2>&1
   # Seed AE once; the sensor retains exposure/gain across stop/start, so
   # re-seeding every session made each one start dark and re-converge.

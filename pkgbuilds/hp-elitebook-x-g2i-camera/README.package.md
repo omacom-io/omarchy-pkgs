@@ -81,10 +81,20 @@ frames, and the sensor feeder gets SIGTERM plus a bounded wait.
 
 ## Kernel modules
 
-Ships an `ov05c10` sensor driver (none exists in mainline or in Omarchy's
-`intel-ipu7-camera` DKMS) plus an `ipu-bridge` patch widening the `OVTI05C1`
-entry from one link frequency (480MHz) to two (480MHz + 900MHz). Without the
-latter, probing fails with `no link frequency 900000000 supported`.
+Three pieces are needed and they come from three different places, because
+only one of them is genuinely out of tree:
+
+| Piece | Where it comes from | Why there |
+|---|---|---|
+| `intel_ipu7`, `intel_ipu7_isys`, `ipu_acpi*`, `intel_cvs` | `intel-ipu7-drivers` | The IPU7 has no mainline driver at all. Shared with `intel-ipu7-camera`. |
+| `ov05c10` sensor driver | this package, as DKMS | Intel's driver from `intel/ipu6-drivers`, taken unmodified at a pinned commit. It exists in neither mainline nor `intel-ipu7-camera`, so it overrides nothing. |
+| `OVTI05C1` link frequencies, 480 MHz to 480 + 900 MHz | `linux-ptl`, patch `0032` | `ipu-bridge` is an in-tree file. A DKMS module rebuilding it would fork it and freeze every other sensor's entry in the table. The patch is Intel's own, carried verbatim. Without it, probing fails with `no link frequency 900000000 supported`. |
+
+The daemon discovers the media device, sensor subdev, CSI-2 receiver and
+capture node from the live graph rather than assuming `/dev/media0`,
+`/dev/v4l-subdev4` and `/dev/video0`. Those numbers are enumeration artifacts,
+and a kernel that probes in a different order renames all of them while the
+topology stays the same.
 
 **Never `rmmod`/`insmod` the `intel_ipu7*` stack on a running system** —
 unloading `intel_ipu7_psys` while active hard-hangs the machine with no panic

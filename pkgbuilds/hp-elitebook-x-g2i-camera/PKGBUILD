@@ -13,48 +13,68 @@
 # The package runs the ISP in userspace instead:
 #   ov05c10 -> CSI2 -> ISYS (raw Bayer) -> debayer, AE, WB -> v4l2loopback
 #
+# Two things it deliberately does not carry:
+#
+#   - The IPU7 kernel drivers. They come from intel-ipu7-drivers, which this
+#     depends on. Mainline has no ipu7 driver at all, so without that package
+#     there is no ISYS to read from and the camera cannot work.
+#   - The ipu-bridge link-frequency change. ipu-bridge is an in-tree file, so
+#     it ships as a patch in linux-ptl rather than as a DKMS module that would
+#     fork it and freeze every other sensor's entry.
+#
+# What is left is one genuinely out-of-tree module: Intel's ov05c10 sensor
+# driver, which exists in neither mainline nor intel-ipu7-camera.
+#
 # Not folded into intel-ipu7-camera: that package targets OV08X40 with a working
 # hardware ISP, and its install gate already excludes this machine.
 
 pkgname=hp-elitebook-x-g2i-camera
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL bypass)"
 arch=('x86_64')
 url="https://github.com/omacom-io/omarchy-pkgs"
 license=('GPL-2.0-or-later')
 # ffmpeg does the debayer and scale. v4l-utils provides v4l2-ctl and media-ctl,
-# which configure the ISYS pipeline. v4l2loopback-dkms provides /dev/video50.
-depends=('ffmpeg' 'v4l-utils' 'v4l2loopback-dkms' 'dkms' 'linux-headers')
+# which configure the ISYS pipeline and are also how the daemon discovers it.
+# psmisc provides fuser, used to count consumers of the loopback device.
+depends=(
+  'intel-ipu7-drivers'
+  'linux-ptl'
+  'ffmpeg'
+  'v4l-utils'
+  'psmisc'
+  'v4l2loopback-dkms'
+  'dkms'
+  'linux-headers'
+)
 # Both packages drive the same IPU7 and would fight over /dev/video50 and the
-# sensor. They are gated on different sensors, so this should never trigger.
+# sensor; intel-ipu7-camera also starts v4l2-relayd. They are gated on different
+# sensors, so this should never trigger.
 conflicts=('intel-ipu7-camera')
 install=hp-elitebook-x-g2i-camera.install
-options=('!debug')
-# The DKMS tree comes from the enablement repo at a pinned commit; the repo here
-# gitignores archives, and this matches macbook12-spi-driver-dkms.
-_srcrepo="https://github.com/meirdick/hp-elitebook-x-g2i-dkms.git"
-_srccommit="8f1556b366d1e5cf27f57a90dbcf9916913b3ab3"
+options=('!debug' '!strip')
+
+# Intel's sensor driver, at a pinned commit, the same way intel-ipu7-camera
+# pins every Intel repo it builds from. The file is taken unmodified.
+_ipu6_drivers_commit="c09fa9a6e98b951ea4ab9d4100aa85281a659074"
 
 source=(
-  "hp-elitebook-x-g2i-dkms::git+${_srcrepo}#commit=${_srccommit}"
-  '71-ipu7-hide-isys.rules'
+  "ipu6-drivers::git+https://github.com/intel/ipu6-drivers.git#commit=${_ipu6_drivers_commit}"
   '99-hp-elitebook-x-g2i-camera.conf'
   '99-hp-elitebook-x-g2i-v4l2loopback.conf'
+  'Makefile.ov05c10'
   'README.package.md'
+  'dkms-ov05c10.conf'
   'hp-elitebook-x-g2i-camera'
   'hp-elitebook-x-g2i-camera.install'
   'hp-elitebook-x-g2i-camera.service'
 )
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
   install -Dm755 hp-elitebook-x-g2i-camera "${pkgdir}/usr/bin/hp-elitebook-x-g2i-camera"
   install -Dm644 hp-elitebook-x-g2i-camera.service "${pkgdir}/usr/lib/systemd/system/hp-elitebook-x-g2i-camera.service"
-
-  # Hides the 32 raw ISYS nodes. Must sort after 70-uaccess.rules and before
-  # 73-seat-late.rules, hence the 71- prefix.
-  install -Dm644 71-ipu7-hide-isys.rules "${pkgdir}/usr/lib/udev/rules.d/71-ipu7-hide-isys.rules"
 
   # INT3472 is the camera PMIC that owns the sensor's 19.2 MHz clock and rails.
   # It and intel_cvs must load before intel_ipu7, or the sensor is never clocked.
@@ -66,14 +86,12 @@ package() {
   # two are a pair; see README.package.md.
   install -Dm644 99-hp-elitebook-x-g2i-v4l2loopback.conf "${pkgdir}/usr/lib/modprobe.d/99-hp-elitebook-x-g2i-v4l2loopback.conf"
 
-  # ov05c10 sensor driver plus an ipu-bridge patch widening the OVTI05C1 entry
-  # from one link frequency to two. No ov05c10 driver exists in mainline or in
-  # intel-ipu7-camera, and without the patch probing fails with
-  # "no link frequency 900000000 supported". The pinned git checkout is in
-  # $srcdir/hp-elitebook-x-g2i-dkms.
-  install -dm755 "${pkgdir}/usr/src/ipu7-ov05c10-hp-g2i-1.0"
-  cp -a hp-elitebook-x-g2i-dkms/ipu7-ov05c10-hp-g2i/. \
-    "${pkgdir}/usr/src/ipu7-ov05c10-hp-g2i-1.0/"
+  # DKMS: the ov05c10 sensor driver only.
+  local dkms_dir="${pkgdir}/usr/src/ov05c10-${pkgver}"
+  install -Dm644 "${srcdir}/ipu6-drivers/drivers/media/i2c/ov05c10.c" "${dkms_dir}/src/ov05c10.c"
+  install -Dm644 Makefile.ov05c10 "${dkms_dir}/src/Makefile"
+  install -Dm644 dkms-ov05c10.conf "${dkms_dir}/dkms.conf"
+  sed -i "s/@PKGVER@/${pkgver}/" "${dkms_dir}/dkms.conf"
 
   install -Dm644 README.package.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
 }

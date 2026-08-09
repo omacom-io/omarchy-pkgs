@@ -1,16 +1,37 @@
-post_install() {
-  dkms install ipu7-ov05c10-hp-g2i/1.0 --no-depmod >/dev/null 2>&1 || true
-  depmod -a
+# The DKMS modules are built by the dkms pacman hooks, which fire on any
+# package that installs /usr/src/*/dkms.conf. Nothing to do here for that.
 
+# Earlier revisions of this work, installed by hand from the enablement repo,
+# registered a DKMS module named ipu7-ov05c10-hp-g2i that built both ov05c10
+# and a forked ipu-bridge. Its ipu-bridge overrides the in-tree one, which now
+# carries the link-frequency patch from linux-ptl, so leaving it registered
+# would quietly undo that.
+_warn_about_predecessor() {
+  if dkms status 2>/dev/null | grep -q '^ipu7-ov05c10-hp-g2i'; then
+    cat <<'MSG'
+
+  NOTE: a DKMS module named ipu7-ov05c10-hp-g2i is still registered. It builds
+  a forked ipu-bridge that overrides the in-tree one, which would undo the
+  link-frequency patch this machine's kernel now carries. Remove it:
+
+    sudo dkms remove ipu7-ov05c10-hp-g2i/1.0 --all
+    sudo rm -rf /usr/src/ipu7-ov05c10-hp-g2i-1.0
+
+MSG
+  fi
+}
+
+post_install() {
   systemctl daemon-reload >/dev/null 2>&1 || true
   systemctl enable hp-elitebook-x-g2i-camera.service >/dev/null 2>&1 || true
 
   cat <<'MSG'
 HP EliteBook X G2i webcam installed.
 
-  Reboot required: the ov05c10/ipu-bridge modules cannot be swapped live (the
-  intel_ipu7 stack hard-hangs the machine if unloaded while active), and
-  v4l2loopback must reload to pick up exclusive_caps=1.
+  Reboot required: the ov05c10 module cannot be swapped live (the intel_ipu7
+  stack hard-hangs the machine if unloaded while active), v4l2loopback must
+  reload to pick up exclusive_caps=1, and the ipu-bridge link frequency comes
+  from linux-ptl.
 
   After rebooting the camera appears as "Hardware ISP Camera" (/dev/video50)
   in Chrome, Firefox, OBS and the Omarchy screen recorder.
@@ -27,22 +48,21 @@ HP EliteBook X G2i webcam installed.
     * The privacy LED lights only while an application is actually using the
       camera; the sensor is powered down otherwise.
 MSG
+
+  _warn_about_predecessor
 }
 
 post_upgrade() {
-  dkms install ipu7-ov05c10-hp-g2i/1.0 --no-depmod >/dev/null 2>&1 || true
-  depmod -a
   systemctl daemon-reload >/dev/null 2>&1 || true
   systemctl try-restart hp-elitebook-x-g2i-camera.service >/dev/null 2>&1 || true
+  _warn_about_predecessor
 }
 
 pre_remove() {
   systemctl disable --now hp-elitebook-x-g2i-camera.service >/dev/null 2>&1 || true
-  dkms remove ipu7-ov05c10-hp-g2i/1.0 --all >/dev/null 2>&1 || true
 }
 
 post_remove() {
-  depmod -a
   echo "Removed. Reboot to drop exclusive_caps=1, or readers will fail with"
   echo "VIDIOC_STREAMON: Input/output error while no writer is attached."
 }

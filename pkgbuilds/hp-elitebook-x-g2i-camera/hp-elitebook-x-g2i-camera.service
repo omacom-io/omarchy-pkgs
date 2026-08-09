@@ -9,6 +9,10 @@ After=multi-user.target
 [Service]
 Type=simple
 ExecStart=/usr/bin/hp-elitebook-x-g2i-camera
+# The FIFO the sensor feed writes into, the black idle frame and the AE stats
+# log. Fixed names in a private 0700 directory, so nothing can pre-create them.
+RuntimeDirectory=hp-elitebook-x-g2i-camera
+RuntimeDirectoryMode=0700
 # Restart=always, not on-failure. v4l2loopback runs with exclusive_caps=1, which
 # reports capture-only ONLY while a writer is attached -- if this service stops
 # for any reason, every camera application starts failing with
