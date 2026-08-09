@@ -24,32 +24,25 @@ _unlink_firmware() {
 
 post_install() {
   _link_firmware
-  dkms install snd-soc-acpi-intel-match-hp-g2i/1.0 --no-depmod >/dev/null 2>&1 || true
-  depmod -a
 
   cat <<'MSG'
 HP EliteBook X G2i audio installed.
 
-  Reboot required: the match-table module cannot be swapped under a live
-  SOF/SoundWire stack.
+  Reboot required: the speaker support depends on linux-ptl, whose match-table
+  entry and TAS2783A component name only take effect on a kernel this package
+  did not boot from.
 
   After rebooting, verify:
-    pactl list cards | grep 'Active Profile'    # expect HiFi
+    amixer -c 0 info | grep Components       # expect " spk:tas2783"
+    pactl list cards | grep 'Active Profile' # expect HiFi
 MSG
 }
 
 post_upgrade() {
   _link_firmware
-  dkms install snd-soc-acpi-intel-match-hp-g2i/1.0 --no-depmod >/dev/null 2>&1 || true
-  depmod -a
-}
-
-pre_remove() {
-  dkms remove snd-soc-acpi-intel-match-hp-g2i/1.0 --all >/dev/null 2>&1 || true
 }
 
 post_remove() {
   _unlink_firmware
-  depmod -a
   echo "Removed. Speakers and mic will be gone again after the next reboot."
 }
