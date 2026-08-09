@@ -2,10 +2,10 @@
 
 pkgname=omarchy-herdr
 pkgver=0.8.0.r2
-pkgrel=1
+pkgrel=2
 pkgdesc="Herdr terminal workspace manager with Omarchy pane border support"
 arch=('x86_64' 'aarch64')
-url="https://github.com/dhh/herdr"
+url="https://github.com/omacom-io/herdr"
 license=('Apache-2.0')
 depends=('gcc-libs' 'glibc')
 makedepends=('cargo')
@@ -13,12 +13,12 @@ provides=('herdr')
 conflicts=('herdr')
 options=('!debug' '!lto')
 
-_commit=908c92dfdee4c655f038f84bc8303cbbb783136a
+_commit=3741b0113721beaeef524d741b6c1e8958579472
 _zigver=0.15.2
 source=("herdr-$_commit.tar.gz::$url/archive/$_commit.tar.gz")
 source_x86_64=("zig-x86_64-linux-$_zigver.tar.xz::https://ziglang.org/download/$_zigver/zig-x86_64-linux-$_zigver.tar.xz")
 source_aarch64=("zig-aarch64-linux-$_zigver.tar.xz::https://ziglang.org/download/$_zigver/zig-aarch64-linux-$_zigver.tar.xz")
-sha256sums=('12ed028f63fdb00110e72e3cefe25712f71e2edaa0d425b3729b9f6344d31fec')
+sha256sums=('38ea391071991fc1b33495a81a59841b326d6debc5bbf3ab401f1d1210e0d4c9')
 sha256sums_x86_64=('02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239')
 sha256sums_aarch64=('958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f')
 
