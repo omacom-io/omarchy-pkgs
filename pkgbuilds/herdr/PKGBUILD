@@ -1,16 +1,16 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
-pkgname=omarchy-herdr
+pkgname=herdr
 pkgver=0.8.0.r2
-pkgrel=2
-pkgdesc="Herdr terminal workspace manager with Omarchy pane border support"
+pkgrel=1
+pkgdesc="Herdr terminal workspace manager with Omarchy patches"
 arch=('x86_64' 'aarch64')
 url="https://github.com/omacom-io/herdr"
 license=('Apache-2.0')
 depends=('gcc-libs' 'glibc')
 makedepends=('cargo')
-provides=('herdr')
-conflicts=('herdr')
+replaces=('omarchy-herdr')
+conflicts=('omarchy-herdr')
 options=('!debug' '!lto')
 
 _commit=3741b0113721beaeef524d741b6c1e8958579472
