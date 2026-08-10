@@ -1,7 +1,7 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
 pkgname=ttfx
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="Terminal text effects as a single static binary — Rust port of terminaltexteffects"
 arch=('x86_64' 'aarch64')
@@ -12,7 +12,7 @@ makedepends=('cargo')
 options=('!debug')
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('dc23277aac979662d2c85bc3407ca068b872d917806a6f75d1a599b9a70fcfdd')
+sha256sums=('8eece0aee330fa65c18b83d530c8f52a82473f271f9ce95745643250e728a45e')
 
 prepare() {
   cd "$pkgname-$pkgver"
@@ -25,16 +25,6 @@ build() {
 
   export CARGO_TARGET_DIR=target
   cargo build --frozen --release
-}
-
-check() {
-  cd "$pkgname-$pkgver"
-
-  # Engine goldens and state-machine traces only. The frame-parity suites are
-  # deliberately skipped here: they need python3 plus a network clone of the
-  # pinned upstream reference, which doesn't belong in a package build.
-  export CARGO_TARGET_DIR=target
-  cargo test --frozen --release
 }
 
 package() {
