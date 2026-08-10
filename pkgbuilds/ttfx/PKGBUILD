@@ -1,0 +1,52 @@
+# Maintainer: David Heinemeier Hansson <david@hey.com>
+
+pkgname=ttfx
+pkgver=0.1.2
+pkgrel=1
+pkgdesc="Terminal text effects as a single static binary — Rust port of terminaltexteffects"
+arch=('x86_64' 'aarch64')
+url="https://github.com/omacom-io/ttfx"
+license=('MIT')
+depends=('gcc-libs' 'glibc')
+makedepends=('cargo')
+options=('!debug')
+
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('1c07268892e79c9e85bc09218ac5c5c81095a0df2d926eb4d5b257f18f7cf037')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+
+  cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+
+  # Engine goldens and state-machine traces only. The frame-parity suites are
+  # deliberately skipped here: they need python3 plus a network clone of the
+  # pinned upstream reference, which doesn't belong in a package build.
+  export CARGO_TARGET_DIR=target
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  install -Dm755 "target/release/ttfx" "$pkgdir/usr/bin/ttfx"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+  "target/release/ttfx" --print-completion bash |
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/bash-completion/completions/ttfx"
+  "target/release/ttfx" --print-completion zsh |
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/zsh/site-functions/_ttfx"
+}
