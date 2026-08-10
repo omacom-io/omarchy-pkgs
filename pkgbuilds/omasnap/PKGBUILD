@@ -1,0 +1,48 @@
+# Maintainer: Tobi Lütke <tobi@lutke.com>
+
+pkgname=omasnap
+pkgver=1.0.3
+pkgrel=1
+pkgdesc="Native Wayland screenshot and annotation overlay for Hyprland"
+arch=('x86_64')
+url="https://github.com/tobi/omasnap"
+license=('custom')
+depends=(
+  'grim'
+  'hyprland'
+  'hyprpicker'
+  'layer-shell-qt'
+  'qt6-base'
+  'tesseract'
+  'tesseract-data-eng'
+  'wayland'
+  'wl-clipboard'
+)
+makedepends=(
+  'cmake'
+  'ninja'
+  'pkgconf'
+  'wayland-protocols'
+)
+options=('!debug')
+
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('6dd8568b4ea3ab4221ca1be36149c8be3e9c3d7f1bc1143b79caff760e6a7cfd')
+
+build() {
+  cmake -S "$pkgname-$pkgver" -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build --parallel
+}
+
+check() {
+  QT_QPA_PLATFORM=offscreen \
+    ./build/omasnap-smoke "$srcdir/omasnap-smoke-output"
+}
+
+package() {
+  cmake --install build --prefix "$pkgdir/usr"
+  install -Dm644 "$pkgname-$pkgver/README.md" \
+    "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
