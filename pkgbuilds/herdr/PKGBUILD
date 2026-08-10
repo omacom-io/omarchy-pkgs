@@ -1,9 +1,9 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
 pkgname=herdr
-pkgver=0.8.0.r5
+pkgver=0.8.0.r6
 pkgrel=1
-pkgdesc="Herdr terminal workspace manager with Omarchy patches"
+pkgdesc="Herdr terminal workspace manager built from the Omarchy fork"
 arch=('x86_64' 'aarch64')
 url="https://github.com/omacom-io/herdr"
 license=('Apache-2.0')
@@ -13,12 +13,12 @@ replaces=('omarchy-herdr')
 conflicts=('omarchy-herdr')
 options=('!debug' '!lto')
 
-_commit=8351f030a170d7f126e41351b5c41a1991132a1f
+_commit=6c6ddcd49384d6ea9f0ee2e63bf7b2643dfd5bcf
 _zigver=0.15.2
 source=("herdr-$_commit.tar.gz::$url/archive/$_commit.tar.gz")
 source_x86_64=("zig-x86_64-linux-$_zigver.tar.xz::https://ziglang.org/download/$_zigver/zig-x86_64-linux-$_zigver.tar.xz")
 source_aarch64=("zig-aarch64-linux-$_zigver.tar.xz::https://ziglang.org/download/$_zigver/zig-aarch64-linux-$_zigver.tar.xz")
-sha256sums=('cd20c1ec2d5c33f89fcd6b5f0bfcd46b41ef00e7b2d90a8fea41607ccd87946e')
+sha256sums=('104e215b084ccafe35c14a01d34c8daa1fb7859a0348176f27aab435d1c370cf')
 sha256sums_x86_64=('02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239')
 sha256sums_aarch64=('958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f')
 
