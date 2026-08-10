@@ -2,8 +2,8 @@
 
 _pkgname=quickshell
 pkgname="$_pkgname-git"
-pkgver=0.3.0.r18.g10b439f
-pkgrel=3
+pkgver=0.3.0.r20.g28771c7
+pkgrel=1
 pkgdesc='Flexible toolkit for making desktop shells with QtQuick'
 arch=(x86_64 aarch64)
 url='https://git.outfoxxed.me/quickshell/quickshell'
@@ -37,31 +37,10 @@ provides=("$_pkgname")
 conflicts=("$_pkgname")
 
 _pkgsrc="$_pkgname"
-source=("$_pkgsrc"::"git+$url.git#commit=10b439fc6e3fd65c15fe1c486271b31da05ed023"
-  quickshell-check.hook
-  0001-launch-clear-crash-relaunch-env.patch
-  0002-ipchandler-deregister-through-registry.patch)
+source=("$_pkgsrc"::"git+$url.git#commit=28771c7c74b42e20afca0b1b63980cb46515537c"
+  quickshell-check.hook)
 sha256sums=('SKIP'
-            '8543e21aeaaa5441b73a679160e7601a957f16c433e8d6bd9257e80bd0e94083'
-            '867f154dd3ea09ec751664e84fe9da47f6e0321b77abaa0cf3eb391a978de305'
-            'ba22289eba7ccd64672df003d0f8e3130a1e6799a5b75686b489fe39794e9725')
-
-
-prepare() {
-  cd "$_pkgsrc"
-  # After a crash relaunch, quickshell leaks __QUICKSHELL_CRASH_* into the
-  # environment of every child it spawns, so any `qs` call from those children
-  # boots a duplicate shell instead of running its command.
-  # Carried on the fix-crash-env-leak branch of https://github.com/omacom-io/quickshell
-  patch -Np1 -i "$srcdir/0001-launch-clear-crash-relaunch-env.patch"
-
-  # An IpcHandler deregistered itself by re-resolving its registry from its
-  # engine generation, which is unreachable once its QML context is torn down,
-  # so a handler destroyed with a reloading bar or plugin left the registry
-  # pointing at freed memory and the next `qs ipc call` on that target crashed.
-  # Carried on the fix-ipc-handler-lifetime branch of https://github.com/omacom-io/quickshell
-  patch -Np1 -i "$srcdir/0002-ipchandler-deregister-through-registry.patch"
-}
+            '8543e21aeaaa5441b73a679160e7601a957f16c433e8d6bd9257e80bd0e94083')
 
 pkgver() {
   cd "$_pkgsrc"
