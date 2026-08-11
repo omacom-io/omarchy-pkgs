@@ -19,6 +19,18 @@ license=('GPL-2.0-or-later')
 depends=('dkms' 'linux-headers')
 makedepends=('git')
 options=('!strip')
+# Any other packaging of ipu7-drivers writes the same intel-ipu7.ko into
+# /updates, and DKMS lets the last install win with no warning. That is not
+# theoretical: on this hardware the AUR intel-ipu7-dkms-git and this tree were
+# both registered, a kernel upgrade reinstalled them in the opposite order to
+# the previous boot, and the AUR build -- compiled without
+# CONFIG_INTEL_IPU_ACPI, which gates the whole v4l2-async notifier in
+# ipu7-isys.c -- silently won. The camera went black with no error anywhere:
+# the sensor probed cleanly, the bridge created its endpoints, and nothing was
+# left to bind them together.
+#
+# Declaring the conflict makes pacman refuse the combination instead.
+conflicts=('intel-ipu7-dkms-git')
 
 # Pinned to the same commits intel-ipu7-camera used before the split, so the
 # DKMS trees and their build output are unchanged.
