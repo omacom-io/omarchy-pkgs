@@ -1,7 +1,7 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
 pkgname=omatrack
-pkgver=0.9.0
+pkgver=0.9.10
 pkgrel=1
 pkgdesc="Cross-format motorsport telemetry analysis workstation"
 arch=('x86_64' 'aarch64')
@@ -11,9 +11,9 @@ depends=('qt6-base' 'qt6-declarative' 'mpv' 'libyaml' 'gcc-libs' 'glibc' 'hicolo
 makedepends=('cmake' 'ninja' 'rust')
 options=('!debug' '!lto')
 
-_commit=8ade6b45de53a59e45cb46777c50422d31bde86f
+_commit=addfb3d4de6e6a39d4f5113d6930875fd97ec377
 source=("omatrack-$_commit.tar.gz::$url/archive/$_commit.tar.gz")
-sha256sums=('f295a1aa7c3cd7b2eba1650db10e59ac722b5d69e49db3e0d40ad6bbac538191')
+sha256sums=('f9218ccd5fc513a61a0590b89c4180bc9e027173470f947a201fa5ab85d7d1f0')
 
 prepare() {
   cd "omatrack-$_commit/third_party/motorsport-telemetry"
