@@ -2,13 +2,26 @@
 #
 # Webcam support for the HP EliteBook X G2i (Panther Lake, IPU7 + OV05C10).
 #
-# This is a bypass of Intel's CamHAL, not a fix. CamHAL cannot drive this
-# camera: the graph settings binary shipped for OV05C10_CJFPE50 expects a
-# 2944-wide sensor readout, while the ov05c10 driver exposes 2888x1808. CamHAL
-# computes "Isp raw crop [0, 88, -56, 88], wxh [2944 x 1632]", a negative crop,
-# and psys then processes frames from a region the sensor never sends, so the
-# output is black. psys itself works and logs "frame id N is done". Correct
-# graph settings need Intel's tooling, so this cannot be fixed downstream.
+# This is a bypass of Intel's CamHAL, not a fix.
+#
+# CamHAL does not produce usable frames from this camera, and the cause is not
+# established. With cameraDebug=0xFF, psys completes frames and logs
+# "frame id N is done", but the output is uniformly black:
+#
+#   GraphConfig: <out w="2944" h="1632">
+#   PlatformData: Isp raw crop [0, 88, -56, 88], wxh [2944 x 1632]
+#
+# That log line looks like a readout mismatch and is not one. The graph settings
+# declare a 2888x1808 input, matching what ov05c10 exposes; 2944 is that width
+# padded to 64-byte alignment (2888 % 64 = 8, 2944 % 64 = 0), and the -56 is the
+# crop "right" field, which the HAL prints but never consumes. Intel ships the
+# same idiom for OV08X40 (3856 -> 3904) where it works, and HP's Windows graph
+# settings contain the identical record.
+#
+# Tested August 2026 against intel-ipu7-camera-hal-git r84, whose graph binary is
+# byte-identical to current upstream. Not retested since. This package is the
+# bypass that makes the camera usable meanwhile; CamHAL is an open problem here,
+# not a proven dead end.
 #
 # The package runs the ISP in userspace instead:
 #   ov05c10 -> CSI2 -> ISYS (raw Bayer) -> debayer, AE, WB -> v4l2loopback

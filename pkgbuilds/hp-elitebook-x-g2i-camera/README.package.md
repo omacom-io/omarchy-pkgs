@@ -8,28 +8,40 @@ assuming it behaves like a normal webcam stack.
 
 ## Why CamHAL cannot be used
 
-Diagnosed with `cameraDebug=0xFF` on `v4l2-relayd`:
+Observed with `cameraDebug=0xFF` on `v4l2-relayd`:
 
 ```
 GraphConfig: <out w="2944" h="1632">
 PlatformData: Isp raw crop [0, 88, -56, 88], wxh [2944 x 1632]
-                                   ^^^ negative: 2888 - 2944 = -56
 ```
 
-The graph settings binary (`OV05C10_CJFPE50.IPU75XA.bin`) is built for a
-**2944-wide** sensor readout. The `ov05c10` driver exposes **2888x1808**, and so
-does Intel's own `sensors/ov05c10-uf.json`. CamHAL therefore hands the ISP a crop
-wider than the frame it receives.
+psys is **not** broken — it processes frames happily (`frame id N is done`) and
+the output is uniformly black.
 
-psys is **not** broken — it processes frames happily (`frame id N is done`); they
-are simply produced from an impossible region, so the output is uniformly black.
-That is also why the failure presents two ways: some runs log `Sof poll time out`
-and hang, others return black frames.
+**The cause is not established.** That log line reads like a readout mismatch and
+is not one. The four numbers are edge *insets*, not a rectangle: a right inset of
+-56 means "read 56 columns past the sensor width", giving 2888 + 56 = 2944 and
+1808 - 88 - 88 = 1632. Nothing is negative-sized, and the HAL performs no
+arithmetic here — `GraphConfig::getIspRawCropInfo` copies the value verbatim out
+of the static graph.
 
-Correct graph settings require Intel's internal tooling, so this is not fixable
-downstream. HP's Windows `graph_settings_ov05c10_CJFPE50_PTL.bin` loads (header
-compatible) but contains no matching settings and is not interchangeable. Filed
-upstream against `intel/ipu7-camera-hal`.
+Every sensor Intel ships uses the same idiom, including ones that work:
+
+| Sensor | Input | Right inset | Output |
+|---|---|---|---|
+| OV08X40 | 3856 | -48 | 3904 |
+| IMX471 | 1928 | -57 | 1984 |
+| OV13B10 | 4208 | -16 | 4224 |
+| OV05C10 | 2888 | -56 | 2944 |
+
+The rule is always `out = ALIGN(in, 64)`. HP's Windows graph settings contain the
+identical record for this sensor. Both Intel's and HP's binaries declare exactly
+one sensor geometry, 2888x1808 — neither contains a 2944-wide mode.
+
+Tested August 2026 against `intel-ipu7-camera-hal-git` r84, whose graph binary is
+byte-identical to current upstream. Not retested since. CamHAL is an open problem
+on this machine, not a proven dead end, and Intel issues #48, #52, #70 and #71
+covering IPU7 black frames are all open and unanswered.
 
 ## What this package does instead
 

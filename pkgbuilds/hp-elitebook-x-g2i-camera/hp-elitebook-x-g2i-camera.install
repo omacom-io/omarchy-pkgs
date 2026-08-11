@@ -21,8 +21,28 @@ MSG
   fi
 }
 
+# Anyone who brought this machine up by hand before the package existed has
+# services in /etc/systemd/system doing the same job. Two writers fighting over
+# the sensor and /dev/video50 does not fail cleanly: both units report active,
+# and this one crash-loops while the older one keeps the device. Stand them down
+# rather than leave the user to work that out from a restart counter.
+_retire_legacy_units() {
+  local u
+  for u in hp-g2i-camera-bypass hp-g2i-camera-watchdog; do
+    # Only ever touch units no package owns.
+    [ -e "/etc/systemd/system/$u.service" ] || continue
+    if pacman -Qo "/etc/systemd/system/$u.service" >/dev/null 2>&1; then
+      echo "  leaving $u alone -- a package owns it"
+      continue
+    fi
+    systemctl disable --now "$u.service" >/dev/null 2>&1 || true
+    echo "  retired the hand-installed $u.service, superseded by this package"
+  done
+}
+
 post_install() {
   systemctl daemon-reload >/dev/null 2>&1 || true
+  _retire_legacy_units
   systemctl enable hp-elitebook-x-g2i-camera.service >/dev/null 2>&1 || true
 
   cat <<'MSG'

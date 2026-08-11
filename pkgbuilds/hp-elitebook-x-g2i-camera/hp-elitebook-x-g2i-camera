@@ -1,14 +1,20 @@
 #!/bin/bash
 # HP EliteBook X G2i — CamHAL-free webcam pipeline.
 #
-# WHY: Intel's CamHAL/psys stack cannot work on this machine. Root cause found
-# 2026-08-06 with cameraDebug=0xFF: the graph settings binary
-# (OV05C10_CJFPE50.IPU75XA.bin) is built for a 2944-wide sensor readout, but
-# ov05c10 exposes 2888x1808. CamHAL computes "Isp raw crop [0, 88, -56, 88],
-# wxh [2944 x 1632]" -- a negative crop -- and psys processes frames from an
-# impossible region, emitting black. psys itself is fine (it logs "frame id N is
-# done"). Correct graph settings need Intel's internal tooling; HP's Windows
-# binary loads but contains no matching settings. So bypass psys and CamHAL:
+# WHY: Intel's CamHAL/psys stack does not produce usable frames on this machine,
+# and the cause is not established. With cameraDebug=0xFF psys logs "frame id N
+# is done" yet the output is uniformly black.
+#
+# The obvious reading of the log is wrong. "Isp raw crop [0, 88, -56, 88], wxh
+# [2944 x 1632]" is not a negative crop: those are edge insets, a right inset of
+# -56 meaning "read 56 columns past the sensor width", so 2888 + 56 = 2944 and
+# 1808 - 88 - 88 = 1632. Every Intel sensor uses the idiom, including OV08X40
+# which works (3856 -> 3904), and HP's Windows graph settings carry the identical
+# record. The HAL copies the value verbatim; it computes nothing.
+#
+# Tested Aug 2026 against a graph binary byte-identical to current upstream. Not
+# retested since. So this bypasses psys and CamHAL as a working stopgap, not as a
+# verdict that the hardware path is impossible:
 #
 #   ov05c10 -> CSI2 -> ISYS (raw Bayer) -> debayer/scale -> FIFO -> v4l2loopback
 #
