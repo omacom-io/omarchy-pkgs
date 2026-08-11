@@ -8,6 +8,14 @@ After=multi-user.target
 
 [Service]
 Type=simple
+# Nothing else loads v4l2loopback for us. v4l2loopback-dkms builds the module but
+# installs no modules-load.d entry, so without this /dev/video50 never appears on
+# a machine that does not also have v4l2-relayd, whose own modules-load.d file is
+# what happens to load it wherever intel-ipu7-camera is installed. Load it here
+# rather than at boot: this service is its only consumer, and doing it on start
+# also covers the case where a kernel upgrade rebuilt the module after boot.
+# Options come from /usr/lib/modprobe.d/99-hp-elitebook-x-g2i-v4l2loopback.conf.
+ExecStartPre=/usr/bin/modprobe v4l2loopback
 ExecStart=/usr/bin/hp-elitebook-x-g2i-camera
 # The FIFO the sensor feed writes into, the black idle frame and the AE stats
 # log. Fixed names in a private 0700 directory, so nothing can pre-create them.

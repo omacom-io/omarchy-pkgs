@@ -43,7 +43,7 @@
 
 pkgname=hp-elitebook-x-g2i-camera
 pkgver=1.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL bypass)"
 arch=('x86_64')
 url="https://github.com/omacom-io/omarchy-pkgs"
