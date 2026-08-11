@@ -6,7 +6,7 @@ camera work in Chrome, Firefox, OBS and the Omarchy screen recorder.
 **It is a bypass of Intel's CamHAL, not a fix.** Read "Trade-offs" before
 assuming it behaves like a normal webcam stack.
 
-## Why CamHAL cannot be used
+## Why CamHAL is not used
 
 Observed with `cameraDebug=0xFF` on `v4l2-relayd`:
 
@@ -42,6 +42,42 @@ Tested August 2026 against `intel-ipu7-camera-hal-git` r84, whose graph binary i
 byte-identical to current upstream. Not retested since. CamHAL is an open problem
 on this machine, not a proven dead end, and Intel issues #48, #52, #70 and #71
 covering IPU7 black frames are all open and unanswered.
+
+## The route out of this: libcamera, not CamHAL
+
+CamHAL is not the only way to reach the ISP. libcamera 0.7.2's `simple` pipeline
+handler already lists `intel-ipu7`, and it drives this sensor end to end today.
+Tested on this machine, streaming to a v4l2loopback sink the same way this
+package does:
+
+| | this package (ffmpeg) | libcamera `simple` |
+|---|---|---|
+| CPU | 437% (4.4 cores) | 79.8% (0.8 cores) |
+| Debayer | libswscale, CPU | GPU via EGL, 6.7 ms/frame |
+
+Two things are needed and neither is in the tree yet:
+
+1. **A `CameraSensorHelper` for `ov05c10`.** Without one libcamera logs
+   `Failed to create camera sensor helper for ov05c10` and AGC runs on a default
+   gain model, so exposure hunts and settles wrong. The sensor's real model is
+   linear, `V4L2_CID_ANALOGUE_GAIN` in 1/16 steps —
+   `AnalogueGainLinear{ 1, 0, 0, 16 }` — which turns libcamera's reported range
+   from `gain 16-248 (1)` into `gain 1-15.5 (0.145)`. This belongs upstream in
+   libcamera, not here.
+2. **Idle handling.** Everything under "Two coupled requirements" below still
+   applies. A libcamera version of this daemon has to hold the loopback open,
+   feed black frames when nothing is reading, and switch source on a frame
+   boundary. That is most of the code in this package and none of it is
+   libcamera's problem to solve.
+
+Two constraints found while testing, recorded so they are not rediscovered:
+
+- **Request the native mode.** Ask for 1920x1080 and libcamera selects sensor
+  mode 2800x1576, which never delivers a buffer and wedges the ISYS node.
+  2888x1808 works; scale afterwards.
+- **`blackLevel: 4096` is correct.** Measured, not assumed: at minimum exposure
+  and minimum analogue gain the median is exactly 64 in all four Bayer channels
+  and 64 << 6 = 4096. There is no per-channel pedestal.
 
 ## What this package does instead
 
