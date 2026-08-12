@@ -10,9 +10,9 @@
 #    provenance only (empty when cut from a bare commit). omarchy and
 #    omarchy-settings must always carry identical _tag/_commit/pkgver/sha256sums.
 pkgname='omarchy-settings'
-_tag='v4.0.0-rc1'
+_tag='v4.0.0-beta3'
 _commit='4727bad5ebd37cf2344416ae937b02a931113ec3'
-pkgver=4.0.0rc1
+pkgver=4.0.0beta3
 pkgrel=1
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
