@@ -32,3 +32,5 @@ pkgbuilds/omazed/steps.txt
 pkgbuilds/symfony-cli/symfony*
 !pkgbuilds/symfony-cli/symfony-cli.install
 pkgbuilds/yay/yay/
+.srcdest/
+.build-host

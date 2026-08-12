@@ -182,6 +182,59 @@ bin/repo list --repo --mirror stable # List packages in a published repo databas
 bin/package-worktree v4l2-relayd     # Create upstream/patched/current scratch workspace
 ```
 
+## Cutting an Omarchy Release
+
+The `omarchy` and `omarchy-settings` packages are released as a pair, always
+built from the same upstream commit of basecamp/omarchy. `bin/omarchy-pkgs`
+rewrites both PKGBUILDs in lockstep (same `_tag`/`_commit`/`pkgver`/
+`sha256sums`), validates ordering with `vercmp`, commits, pushes to master,
+and pokes the build host.
+
+```bash
+bin/omarchy-pkgs release v4.0.0          # Final release from an upstream tag
+bin/omarchy-pkgs release latest          # Newest upstream tag (prompts first)
+bin/omarchy-pkgs release v4.1.0-rc1      # Release candidate from an upstream tag
+bin/omarchy-pkgs release rc              # RC from the quattro branch tip, auto-numbered
+bin/omarchy-pkgs release rc --commit abc123 --base 4.1.0
+bin/omarchy-pkgs release ... --dry-run   # Show the plan; write nothing
+bin/omarchy-pkgs self-test               # Version normalization + ordering tests
+```
+
+### Versioning rules
+
+- Finals are `X.Y.Z`; release candidates are `X.Y.ZrcN` in the **attached**
+  form only. pacman's vercmp orders `4.0.0rc1 < 4.0.0rc2 < 4.0.0`, but
+  separator forms (`4.0.0.rc1`, `4.0.0_rc1`) sort **after** `4.0.0` and would
+  strand users on the pre-release — the tooling normalizes upstream tags
+  (`v4.0.0-rc1`, `v4.0.0-rc.1`, ...) to the attached form and refuses anything
+  it cannot normalize.
+- `pkgrel` resets to 1 on every version change. Bump `pkgrel` by hand only to
+  repackage the same source.
+- `epoch` is never set by tooling. It is sticky forever; adding one is a
+  human decision of last resort.
+
+### Where releases land
+
+- **RCs build for edge only.** Stable never sees an rc version. Edge testers
+  upgrade rc1 → rc2 → final naturally.
+- **Finals build for edge first.** After the edge build completes and you have
+  verified it, promote the exact tested artifacts to stable:
+
+```bash
+bin/repo migrate --package omarchy && bin/repo migrate --package omarchy-settings
+bin/repo sync --mirror stable
+```
+
+Neither package is on the `fast` ring, and `bin/omarchy-pkgs` never touches
+stable — promotion is always this explicit step.
+
+### Build trigger
+
+After pushing, the command triggers the build host over ssh when
+`OMARCHY_BUILD_HOST` is set (env var, or a hostname in the git-ignored
+`.build-host` file). Without it, the 6-hourly auto-release timer picks up the
+change on its own.
+
 ## Directory Structure
 
 ```
