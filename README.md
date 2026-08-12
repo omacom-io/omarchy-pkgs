@@ -563,9 +563,15 @@ State files are stored in `/root/.state/`:
 ssh root@<host> 'cd /root/omarchy-pkgs && bin/setup'
 ```
 
-`bin/setup` installs the dependencies, enables Docker, creates the state
-directory, and installs and enables the release timers. It is idempotent, so
-run it again whenever a dependency is added.
+`bin/setup` installs the dependencies, ensures Docker is running, creates the
+state directory, and installs and enables the release timers. It works on
+Debian/Ubuntu and on Arch, and is idempotent, so run it again whenever a
+dependency is added.
+
+The host does not need to be Arch: makepkg, repo-add and package signing all
+run inside containers, so it needs only Docker, rclone, bsdtar, jq, git and
+rsync. Docker is left alone when it already works, rather than replacing a
+working installation from Docker's own repository with the distribution's.
 
 ```bash
 bin/repo setup --check         # Report what is missing, change nothing

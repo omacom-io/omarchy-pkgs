@@ -1,10 +1,10 @@
 #!/bin/bash
 # Prepare this machine to serve as the Omarchy repository host.
 #
-# The repository host builds packages, signs them, keeps the published tree, and
-# syncs it to the mirror. Everything it needs is installed and enabled here, so
-# the tooling can assume its toolchain instead of working around whatever
-# happens to be present.
+# The host receives uploads, promotes packages into the published tree, and
+# syncs that tree to the mirror. Everything Arch-specific — makepkg, repo-add,
+# package signing — happens inside containers, so the host itself needs very
+# little and does not need to be Arch. The production host is Ubuntu.
 #
 # Run this on the host itself:
 #   ssh root@<host> 'cd /root/omarchy-pkgs && bin/setup'
@@ -18,23 +18,6 @@ source "$BUILD_ROOT/helpers/message-helpers.sh"
 
 CHECK_ONLY=false
 SKIP_TIMERS=false
-
-# Packages, in "command:package" form so a missing tool names its own fix.
-#
-# tar, vercmp and repo-add come from base and pacman, which any Arch install
-# already has. bsdtar does not: libarchive ships the library pacman links
-# against without necessarily installing the binary.
-REQUIREMENTS=(
-  "bsdtar:libarchive"     # reads repo databases and .PKGINFO out of packages
-  "git:git"               # PKGBUILD sources and release commits
-  "jq:jq"                 # package metadata in .omarchy/package.json
-  "curl:curl"             # upstream version checks
-  "rsync:rsync"           # receives uploads from bin/repo push
-  "gpg:gnupg"             # package signing
-  "rclone:rclone"         # publishes to the mirror
-  "docker:docker"         # builds run in containers
-  "makepkg:base-devel"    # source verification for releases
-)
 
 STATE_DIR="${OMARCHY_STATE_DIR:-/root/.state}"
 CREDENTIALS="/root/.omarchy/build-credentials"
@@ -55,6 +38,7 @@ while [[ $# -gt 0 ]]; do
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Install and enable everything the repository host needs."
+    echo "Works on Debian/Ubuntu (apt) and Arch (pacman)."
     echo ""
     echo "Options:"
     echo "  --check         Report what is missing, change nothing"
@@ -69,17 +53,64 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! command -v pacman >/dev/null 2>&1; then
-  print_error "This is not an Arch system — the repository host must be Arch"
+# --- distribution ------------------------------------------------------------
+
+# Package names differ where it matters: bsdtar is libarchive-tools on Debian
+# and libarchive on Arch, and Docker is docker.io rather than docker.
+if command -v apt-get >/dev/null 2>&1; then
+  DISTRO="debian"
+  PKG_BSDTAR="libarchive-tools"
+  PKG_DOCKER="docker.io"
+elif command -v pacman >/dev/null 2>&1; then
+  DISTRO="arch"
+  PKG_BSDTAR="libarchive"
+  PKG_DOCKER="docker"
+else
+  print_error "Unsupported distribution — need apt-get or pacman"
   exit 1
 fi
+
+print_info "Distribution: $DISTRO"
 
 if [[ "$CHECK_ONLY" != true && $EUID -ne 0 ]]; then
   print_error "Run as root (installing packages and systemd units)"
   exit 1
 fi
 
+# Docker and the release timers are both systemd units. Say so plainly rather
+# than failing later on a missing command — a container is the usual way to end
+# up here, and it cannot be a repository host.
+if [[ "$CHECK_ONLY" != true ]] && ! command -v systemctl >/dev/null 2>&1; then
+  print_error "systemctl not found — the repository host must run systemd"
+  echo ""
+  echo "Docker and the release timers are systemd units. This looks like a"
+  echo "container; run setup on the host itself."
+  exit 1
+fi
+
+install_packages() {
+  case "$DISTRO" in
+  debian)
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
+    ;;
+  arch)
+    pacman -S --needed --noconfirm "$@"
+    ;;
+  esac
+}
+
 # --- dependencies ------------------------------------------------------------
+
+# Only what the host runs directly. Signing and repo-add happen in containers,
+# so gnupg and the Arch build tools are deliberately absent from this list.
+REQUIREMENTS=(
+  "bsdtar:$PKG_BSDTAR" # reads repo databases and .PKGINFO out of packages
+  "git:git"            # pulls this repository
+  "jq:jq"              # package metadata in .omarchy/package.json
+  "rsync:rsync"        # receives uploads from bin/repo push
+  "rclone:rclone"      # publishes to the mirror
+)
 
 print_info "Checking dependencies..."
 MISSING_PACKAGES=()
@@ -100,7 +131,7 @@ if [[ ${#MISSING_PACKAGES[@]} -gt 0 ]]; then
     print_warning "Would install: ${MISSING_PACKAGES[*]}"
   else
     print_info "Installing: ${MISSING_PACKAGES[*]}"
-    pacman -S --needed --noconfirm "${MISSING_PACKAGES[@]}"
+    install_packages "${MISSING_PACKAGES[@]}"
     print_success "Dependencies installed"
   fi
 else
@@ -110,16 +141,42 @@ echo ""
 
 # --- docker ------------------------------------------------------------------
 
-if [[ "$CHECK_ONLY" == true ]]; then
-  if systemctl is-enabled docker.service >/dev/null 2>&1; then
-    print_success "docker.service is enabled"
+# Docker is left alone when it already works. A host may well be running a
+# version from Docker's own repository rather than the distribution's, and
+# replacing that underneath a working builder would be a poor trade for
+# tidiness.
+print_info "Checking Docker..."
+
+if command -v docker >/dev/null 2>&1; then
+  print_step "docker present: $(docker --version 2>/dev/null | head -1)"
+  if docker info >/dev/null 2>&1; then
+    print_success "Docker is installed and running — leaving it alone"
+  elif [[ "$CHECK_ONLY" == true ]]; then
+    print_warning "Docker is installed but not running; would start it"
   else
-    print_warning "docker.service would be enabled"
+    print_info "Docker is installed but not running — starting it"
+    systemctl enable --now docker.service
+    if docker info >/dev/null 2>&1; then
+      print_success "Docker started"
+    else
+      print_error "Docker is installed but still not responding"
+      echo "    Check 'systemctl status docker' — builds cannot run without it."
+      exit 1
+    fi
   fi
+elif [[ "$CHECK_ONLY" == true ]]; then
+  print_warning "Would install $PKG_DOCKER and enable it"
 else
-  print_info "Enabling docker..."
+  print_info "Installing $PKG_DOCKER..."
+  install_packages "$PKG_DOCKER"
   systemctl enable --now docker.service
-  print_success "docker.service enabled"
+  if docker info >/dev/null 2>&1; then
+    print_success "Docker installed and running"
+  else
+    print_error "Docker installed but not responding"
+    echo "    Check 'systemctl status docker' — builds cannot run without it."
+    exit 1
+  fi
 fi
 echo ""
 
@@ -137,10 +194,12 @@ echo ""
 
 # --- release timers ----------------------------------------------------------
 
+TIMERS=(omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-stable)
+
 if [[ "$SKIP_TIMERS" == true ]]; then
   print_info "Skipping release timers (--skip-timers)"
 elif [[ "$CHECK_ONLY" == true ]]; then
-  for timer in omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-stable; do
+  for timer in "${TIMERS[@]}"; do
     if systemctl is-enabled "$timer.timer" >/dev/null 2>&1; then
       print_success "$timer.timer is enabled"
     else
@@ -151,7 +210,7 @@ else
   print_info "Installing release timers..."
   cp "$BUILD_ROOT"/systemd/*.service "$BUILD_ROOT"/systemd/*.timer /etc/systemd/system/
   systemctl daemon-reload
-  for timer in omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-stable; do
+  for timer in "${TIMERS[@]}"; do
     systemctl enable --now "$timer.timer"
     print_step "$timer.timer"
   done
