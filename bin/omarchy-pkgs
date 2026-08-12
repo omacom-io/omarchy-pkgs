@@ -16,7 +16,7 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 
-UPSTREAM_URL="https://github.com/basecamp/omarchy.git"
+UPSTREAM_URL="${OMARCHY_UPSTREAM_URL:-https://github.com/basecamp/omarchy.git}"
 EDGE_DB_URL="${OMARCHY_EDGE_DB_URL:-https://pkgs.omarchy.org/edge/x86_64/omarchy.db.tar.zst}"
 RELEASE_PACKAGES=(omarchy omarchy-settings)
 DEFAULT_RC_REF="quattro"
@@ -30,7 +30,10 @@ Usage: $0 <command> [options]
 Commands:
   release <vX.Y.Z | vX.Y.Z-rcN>  Cut a release from an upstream tag
   release latest                 Cut a release from the newest upstream tag
-  release rc                     Cut a release candidate from a bare commit
+  release rc [vX.Y.Z]            Newest upstream vX.Y.Z-rcN tag → X.Y.ZrcN
+  release beta|alpha [vX.Y.Z]    Same for beta/alpha channels
+  release rc --commit <sha>      Untagged pre-release from a bare commit,
+                                 auto-numbered past published edge + PKGBUILD
   self-test                      Run version-normalization and ordering tests
 
 Options for release:
@@ -39,6 +42,9 @@ Options for release:
   --commit <sha>    (rc) Upstream commit to pin (default: tip of --ref)
   --ref <branch>    (rc) Upstream branch whose tip to pin (default: $DEFAULT_RC_REF)
   --yes             Skip confirmation prompts
+  --no-push         Rewrite and commit locally; skip push and build trigger
+  --pr              When releasing from a non-master branch, open a GitHub PR
+                    to master with gh after pushing
   --dry-run         Resolve, validate, and show the plan; write nothing
   -h, --help        Show this help message
 
@@ -51,34 +57,56 @@ EOF
 
 # --- version helpers ---------------------------------------------------------
 
-# v4.0.0 / v4.0.0-rc1 / v4.0.0-rc.1 / v4.0.0.rc1 / v4.0.0_rc1 → pacman pkgver
+# v4.0.0 / v4.0.0-rc1 / v4.0.0-rc.1 / v4.0.0.rc1 / v4.0.0_rc1 → pacman pkgver.
+# Pre-release channels alpha/beta/rc normalize to the ATTACHED form, which is
+# the only one vercmp orders before the final (and alpha < beta < rc < final).
 normalize_tag() {
   local v="${1#v}"
   if [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "$v"
-  elif [[ "$v" =~ ^([0-9]+\.[0-9]+\.[0-9]+)[-._]rc\.?([0-9]+)$ ]]; then
-    echo "${BASH_REMATCH[1]}rc${BASH_REMATCH[2]}"
+  elif [[ "$v" =~ ^([0-9]+\.[0-9]+\.[0-9]+)[-._](alpha|beta|rc)\.?([0-9]+)$ ]]; then
+    echo "${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
   else
     return 1
   fi
 }
 
-version_base() { echo "${1%%rc*}"; }
-version_is_rc() { [[ "$1" == *rc* ]]; }
+version_base() { echo "$1" | sed -E 's/(alpha|beta|rc)[0-9]+$//'; }
+version_is_prerelease() { [[ "$1" =~ (alpha|beta|rc)[0-9]+$ ]]; }
+# Back-compat alias used by channel output
+version_is_rc() { version_is_prerelease "$1"; }
 
 pkgbuild_var() {
   local pkg="$1" var="$2"
   (cd "$BUILD_ROOT/pkgbuilds/$pkg" && bash -c "source PKGBUILD 2>/dev/null; echo \"\${$var}\"")
 }
 
+# Prints the published version of $pkg from the edge DB. Distinguishes
+# "package absent" (empty output, rc 0) from "could not fetch/read the DB"
+# (rc 2) so callers can fail closed instead of mistaking an outage for a
+# first release.
 published_edge_version() {
-  local pkg="$1"
-  curl -sf "$EDGE_DB_URL" | tar -xO --zstd -f - --wildcards '*/desc' 2>/dev/null | awk -v pkg="$pkg" '
-    $0 == "%NAME%"    { getline; name=$0; next }
-    $0 == "%VERSION%" { getline; version=$0; next }
-    $0 == "%FILENAME%" { if (name == pkg) { print version; exit } }
-    END { if (name == pkg && version != "") print version }
-  '
+  local pkg="$1" tmp descs
+  tmp=$(mktemp) || return 2
+  if ! curl -sf "$EDGE_DB_URL" -o "$tmp"; then
+    rm -f "$tmp"
+    return 2
+  fi
+  if ! descs=$(tar -xO --zstd -f "$tmp" --wildcards '*/desc' 2>/dev/null); then
+    rm -f "$tmp"
+    return 2
+  fi
+  rm -f "$tmp"
+  awk -v pkg="$pkg" '
+    function emit() {
+      if (!found && name == pkg && version != "") { print version; found = 1 }
+      name = ""; version = ""
+    }
+    $0 == "%FILENAME%" { emit(); next }
+    $0 == "%NAME%"    { getline; name = $0; next }
+    $0 == "%VERSION%" { getline; version = $0; next }
+    END { emit() }
+  ' <<<"$descs"
 }
 
 # --- upstream resolution -----------------------------------------------------
@@ -105,6 +133,21 @@ latest_upstream_tag() {
   [[ -n "$best_tag" ]] && echo "$best_tag"
 }
 
+
+# Newest upstream tag of the form v<base>-<channel>N (any accepted separator),
+# picked by vercmp over normalized candidates.
+latest_channel_tag() {
+  local channel="$1" base="$2" best_tag="" best_ver="" tag ver
+  while IFS= read -r tag; do
+    [[ "${tag#v}" =~ ^${base//./\\.}[-._]${channel}\.?[0-9]+$ ]] || continue
+    ver=$(normalize_tag "$tag") || continue
+    if [[ -z "$best_ver" ]] || [[ $(vercmp "$ver" "$best_ver") -gt 0 ]]; then
+      best_ver="$ver" best_tag="$tag"
+    fi
+  done < <(git ls-remote --tags "$UPSTREAM_URL" | awk -F/ '!/\^\{\}/{print $3}')
+  [[ -n "$best_tag" ]] && echo "$best_tag"
+}
+
 ensure_clone() {
   if [[ -d "$CLONE_DIR" ]]; then
     git -C "$CLONE_DIR" fetch --quiet origin
@@ -117,35 +160,25 @@ ensure_clone() {
 
 # --- guards ------------------------------------------------------------------
 
+# Only the two files the release rewrites must be clean — the commit stages
+# and commits exactly those paths, so dirt elsewhere cannot enter the release.
 guard_clean_tree() {
   local dirty
-  dirty=$(cd "$BUILD_ROOT" && git status --porcelain | grep -vE ' pkgbuilds/(omarchy|omarchy-settings)/' || true)
+  dirty=$(cd "$BUILD_ROOT" && git status --porcelain -- \
+    pkgbuilds/omarchy/PKGBUILD pkgbuilds/omarchy-settings/PKGBUILD)
   if [[ -n "$dirty" ]]; then
-    print_error "Working tree has changes outside the release package dirs:"
+    print_error "Uncommitted changes on the release PKGBUILDs — commit or stash them first:"
     echo "$dirty"
-    exit 1
-  fi
-}
-
-guard_on_master_and_current() {
-  local branch
-  branch=$(cd "$BUILD_ROOT" && git rev-parse --abbrev-ref HEAD)
-  if [[ "$branch" != "master" ]]; then
-    print_error "Releases are cut from master (currently on: $branch)"
-    exit 1
-  fi
-  (cd "$BUILD_ROOT" && git fetch --quiet origin master)
-  local behind
-  behind=$(cd "$BUILD_ROOT" && git rev-list --count HEAD..origin/master)
-  if [[ "$behind" -gt 0 ]]; then
-    print_error "Local master is $behind commit(s) behind origin/master — pull first"
     exit 1
   fi
 }
 
 guard_version_ordering() {
   local new_pkgver="$1" published
-  published=$(published_edge_version omarchy)
+  if ! published=$(published_edge_version omarchy); then
+    print_error "Could not read the published edge DB ($EDGE_DB_URL) — refusing to release blind"
+    exit 1
+  fi
   if [[ -z "$published" ]]; then
     print_warning "omarchy not found in the published edge DB — first release, skipping downgrade guard"
     return 0
@@ -236,10 +269,12 @@ trigger_build_host() {
 # --- release command ---------------------------------------------------------
 
 cmd_release() {
-  local target="" base="" commit_arg="" ref="" dry_run=false assume_yes=false
+  local target="" target_arg="" base="" commit_arg="" ref="" dry_run=false assume_yes=false no_push=false open_pr=false
   while [[ $# -gt 0 ]]; do
     case $1 in
     --base) base="$2"; shift 2 ;;
+    --no-push) no_push=true; shift ;;
+    --pr) open_pr=true; shift ;;
     --commit) commit_arg="$2"; shift 2 ;;
     --ref) ref="$2"; shift 2 ;;
     --yes) assume_yes=true; shift ;;
@@ -247,26 +282,44 @@ cmd_release() {
     -h | --help) show_usage; exit 0 ;;
     -*) print_error "Unknown option: $1"; exit 1 ;;
     *)
-      if [[ -n "$target" ]]; then print_error "Unexpected argument: $1"; exit 1; fi
-      target="$1"; shift ;;
+      if [[ -z "$target" ]]; then
+        target="$1"
+      elif [[ -z "$target_arg" ]]; then
+        target_arg="$1"
+      else
+        print_error "Unexpected argument: $1"; exit 1
+      fi
+      shift ;;
     esac
   done
+  # A bare-commit release is an RC: --commit/--ref/--base imply rc mode.
+  if [[ -z "$target" && ( -n "$commit_arg" || -n "$ref" || -n "$base" ) ]]; then
+    target="rc"
+  fi
   if [[ -z "$target" ]]; then
     print_error "Usage: $0 release <vX.Y.Z | vX.Y.Z-rcN | latest | rc> [options]"
     exit 1
   fi
-  if [[ "$target" != "rc" && ( -n "$base" || -n "$commit_arg" || -n "$ref" ) ]]; then
-    print_error "--base/--commit/--ref only apply to 'release rc'"
+  if [[ ! "$target" =~ ^(rc|beta|alpha)$ && ( -n "$base" || -n "$commit_arg" || -n "$ref" ) ]]; then
+    print_error "--base/--commit/--ref only apply to pre-release modes (rc/beta/alpha)"
     exit 1
   fi
 
   print_header "Omarchy Release"
 
+  # Fail fast on a dirty tree before touching the network. --no-push commits
+  # only the two PKGBUILD files locally, so a dirty tree elsewhere is fine.
+  if [[ "$dry_run" != true && "$no_push" != true ]]; then
+    guard_clean_tree
+  elif [[ "$no_push" == true ]]; then
+    print_warning "--no-push: will commit locally to $(cd "$BUILD_ROOT" && git rev-parse --abbrev-ref HEAD); no push, no build trigger"
+  fi
+
   local tag="" commit="" pkgver=""
   case "$target" in
   latest)
     print_info "Finding newest upstream tag..."
-    tag=$(latest_upstream_tag)
+    tag=$(latest_upstream_tag || true)
     if [[ -z "$tag" ]]; then
       print_error "No release tags found at $UPSTREAM_URL"
       exit 1
@@ -274,7 +327,30 @@ cmd_release() {
     pkgver=$(normalize_tag "$tag")
     commit=$(resolve_tag_commit "$tag")
     ;;
-  rc)
+  rc | beta | alpha)
+    local channel="$target"
+    # `release rc v4.0.0` → newest upstream v4.0.0-rcN tag
+    if [[ -n "$target_arg" && -z "$commit_arg" && -z "$ref" ]]; then
+      base="${target_arg#v}"
+      if [[ ! "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        print_error "Invalid base '$target_arg' (expected vX.Y.Z or X.Y.Z)"
+        exit 1
+      fi
+      print_info "Finding newest upstream ${channel} tag for $base..."
+      tag=$(latest_channel_tag "$channel" "$base" || true)
+      if [[ -z "$tag" ]]; then
+        print_error "No v$base-${channel}N tag found at $UPSTREAM_URL"
+        print_error "Tag one upstream (on quattro), or cut an untagged ${channel} with: $0 release $channel --commit <sha> --base $base"
+        exit 1
+      fi
+      pkgver=$(normalize_tag "$tag")
+      commit=$(resolve_tag_commit "$tag")
+      if [[ -z "$commit" ]]; then
+        print_error "Could not resolve $tag to a commit"
+        exit 1
+      fi
+    else
+    if [[ -n "$target_arg" ]]; then base="${base:-${target_arg#v}}"; fi
     if [[ -z "$base" ]]; then
       base=$(version_base "$(pkgbuild_var "${RELEASE_PACKAGES[0]}" pkgver)")
       print_info "No --base given; using current PKGBUILD base: $base"
@@ -299,14 +375,20 @@ cmd_release() {
     fi
     # Next rc number: one past the highest of the published edge DB and the
     # current PKGBUILD for this base.
+    local published_ver
+    if ! published_ver=$(published_edge_version omarchy); then
+      print_error "Could not read the published edge DB ($EDGE_DB_URL) — refusing to auto-number the RC blind"
+      exit 1
+    fi
     local highest=0 candidate
-    for candidate in "$(published_edge_version omarchy | sed 's/-[0-9]*$//')" "$(pkgbuild_var "${RELEASE_PACKAGES[0]}" pkgver)"; do
-      if [[ "$candidate" =~ ^${base//./\\.}rc([0-9]+)$ ]] && (( BASH_REMATCH[1] > highest )); then
+    for candidate in "${published_ver%-*}" "$(pkgbuild_var "${RELEASE_PACKAGES[0]}" pkgver)"; do
+      if [[ "$candidate" =~ ^${base//./\\.}${channel}([0-9]+)$ ]] && (( BASH_REMATCH[1] > highest )); then
         highest=${BASH_REMATCH[1]}
       fi
     done
-    pkgver="${base}rc$((highest + 1))"
+    pkgver="${base}${channel}$((highest + 1))"
     tag=""
+    fi
     ;;
   v*)
     pkgver=$(normalize_tag "$target") || {
@@ -333,8 +415,8 @@ cmd_release() {
   print_info "Tag:      ${tag:-<none — cut from bare commit>}"
   print_info "Commit:   $commit"
   print_info "Pkgver:   $pkgver-1"
-  if version_is_rc "$pkgver"; then
-    print_info "Channel:  edge only (release candidate)"
+  if version_is_prerelease "$pkgver"; then
+    print_info "Channel:  edge only (pre-release)"
   else
     print_info "Channel:  edge, then promote to stable via bin/repo migrate"
   fi
@@ -348,9 +430,6 @@ cmd_release() {
     exit 0
   fi
 
-  guard_on_master_and_current
-  guard_clean_tree
-
   if [[ "$assume_yes" != true ]]; then
     local reply
     read -r -p "Cut release $pkgver from ${tag:-$commit}? [y/N] " reply
@@ -362,19 +441,42 @@ cmd_release() {
   regenerate_checksums
   guard_lockstep
 
-  print_info "Committing and pushing..."
-  (cd "$BUILD_ROOT" &&
-    git add pkgbuilds/omarchy pkgbuilds/omarchy-settings &&
-    git commit -m "Release omarchy $pkgver" &&
-    git push origin master)
-  print_success "Pushed release omarchy $pkgver"
+  if [[ "$no_push" == true ]]; then
+    print_info "Committing locally (--no-push)..."
+    (cd "$BUILD_ROOT" &&
+      git commit -m "Release omarchy $pkgver" -- pkgbuilds/omarchy/PKGBUILD pkgbuilds/omarchy-settings/PKGBUILD)
+    print_success "Committed release omarchy $pkgver (not pushed, build not triggered)"
+  else
+    local branch
+    branch=$(cd "$BUILD_ROOT" && git rev-parse --abbrev-ref HEAD)
+    print_info "Committing and pushing to $branch..."
+    (cd "$BUILD_ROOT" &&
+      git commit -m "Release omarchy $pkgver" -- pkgbuilds/omarchy/PKGBUILD pkgbuilds/omarchy-settings/PKGBUILD &&
+      git push origin HEAD)
+    print_success "Pushed release omarchy $pkgver to $branch"
 
-  trigger_build_host
+    if [[ "$branch" == "master" ]]; then
+      trigger_build_host
+    else
+      if [[ "$open_pr" == true ]]; then
+        if command -v gh >/dev/null; then
+          gh pr create --base master --head "$branch" \
+            --title "Release omarchy $pkgver" \
+            --body "$(printf 'Cut with bin/omarchy-pkgs release.\n\n- pkgver: %s-1\n- tag: %s\n- commit: %s\n\nMerging publishes to edge on the next auto-release cycle.%s' \
+              "$pkgver" "${tag:-<none — bare commit>}" "$commit" \
+              "$(version_is_prerelease "$pkgver" || echo ' Promote to stable afterwards with: bin/repo migrate --package omarchy && bin/repo migrate --package omarchy-settings')")"
+        else
+          print_warning "--pr requested but gh is not installed — open the PR manually"
+        fi
+      else
+        print_info "Released on branch '$branch' — merge it to master to go live (or rerun with --pr); the build host follows master."
+      fi
+    fi
+  fi
 
   echo ""
-  if version_is_rc "$pkgver"; then
-    print_info "RC flow: $pkgver builds for edge only. Stable is untouched."
-    print_info "Cut the final with: $0 release v$(version_base "$pkgver")"
+  if version_is_prerelease "$pkgver"; then
+    print_info "Pre-release flow: $pkgver builds for edge only. Stable is untouched."
   else
     print_info "After the edge build completes and you have verified it, promote to stable:"
     echo "  bin/repo migrate --package omarchy && bin/repo migrate --package omarchy-settings"
@@ -426,7 +528,9 @@ cmd_self_test() {
   check_norm 4.1.0 4.1.0
   check_norm v4.0.0-rc10 4.0.0rc10
   check_norm v4.0 "<reject>"
-  check_norm v4.0.0-beta1 "<reject>"
+  check_norm v4.0.0-beta1 4.0.0beta1
+  check_norm v4.0.0-alpha.2 4.0.0alpha2
+  check_norm v4.0.0-preview1 "<reject>"
   check_norm v4.0.0rc "<reject>"
   check_norm garbage "<reject>"
   check_norm v4.0.0-rc "<reject>"
@@ -438,8 +542,13 @@ cmd_self_test() {
   check_vercmp 4.0.0 ">" 4.0.0rc99
   check_vercmp 4.0.1 ">" 4.0.0
   check_vercmp 4.0.0 "<" 4.1.0rc1
+  check_vercmp 4.0.0alpha1 "<" 4.0.0beta1
+  check_vercmp 4.0.0beta1 "<" 4.0.0rc1
+  check_vercmp 4.0.0beta2 "<" 4.0.0
+  check_vercmp 4.0.0beta2 "<" 4.0.0beta10
 
   echo "Version helpers:"
+  [[ $(version_base 4.0.0beta3) == 4.0.0 ]] && echo "  ok: version_base 4.0.0beta3 → 4.0.0" || { echo "  FAIL: version_base beta"; failures=$((failures + 1)); }
   [[ $(version_base 4.0.0rc7) == 4.0.0 ]] && echo "  ok: version_base 4.0.0rc7 → 4.0.0" || { echo "  FAIL: version_base"; failures=$((failures + 1)); }
   version_is_rc 4.0.0rc1 && echo "  ok: 4.0.0rc1 is rc" || { echo "  FAIL: version_is_rc positive"; failures=$((failures + 1)); }
   version_is_rc 4.0.0 && { echo "  FAIL: version_is_rc negative"; failures=$((failures + 1)); } || echo "  ok: 4.0.0 is not rc"

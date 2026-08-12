@@ -187,27 +187,31 @@ bin/package-worktree v4l2-relayd     # Create upstream/patched/current scratch w
 The `omarchy` and `omarchy-settings` packages are released as a pair, always
 built from the same upstream commit of basecamp/omarchy. `bin/omarchy-pkgs`
 rewrites both PKGBUILDs in lockstep (same `_tag`/`_commit`/`pkgver`/
-`sha256sums`), validates ordering with `vercmp`, commits, pushes to master,
-and pokes the build host.
+`sha256sums`), validates ordering with `vercmp`, commits, and pushes the
+current branch. On master it pokes the build host directly; from any other
+branch add `--pr` to open the release PR — merging it is what goes live.
 
 ```bash
-bin/omarchy-pkgs release v4.0.0          # Final release from an upstream tag
-bin/omarchy-pkgs release latest          # Newest upstream tag (prompts first)
-bin/omarchy-pkgs release v4.1.0-rc1      # Release candidate from an upstream tag
-bin/omarchy-pkgs release rc              # RC from the quattro branch tip, auto-numbered
-bin/omarchy-pkgs release rc --commit abc123 --base 4.1.0
+bin/omarchy-pkgs release v4.0.0          # Final release from the upstream v4.0.0 tag
+bin/omarchy-pkgs release rc v4.0.0       # Newest upstream v4.0.0-rcN tag -> 4.0.0rcN
+bin/omarchy-pkgs release beta v4.0.0     # Same for beta (alpha also supported)
+bin/omarchy-pkgs release latest          # Newest upstream final tag (prompts first)
+bin/omarchy-pkgs release rc              # Untagged RC from the quattro tip, auto-numbered
+bin/omarchy-pkgs release --commit abc123 --base 4.1.0   # Untagged RC from a commit
 bin/omarchy-pkgs release ... --dry-run   # Show the plan; write nothing
+bin/omarchy-pkgs release ... --no-push   # Full flow, local commit only (testing)
 bin/omarchy-pkgs self-test               # Version normalization + ordering tests
 ```
 
 ### Versioning rules
 
-- Finals are `X.Y.Z`; release candidates are `X.Y.ZrcN` in the **attached**
-  form only. pacman's vercmp orders `4.0.0rc1 < 4.0.0rc2 < 4.0.0`, but
-  separator forms (`4.0.0.rc1`, `4.0.0_rc1`) sort **after** `4.0.0` and would
-  strand users on the pre-release — the tooling normalizes upstream tags
-  (`v4.0.0-rc1`, `v4.0.0-rc.1`, ...) to the attached form and refuses anything
-  it cannot normalize.
+- Finals are `X.Y.Z`; pre-releases are `X.Y.ZalphaN` / `X.Y.ZbetaN` /
+  `X.Y.ZrcN` in the **attached** form only. pacman's vercmp orders
+  `4.0.0alpha1 < 4.0.0beta1 < 4.0.0rc1 < 4.0.0`, but separator forms
+  (`4.0.0.rc1`, `4.0.0_rc1`) sort **after** `4.0.0` and would strand users on
+  the pre-release — the tooling normalizes upstream tags (`v4.0.0-rc1`,
+  `v4.0.0-rc.1`, ...) to the attached form and refuses anything it cannot
+  normalize. Upstream tags are cut on the quattro branch.
 - `pkgrel` resets to 1 on every version change. Bump `pkgrel` by hand only to
   repackage the same source.
 - `epoch` is never set by tooling. It is sticky forever; adding one is a
