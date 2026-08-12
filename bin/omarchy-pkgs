@@ -122,10 +122,13 @@ resolve_ref_commit() {
   git ls-remote "$UPSTREAM_URL" "refs/heads/$1" | awk '{print $1}'
 }
 
+# Newest upstream FINAL tag (pre-releases excluded — `release rc/beta/alpha`
+# are the channel-aware paths).
 latest_upstream_tag() {
   local best_tag="" best_ver="" tag ver
   while IFS= read -r tag; do
     ver=$(normalize_tag "$tag") || continue
+    version_is_prerelease "$ver" && continue
     if [[ -z "$best_ver" ]] || [[ $(vercmp "$ver" "$best_ver") -gt 0 ]]; then
       best_ver="$ver" best_tag="$tag"
     fi
