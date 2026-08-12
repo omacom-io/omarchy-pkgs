@@ -275,6 +275,13 @@ print_success "Host ready"
 echo ""
 
 print_info "Uploading packages..."
+# Known gap: this writes into the host's shared build-output/ before the host's
+# lock is taken (bin/upload-prebuilt acquires it further down), so a release
+# starting mid-transfer can wipe or prematurely publish what is landing here.
+# Holding a remote lock across the transfer needs an ssh session that outlives
+# the rsync, which is its own change. The checksum verification below catches
+# the destructive half of that race before anything is published.
+#
 # Prefix with ./ so rsync does not read an epoch's colon (spotify-1:1.2.3-...)
 # as a host:path separator.
 rsync_sources=()
