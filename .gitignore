@@ -34,3 +34,4 @@ pkgbuilds/symfony-cli/symfony*
 pkgbuilds/yay/yay/
 .srcdest/
 .build-host
+.repo-host

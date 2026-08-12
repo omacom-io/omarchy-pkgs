@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build packages locally, then publish them from the build host.
+# Build packages locally, then publish them from the repository host.
 #
 # The two halves of shipping a package built on a local machine: bin/build
 # produces the artifacts, bin/push-build hands them to the host that owns the
@@ -11,6 +11,7 @@ SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
 BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/host-helpers.sh"
 
 PACKAGES=()
 PACKAGE_FLAG_GIVEN=false
@@ -64,13 +65,13 @@ while [[ $# -gt 0 ]]; do
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Build packages here, then publish them from the build host."
+    echo "Build packages here, then publish them from the repository host."
     echo ""
     echo "Options:"
     echo "  --arch <arch>          Target architecture (default: x86_64)"
     echo "  --mirror <mirror>      Mirror to publish to (edge or stable, default: edge)"
     echo "  --package <names>      Build and push only these packages (space-separated)"
-    echo "  --host <host>          ssh destination (default: \$OMARCHY_BUILD_HOST or .build-host)"
+    echo "  --host <host>          ssh destination (default: \$OMARCHY_REPO_HOST or .repo-host)"
     echo "  --remote-root <path>   Repository path on the host (default: /root/omarchy-pkgs)"
     echo "  --dry-run              Show the plan, build nothing and transfer nothing"
     echo "  -y, --yes              Do not ask for confirmation before publishing"
@@ -96,7 +97,7 @@ fi
 echo ""
 print_info "This will:"
 echo "  1. Build packages locally"
-echo "  2. Upload them to the build host"
+echo "  2. Upload them to the repository host"
 echo "  3. Sign, promote, update and sync them there"
 echo ""
 
@@ -112,18 +113,10 @@ fi
 [[ "$DRY_RUN" == true ]] && BUILD_ARGS+=("--dry-run") && PUSH_ARGS+=("--dry-run")
 [[ "$ASSUME_YES" == true ]] && PUSH_ARGS+=("--yes")
 
-# Resolve the host before spending build time on packages that cannot ship.
+# Resolve the repository host before spending build time on packages that cannot ship.
 if [[ "$DRY_RUN" != true ]]; then
-  resolved_host="$HOST"
-  if [[ -z "$resolved_host" ]]; then
-    resolved_host="${OMARCHY_BUILD_HOST:-}"
-    [[ -z "$resolved_host" && -f "$BUILD_ROOT/.build-host" ]] && resolved_host=$(<"$BUILD_ROOT/.build-host")
-  fi
-  if [[ -z "$resolved_host" ]]; then
-    print_error "No build host configured"
-    echo ""
-    echo "Pass --host, set OMARCHY_BUILD_HOST, or write the destination to:"
-    echo "  $BUILD_ROOT/.build-host"
+  if ! resolve_repo_host "$HOST" >/dev/null; then
+    print_no_repo_host
     exit 1
   fi
 fi
@@ -133,6 +126,6 @@ echo ""
 "$SCRIPT_DIR/build" "${BUILD_ARGS[@]}"
 echo ""
 
-print_info "Step 2/2: Pushing to the build host..."
+print_info "Step 2/2: Pushing to the repository host..."
 echo ""
 "$SCRIPT_DIR/push-build" "${PUSH_ARGS[@]}"

@@ -1,9 +1,9 @@
 #!/bin/bash
-# Push locally built packages to the build host and publish them there.
+# Push locally built packages to the repository host and publish them there.
 #
 # Heavy packages are quicker to build on a local machine than on the server, but
 # publishing has to happen where the full repository lives: the signing key is on
-# the build host, and `bin/repo sync` can only produce a correct remote from a
+# the repository host, and `bin/repo sync` can only produce a correct remote from a
 # complete local tree. So this uploads the artifacts and runs the publish steps
 # over ssh rather than syncing from here.
 
@@ -12,6 +12,7 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/host-helpers.sh"
 
 HOST=""
 REMOTE_ROOT="/root/omarchy-pkgs"
@@ -72,14 +73,14 @@ while [[ $# -gt 0 ]]; do
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Upload packages from build-output/ to the build host, then sign,"
+    echo "Upload packages from build-output/ to the repository host, then sign,"
     echo "promote, update and sync them there."
     echo ""
     echo "Options:"
     echo "  --arch <arch>          Target architecture (default: x86_64)"
     echo "  --mirror <mirror>      Mirror to publish to (edge or stable, default: edge)"
     echo "  --package <names>      Only push these packages (space-separated)"
-    echo "  --host <host>          ssh destination (default: \$OMARCHY_BUILD_HOST or .build-host)"
+    echo "  --host <host>          ssh destination (default: \$OMARCHY_REPO_HOST or .repo-host)"
     echo "  --remote-root <path>   Repository path on the host (default: $REMOTE_ROOT)"
     echo "  --dry-run              Show what would be pushed, transfer nothing"
     echo "  -y, --yes              Do not ask for confirmation"
@@ -100,20 +101,8 @@ done
 
 # --- host resolution ---------------------------------------------------------
 
-if [[ -z "$HOST" ]]; then
-  HOST="${OMARCHY_BUILD_HOST:-}"
-  [[ -z "$HOST" && -f "$BUILD_ROOT/.build-host" ]] && HOST=$(<"$BUILD_ROOT/.build-host")
-fi
-
-if [[ -z "$HOST" ]]; then
-  print_error "No build host configured"
-  echo ""
-  echo "Pass --host, set OMARCHY_BUILD_HOST, or write the destination to:"
-  echo "  $BUILD_ROOT/.build-host"
-  echo ""
-  echo "Note that .build-host also arms the automatic build trigger in"
-  echo "'bin/omarchy-pkgs release'. Use --host or OMARCHY_BUILD_HOST to keep"
-  echo "this command's host separate from that."
+if ! HOST=$(resolve_repo_host "$HOST"); then
+  print_no_repo_host
   exit 1
 fi
 

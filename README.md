@@ -78,7 +78,8 @@ bin/repo sync                           # Sync to remote
 ### Building Heavy Packages Locally
 
 Large packages build faster on a local machine than on the server. Build them
-here, then hand the artifacts to the build host, which signs and publishes them:
+here, then hand the artifacts to the repository host, which signs and publishes
+them:
 
 ```bash
 bin/repo deploy --package nvidia-580xx-utils   # Build here, publish from the host
@@ -94,7 +95,7 @@ bin/repo push --package nvidia-580xx-utils     # Upload + publish on the host
 
 `push` uploads to the host's `build-output/`, verifies checksums, and runs
 `bin/upload-prebuilt` there. Do not publish from a local checkout instead: only
-the build host holds the complete repository and the signing key.
+the repository host holds the complete repository and the signing key.
 
 ## Commands
 
@@ -182,25 +183,25 @@ publish packages built on another machine.
 
 ```bash
 bin/repo deploy --package nvidia-580xx-utils   # Build locally, publish from the host
-bin/repo deploy --host root@example.com        # Point at a specific build host
+bin/repo deploy --host root@example.com        # Point at a specific repo host
 bin/repo deploy --dry-run                      # Show the plan, change nothing
 ```
 
-Runs `build` then `push` in one command. The build host is resolved before the
-build starts, so a missing `--host` fails immediately rather than after a long
+Runs `build` then `push` in one command. The repository host is resolved before
+the build starts, so a missing `--host` fails immediately rather than after a long
 compile.
 
-### Push to the Build Host
+### Push to the Repository Host
 
 ```bash
 bin/repo push                                  # Push everything in build-output
 bin/repo push --package nvidia-580xx-utils     # Push one package
 bin/repo push --mirror stable --arch aarch64   # Pick mirror and architecture
-bin/repo push --host root@example.com          # Override the build host
+bin/repo push --host root@example.com          # Override the repo host
 bin/repo push --dry-run                        # Show the plan, transfer nothing
 ```
 
-Uploads packages from `build-output/` to the build host and publishes them there
+Uploads packages from `build-output/` to the repository host and publishes them there
 with `bin/upload-prebuilt` (sign → promote → update → sync). Use it when a package
 is quicker to build on a local machine than on the server.
 
@@ -209,9 +210,14 @@ signing key lives there and nowhere else, and only the host holds the complete
 repository that a correct database and sync require. Local machines therefore
 need no secrets.
 
-The host comes from `--host`, `$OMARCHY_BUILD_HOST`, or `.build-host`, in that
-order. Note that `.build-host` also arms the automatic build trigger in
-`bin/omarchy-pkgs release`; pass `--host` or set `OMARCHY_BUILD_HOST` to keep the
+The host comes from `--host`, `$OMARCHY_REPO_HOST`, then `.repo-host`. One
+machine both serves pkgs.omarchy.org and runs the scheduled builds, so the
+setting is named for the repository rather than for building, which now happens
+wherever you like. `OMARCHY_BUILD_HOST` and `.build-host` are the previous names
+and still work.
+
+Note that `.repo-host` also arms the automatic build trigger in
+`bin/omarchy-pkgs release`; pass `--host` or set `OMARCHY_REPO_HOST` to keep the
 two separate.
 
 Split packages are selected by their own names, not their pkgbase — pushing
@@ -315,8 +321,9 @@ stable — promotion is always this explicit step.
 ### Build trigger
 
 After pushing, the command triggers the build host over ssh when
-`OMARCHY_BUILD_HOST` is set (env var, or a hostname in the git-ignored
-`.build-host` file). Without it, the 6-hourly auto-release timer picks up the
+`OMARCHY_REPO_HOST` is set (env var, or a hostname in the git-ignored
+`.repo-host` file; `OMARCHY_BUILD_HOST` and `.build-host` still work). Without
+it, the 6-hourly auto-release timer picks up the
 change on its own.
 
 ## Directory Structure
