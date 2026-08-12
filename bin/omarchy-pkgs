@@ -29,7 +29,8 @@ Usage: $0 <command> [options]
 
 Commands:
   release <vX.Y.Z | vX.Y.Z-rcN>  Cut a release from an upstream tag
-  release latest                 Cut a release from the newest upstream tag
+  release latest [rc|beta|alpha] Cut from the newest upstream tag, optionally
+                                 restricted to one pre-release channel
   release rc [vX.Y.Z]            Newest upstream vX.Y.Z-rcN tag → X.Y.ZrcN
   release beta|alpha [vX.Y.Z]    Same for beta/alpha channels
   release rc --commit <sha>      Untagged pre-release from a bare commit,
@@ -46,6 +47,8 @@ Options for release:
   --pr              When releasing from a non-master branch, open a GitHub PR
                     to master with gh after pushing
   --rebuild         Same version + same commit: bump pkgrel to force a rebuild
+  --force           Allow a version lower than the current PKGBUILD when that
+                    version was never published (rewind an unshipped seed)
   --dry-run         Resolve, validate, and show the plan; write nothing
   -h, --help        Show this help message
 
@@ -124,11 +127,15 @@ resolve_ref_commit() {
 }
 
 # Newest upstream tag by vercmp, pre-releases included: v4.0.0-rc1 outranks
-# v3.8.4, and a final outranks its own rc/beta/alpha builds.
+# v3.8.4, and a final outranks its own rc/beta/alpha builds. With a channel
+# argument (rc/beta/alpha), only tags of that channel are considered.
 latest_upstream_tag() {
-  local best_tag="" best_ver="" tag ver
+  local channel_filter="${1:-}" best_tag="" best_ver="" tag ver
   while IFS= read -r tag; do
     ver=$(normalize_tag "$tag") || continue
+    if [[ -n "$channel_filter" ]] && [[ ! "$ver" =~ ${channel_filter}[0-9]+$ ]]; then
+      continue
+    fi
     if [[ -z "$best_ver" ]] || [[ $(vercmp "$ver" "$best_ver") -gt 0 ]]; then
       best_ver="$ver" best_tag="$tag"
     fi
@@ -181,7 +188,7 @@ guard_clean_tree() {
 #   same version, different commit     -> re-release: pkgrel +1 (tag was moved)
 #   same version, same commit          -> no-op, or pkgrel +1 with --rebuild
 guard_version_ordering() {
-  local new_pkgver="$1" new_commit="$2" rebuild="$3" published
+  local new_pkgver="$1" new_commit="$2" rebuild="$3" force="$4" published
   if ! published=$(published_edge_version omarchy); then
     print_error "Could not read the published edge DB ($EDGE_DB_URL) — refusing to release blind"
     exit 1
@@ -230,8 +237,18 @@ guard_version_ordering() {
     print_warning "omarchy not found in the published edge DB yet — guarding against the current PKGBUILD only"
   fi
   if [[ $(vercmp "$new_pkgver" "$floor") -le 0 ]]; then
+    if [[ "$force" == true && "$floor_src" == "current PKGBUILD" ]]; then
+      # Nothing at or above the floor has shipped — rewinding the unshipped
+      # seed is safe. A published floor is never forceable.
+      print_warning "--force: rewinding unshipped $floor (current PKGBUILD) → $new_pkgver"
+      return 0
+    fi
     print_error "Refusing: $new_pkgver does not sort after $floor ($floor_src)"
-    print_error "Same version must mean same content — cut a newer version/rc, or bump pkgrel by hand to repackage."
+    if [[ "$floor_src" == "published edge DB" ]]; then
+      print_error "That version is already published — users would never see this release. --force cannot override a published floor."
+    else
+      print_error "Cut a newer version, or use --force to rewind the unshipped PKGBUILD seed."
+    fi
     exit 1
   fi
   print_info "Ordering OK: $floor ($floor_src) → $new_pkgver"
@@ -314,13 +331,14 @@ trigger_build_host() {
 # --- release command ---------------------------------------------------------
 
 cmd_release() {
-  local target="" target_arg="" base="" commit_arg="" ref="" dry_run=false assume_yes=false no_push=false open_pr=false rebuild=false
+  local target="" target_arg="" base="" commit_arg="" ref="" dry_run=false assume_yes=false no_push=false open_pr=false rebuild=false force=false
   while [[ $# -gt 0 ]]; do
     case $1 in
     --base) base="$2"; shift 2 ;;
     --no-push) no_push=true; shift ;;
     --pr) open_pr=true; shift ;;
     --rebuild) rebuild=true; shift ;;
+    --force) force=true; shift ;;
     --commit) commit_arg="$2"; shift 2 ;;
     --ref) ref="$2"; shift 2 ;;
     --yes) assume_yes=true; shift ;;
@@ -364,10 +382,19 @@ cmd_release() {
   local tag="" commit="" pkgver=""
   case "$target" in
   latest)
-    print_info "Finding newest upstream tag..."
-    tag=$(latest_upstream_tag || true)
+    local channel_filter=""
+    if [[ -n "$target_arg" ]]; then
+      if [[ "$target_arg" =~ ^(rc|beta|alpha)$ ]]; then
+        channel_filter="$target_arg"
+      else
+        print_error "Unknown argument '$target_arg' — usage: release latest [rc|beta|alpha]"
+        exit 1
+      fi
+    fi
+    print_info "Finding newest upstream ${channel_filter:-}${channel_filter:+ }tag..."
+    tag=$(latest_upstream_tag "$channel_filter" || true)
     if [[ -z "$tag" ]]; then
-      print_error "No release tags found at $UPSTREAM_URL"
+      print_error "No ${channel_filter:+$channel_filter }release tags found at $UPSTREAM_URL"
       exit 1
     fi
     pkgver=$(normalize_tag "$tag")
@@ -457,7 +484,7 @@ cmd_release() {
   esac
 
   guard_rc_before_final "$pkgver"
-  guard_version_ordering "$pkgver" "$commit" "$rebuild"
+  guard_version_ordering "$pkgver" "$commit" "$rebuild" "$force"
 
   echo ""
   print_info "Packages: ${RELEASE_PACKAGES[*]}"
