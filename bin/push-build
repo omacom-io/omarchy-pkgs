@@ -1,0 +1,243 @@
+#!/bin/bash
+# Push locally built packages to the build host and publish them there.
+#
+# Heavy packages are quicker to build on a local machine than on the server, but
+# publishing has to happen where the full repository lives: the signing key is on
+# the build host, and `bin/repo sync` can only produce a correct remote from a
+# complete local tree. So this uploads the artifacts and runs the publish steps
+# over ssh rather than syncing from here.
+
+set -e
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
+
+HOST=""
+REMOTE_ROOT="/root/omarchy-pkgs"
+CREDENTIALS="/root/.omarchy/build-credentials"
+PACKAGES=""
+DRY_RUN=false
+ASSUME_YES=false
+
+print_header "Push Build to Host"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --arch)
+    ARCH="$2"
+    update_arch_paths
+    shift 2
+    ;;
+  --mirror)
+    MIRROR="$2"
+    if [[ "$MIRROR" != "edge" && "$MIRROR" != "stable" ]]; then
+      print_error "Invalid mirror: $MIRROR (must be 'edge' or 'stable')"
+      exit 1
+    fi
+    update_arch_paths
+    shift 2
+    ;;
+  --package)
+    shift
+    PACKAGES=""
+    while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+      PACKAGES="$PACKAGES $1"
+      shift
+    done
+    PACKAGES="${PACKAGES# }"
+    ;;
+  --host)
+    HOST="$2"
+    shift 2
+    ;;
+  --remote-root)
+    REMOTE_ROOT="$2"
+    shift 2
+    ;;
+  --dry-run)
+    DRY_RUN=true
+    shift
+    ;;
+  -y | --yes)
+    ASSUME_YES=true
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Upload packages from build-output/ to the build host, then sign,"
+    echo "promote, update and sync them there."
+    echo ""
+    echo "Options:"
+    echo "  --arch <arch>          Target architecture (default: x86_64)"
+    echo "  --mirror <mirror>      Mirror to publish to (edge or stable, default: edge)"
+    echo "  --package <names>      Only push these packages (space-separated)"
+    echo "  --host <host>          ssh destination (default: \$OMARCHY_BUILD_HOST or .build-host)"
+    echo "  --remote-root <path>   Repository path on the host (default: $REMOTE_ROOT)"
+    echo "  --dry-run              Show what would be pushed, transfer nothing"
+    echo "  -y, --yes              Do not ask for confirmation"
+    echo "  -h, --help             Show this help message"
+    echo ""
+    echo "Typical use:"
+    echo "  bin/repo build --package nvidia-580xx-utils"
+    echo "  bin/repo push --package nvidia-580xx-utils"
+    exit 0
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
+
+# --- host resolution ---------------------------------------------------------
+
+if [[ -z "$HOST" ]]; then
+  HOST="${OMARCHY_BUILD_HOST:-}"
+  [[ -z "$HOST" && -f "$BUILD_ROOT/.build-host" ]] && HOST=$(<"$BUILD_ROOT/.build-host")
+fi
+
+if [[ -z "$HOST" ]]; then
+  print_error "No build host configured"
+  echo ""
+  echo "Pass --host, set OMARCHY_BUILD_HOST, or write the destination to:"
+  echo "  $BUILD_ROOT/.build-host"
+  echo ""
+  echo "Note that .build-host also arms the automatic build trigger in"
+  echo "'bin/omarchy-pkgs release'. Use --host or OMARCHY_BUILD_HOST to keep"
+  echo "this command's host separate from that."
+  exit 1
+fi
+
+# --- collect artifacts -------------------------------------------------------
+
+if [[ ! -d "$BUILD_OUTPUT_DIR" ]]; then
+  print_error "Build output directory not found: $BUILD_OUTPUT_DIR"
+  print_warning "Run bin/repo build first"
+  exit 1
+fi
+
+# Package files only. Signatures are produced on the host, and the repo database
+# is rebuilt there, so neither should ride along.
+mapfile -t ALL_FILES < <(cd "$BUILD_OUTPUT_DIR" && ls -1 *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' || true)
+
+FILES=()
+if [[ -z "$PACKAGES" ]]; then
+  FILES=("${ALL_FILES[@]}")
+else
+  for file in "${ALL_FILES[@]}"; do
+    # name-version-release-arch.pkg.tar.zst -> name
+    pkgname="${file%-*-*-*.pkg.tar.*}"
+    for wanted in $PACKAGES; do
+      if [[ "$pkgname" == "$wanted" ]]; then
+        FILES+=("$file")
+        break
+      fi
+    done
+  done
+
+  for wanted in $PACKAGES; do
+    found=false
+    for file in "${FILES[@]}"; do
+      [[ "${file%-*-*-*.pkg.tar.*}" == "$wanted" ]] && found=true && break
+    done
+    if [[ "$found" != true ]]; then
+      print_error "No built artifact for '$wanted' in $BUILD_OUTPUT_DIR"
+      print_warning "Split packages are named after their outputs, not their pkgbase"
+      exit 1
+    fi
+  done
+fi
+
+if [[ ${#FILES[@]} -eq 0 ]]; then
+  print_error "No packages found in $BUILD_OUTPUT_DIR"
+  exit 1
+fi
+
+REMOTE_BUILD_OUTPUT="$REMOTE_ROOT/build-output/$MIRROR/$ARCH"
+
+print_info "Host: $HOST"
+print_info "Mirror: $MIRROR"
+print_info "Architecture: $ARCH"
+print_info "Local build output: $BUILD_OUTPUT_DIR"
+print_info "Remote build output: $REMOTE_BUILD_OUTPUT"
+echo ""
+
+total=0
+print_info "${#FILES[@]} package(s) to push:"
+for file in "${FILES[@]}"; do
+  size=$(stat -c %s "$BUILD_OUTPUT_DIR/$file")
+  total=$((total + size))
+  print_step "$file ($(numfmt --to=iec --format %.1f "$size"))"
+done
+echo ""
+print_info "Total transfer: $(numfmt --to=iec --format %.1f "$total")"
+echo ""
+
+if [[ "$DRY_RUN" == true ]]; then
+  print_warning "DRY RUN - nothing transferred"
+  echo ""
+  print_info "Would run on $HOST:"
+  echo "  source $CREDENTIALS && cd $REMOTE_ROOT && bin/upload-prebuilt --mirror $MIRROR --arch $ARCH"
+  exit 0
+fi
+
+# Publishing reaches production, so confirm here. The remote publish runs
+# non-interactively and cannot ask.
+if [[ "$ASSUME_YES" != true ]]; then
+  print_warning "This publishes to PRODUCTION via $HOST ($MIRROR/$ARCH)"
+  read -p "Continue? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    print_info "Push cancelled"
+    exit 0
+  fi
+  echo
+fi
+
+# --- transfer ----------------------------------------------------------------
+
+print_info "Checking host..."
+if ! ssh "$HOST" "test -d $REMOTE_ROOT"; then
+  print_error "Repository not found on host: $REMOTE_ROOT"
+  print_warning "Pass --remote-root if it lives elsewhere"
+  exit 1
+fi
+ssh "$HOST" "mkdir -p $REMOTE_BUILD_OUTPUT"
+print_success "Host ready"
+echo ""
+
+print_info "Uploading packages..."
+(cd "$BUILD_OUTPUT_DIR" && rsync -a --info=progress2 --partial "${FILES[@]}" "$HOST:$REMOTE_BUILD_OUTPUT/")
+print_success "Upload complete"
+echo ""
+
+print_info "Verifying checksums..."
+local_sums=$(cd "$BUILD_OUTPUT_DIR" && sha256sum "${FILES[@]}" | sort)
+remote_sums=$(ssh "$HOST" "cd $REMOTE_BUILD_OUTPUT && sha256sum $(printf '%q ' "${FILES[@]}")" | sort)
+if [[ "$local_sums" != "$remote_sums" ]]; then
+  print_error "Checksum mismatch after upload"
+  diff <(echo "$local_sums") <(echo "$remote_sums") || true
+  exit 1
+fi
+print_success "All ${#FILES[@]} package(s) verified"
+echo ""
+
+# --- publish on the host -----------------------------------------------------
+
+print_info "Publishing on $HOST (sign -> promote -> update -> sync)..."
+echo ""
+if ! ssh "$HOST" "source $CREDENTIALS && cd $REMOTE_ROOT && bin/upload-prebuilt --mirror $MIRROR --arch $ARCH --skip-prod-check"; then
+  print_error "Remote publish failed"
+  print_warning "The uploaded packages are still in $REMOTE_BUILD_OUTPUT on $HOST"
+  exit 1
+fi
+echo ""
+
+print_info "Published versions:"
+for file in "${FILES[@]}"; do
+  print_step "${file%-*-*.pkg.tar.*}"
+done
+echo ""
+print_success "Push complete!"

@@ -9,6 +9,7 @@ source "$BUILD_ROOT/helpers/paths.sh"
 DEFAULT_REMOTE="pkgs.omarchy.org:omarchy-pkgs"
 REMOTE="$DEFAULT_REMOTE"
 SKIP_PROD_CHECK=false
+PRUNE=false
 
 # Print header
 print_header "Sync Repository to Remote"
@@ -34,6 +35,10 @@ while [[ $# -gt 0 ]]; do
     SKIP_PROD_CHECK=true
     shift
     ;;
+  --prune)
+    PRUNE=true
+    shift
+    ;;
   -h | --help)
     echo "Usage: $0 [OPTIONS]"
     echo ""
@@ -42,7 +47,11 @@ while [[ $# -gt 0 ]]; do
     echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
     echo "  --remote <remote>  Rclone remote destination (default: $DEFAULT_REMOTE)"
     echo "  --skip-prod-check  Skip production sync confirmation"
+    echo "  --prune            Also delete remote packages missing locally"
     echo "  -h, --help         Show this help message"
+    echo ""
+    echo "Uploads are additive by default. Removing packages from the remote"
+    echo "requires --prune, which only makes sense from a complete local tree."
     exit 0
     ;;
   *)
@@ -80,15 +89,65 @@ fi
 
 print_info "Syncing to: $REMOTE/$DESTINATION_DIRECTORY"
 
-# First sync packages (excluding database files to ensure packages are uploaded first)
-# Use --ignore-existing to not overwrite different versions already on remote
-print_info "Syncing packages..."
-rclone sync "$REPO_DIR" "$REMOTE/$DESTINATION_DIRECTORY" \
-  --s3-no-head \
-  --exclude "omarchy.db*" \
-  --exclude "omarchy.files*" \
-  --ignore-existing \
-  --copy-links --delete-after -v
+# The database is what users actually resolve against, and repo-add builds it
+# from this tree alone. Publishing one built from a partial tree hides every
+# package it does not know about, even though the files are still on the remote.
+# Refuse to shrink the package list unless that is the stated intent.
+LOCAL_COUNT=$(ls -1 "$REPO_DIR"/*.pkg.tar.* 2>/dev/null | grep -vc '\.sig$' || true)
+# bsdtar, not tar: the database is compressed and GNU tar will not detect that
+# on a pipe. repo-add has used both gzip and zstd, so let libarchive decide.
+REMOTE_COUNT=$(rclone cat "$REMOTE/$DESTINATION_DIRECTORY/omarchy.db" --s3-no-head 2>/dev/null |
+  bsdtar -tf - 2>/dev/null | sed 's|/.*||' | sort -u | grep -c . || true)
+
+if [[ "${REMOTE_COUNT:-0}" -gt 0 && "${LOCAL_COUNT:-0}" -lt "$REMOTE_COUNT" && "$PRUNE" != true ]]; then
+  print_error "Local tree has $LOCAL_COUNT package(s); the remote database lists $REMOTE_COUNT"
+  echo ""
+  echo "Publishing this database would hide the $((REMOTE_COUNT - LOCAL_COUNT)) package(s)"
+  echo "missing from $REPO_DIR."
+  echo ""
+  echo "To publish packages built on this machine, push them to the build host,"
+  echo "which holds the complete repository:"
+  echo "  bin/repo push --mirror $MIRROR --arch $ARCH"
+  echo ""
+  echo "If shrinking the repository is genuinely what you want, pass --prune."
+  exit 1
+fi
+
+# Upload packages first, database last, so the remote never advertises a package
+# it does not yet have.
+#
+# This is `copy`, not `sync`: a local tree is not authoritative about what should
+# exist on the remote. Packages built on another machine live only in that
+# machine's build-output, and pkgs.omarchy.org/ is gitignored, so any checkout
+# that has not run a full release is missing nearly everything. `sync` would read
+# those absences as deletions and empty the repository. --ignore-existing keeps
+# versions already published from being overwritten.
+if [[ "$PRUNE" == true ]]; then
+  print_warning "Pruning: remote packages missing from $REPO_DIR will be DELETED"
+  if [[ "$SKIP_PROD_CHECK" != true ]]; then
+    read -p "Prune the remote to match this tree? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      print_info "Sync cancelled"
+      exit 0
+    fi
+  fi
+  print_info "Syncing packages (with prune)..."
+  rclone sync "$REPO_DIR" "$REMOTE/$DESTINATION_DIRECTORY" \
+    --s3-no-head \
+    --exclude "omarchy.db*" \
+    --exclude "omarchy.files*" \
+    --ignore-existing \
+    --copy-links --delete-after -v
+else
+  print_info "Syncing packages..."
+  rclone copy "$REPO_DIR" "$REMOTE/$DESTINATION_DIRECTORY" \
+    --s3-no-head \
+    --exclude "omarchy.db*" \
+    --exclude "omarchy.files*" \
+    --ignore-existing \
+    --copy-links -v
+fi
 
 # Then sync database files last to ensure repository integrity
 print_info "Updating repository database..."

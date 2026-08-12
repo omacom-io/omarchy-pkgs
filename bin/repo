@@ -58,6 +58,7 @@ show_usage() {
   echo "  list        List source package metadata (use --repo for published repo)"
   echo "  remove      Remove a specific package"
   echo "  sync        Sync repository to remote"
+  echo "  push        Upload local builds to the build host and publish them there"
   echo ""
   echo "Typical workflows:"
   echo "  $0 release                  # Complete release workflow"
@@ -123,6 +124,10 @@ remove)
   ;;
 sync)
   "$SCRIPT_DIR/sync-repo" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
+  ;;
+push)
+  "$SCRIPT_DIR/push-build" "$@" 2>&1 | tee "$LOG_FILE"
   exit ${PIPESTATUS[0]}
   ;;
 -h | --help | help)
