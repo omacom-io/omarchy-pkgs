@@ -228,9 +228,11 @@ setting is named for the repository rather than for building, which happens
 wherever you like. The same setting tells `bin/omarchy-pkgs release` which host
 to poke after a release push.
 
-Split packages are selected by their own names, not their pkgbase — pushing
-`nvidia-580xx-utils` does not carry `nvidia-580xx-dkms` along. Omit `--package` to
-push everything built.
+`--package` means the same thing as it does to `build`: a pkgbase, whose every
+output ships together. Pushing `nvidia-580xx-utils` carries `nvidia-580xx-dkms`
+and `opencl-nvidia-580xx` with it, because that is what the build produced. An
+output's own name still selects just that one, for publishing a single package
+on purpose. Omit `--package` to push everything built.
 
 Publishing signs and promotes everything staged on the host, not just what this
 push uploaded, so `push` stops when it finds packages already staged there —
