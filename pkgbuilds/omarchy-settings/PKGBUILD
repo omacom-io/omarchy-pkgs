@@ -11,8 +11,8 @@
 #    omarchy-settings must always carry identical _tag/_commit/pkgver/sha256sums.
 pkgname='omarchy-settings'
 _tag=''
-_commit='438f7b3340b3468cb82ff6e5d218b6c7ef50f165'
-pkgver=4.0.0rc1
+_commit='38542a1f513740559660a468ffbf68ed082b2381'
+pkgver=4.0.0rc2
 pkgrel=1
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
@@ -109,7 +109,7 @@ if [[ -n "${OMARCHY_SRC:-}" ]]; then
   sha256sums=()
 else
   source=("omarchy::git+https://github.com/basecamp/omarchy.git#commit=${_commit}")
-  sha256sums=('56e9ee1b7326ae7c9bcf0c1247683612de2e8cd5bc54ff4bd24d047ddc9dde1e')
+  sha256sums=('e4876fbcc8bad69d7e3f243c346e336f0af80b80b24837f7d430070c772bd811')
 fi
 
 prepare() {
