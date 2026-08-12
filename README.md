@@ -212,9 +212,8 @@ need no secrets.
 
 The host comes from `--host`, `$OMARCHY_REPO_HOST`, then `.repo-host`. One
 machine both serves pkgs.omarchy.org and runs the scheduled builds, so the
-setting is named for the repository rather than for building, which now happens
-wherever you like. `OMARCHY_BUILD_HOST` and `.build-host` are the previous names
-and still work.
+setting is named for the repository rather than for building, which happens
+wherever you like.
 
 Note that `.repo-host` also arms the automatic build trigger in
 `bin/omarchy-pkgs release`; pass `--host` or set `OMARCHY_REPO_HOST` to keep the
@@ -322,8 +321,7 @@ stable — promotion is always this explicit step.
 
 After pushing, the command triggers the build host over ssh when
 `OMARCHY_REPO_HOST` is set (env var, or a hostname in the git-ignored
-`.repo-host` file; `OMARCHY_BUILD_HOST` and `.build-host` still work). Without
-it, the 6-hourly auto-release timer picks up the
+`.repo-host` file). Without it, the 6-hourly auto-release timer picks up the
 change on its own.
 
 ## Directory Structure

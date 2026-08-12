@@ -1,11 +1,9 @@
 # Resolving the Omarchy repository host
 #
-# One machine both hosts pkgs.omarchy.org and runs the scheduled builds. The
+# One machine both serves pkgs.omarchy.org and runs the scheduled builds. The
 # commands that reach it are doing repository work — uploading artifacts,
 # signing, publishing — so the setting is named for the repository rather than
-# for building, which now happens on whatever machine the operator prefers.
-#
-# OMARCHY_BUILD_HOST and .build-host are the previous names and still work.
+# for building, which happens on whatever machine the operator prefers.
 
 # Usage: resolve_repo_host [explicit-host]
 # Prints the host, or nothing when none is configured.
@@ -22,23 +20,15 @@ resolve_repo_host() {
     return 0
   fi
 
-  if [[ -n "${OMARCHY_BUILD_HOST:-}" ]]; then
-    echo "$OMARCHY_BUILD_HOST"
-    return 0
-  fi
-
-  local file
-  for file in "$BUILD_ROOT/.repo-host" "$BUILD_ROOT/.build-host"; do
-    if [[ -f "$file" ]]; then
-      # Ignore blank lines and comments so the file can be annotated.
-      local value
-      value=$(grep -vE '^\s*(#|$)' "$file" | head -1 | tr -d '[:space:]')
-      if [[ -n "$value" ]]; then
-        echo "$value"
-        return 0
-      fi
+  if [[ -f "$BUILD_ROOT/.repo-host" ]]; then
+    # Ignore blank lines and comments so the file can be annotated.
+    local value
+    value=$(grep -vE '^\s*(#|$)' "$BUILD_ROOT/.repo-host" | head -1 | tr -d '[:space:]')
+    if [[ -n "$value" ]]; then
+      echo "$value"
+      return 0
     fi
-  done
+  fi
 
   return 1
 }
