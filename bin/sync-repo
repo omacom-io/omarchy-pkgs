@@ -141,14 +141,24 @@ if grep -qx 'omarchy\.db' <<<"$REMOTE_LISTING"; then
   REMOTE_DB_FILE=$(mktemp)
   trap 'rm -f "$REMOTE_DB_FILE"' EXIT
   rclone cat "$REMOTE/$DESTINATION_DIRECTORY/omarchy.db" --s3-no-head >"$REMOTE_DB_FILE" 2>/dev/null
-  REMOTE_NAMES=$(bsdtar -tf "$REMOTE_DB_FILE" 2>/dev/null | sed 's|/.*||' |
-    sed -E 's/-[^-]+-[^-]+$//' | sort -u)
+
+  # Download to a file rather than piping: GNU tar detects the compression from
+  # a seekable archive but not from a pipe, and the database has been both gzip
+  # and zstd over its life. bsdtar reads either too, but it is not present on
+  # every host, so tar leads and bsdtar covers a tar too old for zstd.
+  REMOTE_ENTRIES=$(tar -tf "$REMOTE_DB_FILE" 2>/dev/null)
+  if [[ -z "$REMOTE_ENTRIES" ]] && command -v bsdtar >/dev/null 2>&1; then
+    REMOTE_ENTRIES=$(bsdtar -tf "$REMOTE_DB_FILE" 2>/dev/null)
+  fi
+
+  REMOTE_NAMES=$(printf '%s\n' "$REMOTE_ENTRIES" | sed 's|/.*||' |
+    sed -E 's/-[^-]+-[^-]+$//' | sort -u | grep -v '^$')
 
   if [[ -z "$REMOTE_NAMES" ]]; then
     print_error "The remote database exists but could not be read"
     echo ""
     echo "Refusing to sync rather than assume the remote is empty. Check that"
-    echo "bsdtar is installed and that omarchy.db is not corrupt."
+    echo "omarchy.db is not corrupt: rclone cat $REMOTE/$DESTINATION_DIRECTORY/omarchy.db | tar -t"
     exit 1
   fi
 
