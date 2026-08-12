@@ -1,21 +1,22 @@
 From 9126525701cdf19e6c3d2caf8a6ece559f99a99e Mon Sep 17 00:00:00 2001
 From: Gaggery Tsai <gaggery.tsai@intel.com>
 Date: Mon, 10 Aug 2026 22:45:00 -0500
-Subject: [PATCH] drm/i915/psr: restore DA14260 Panel Replay with ALPM lag
+Subject: [PATCH] drm/i915/psr: restore XPS 14/16 Panel Replay with ALPM lag
  workaround
 
 Panel Replay ALPM AUX-less wake/sleep cycling cannot resume selective
-updates at frame rate on the LGD OLED panel in the Dell XPS 14 DA14260.
-Upstream avoids the visible lag by disabling Panel Replay for the exact
-Dell 1028:0db9 and LGD 00:22:b9 match, which also removes the idle power
-savings.
+updates at frame rate on the LGD OLED panels in the Dell XPS 14 DA14260
+and XPS 16 DA16260. Upstream avoids the visible lag on the XPS 14 by
+disabling Panel Replay for the exact Dell 1028:0db9 and LGD 00:22:b9
+match, which also removes the idle power savings. The XPS 16 has the
+same sink OUI under Dell subsystem 1028:0dba and exhibits the same lag.
 
-Replace only that exact disable entry with a hardware-scoped workaround.
-Exit Panel Replay for relevant frontbuffer activity and re-enter it after
-50 ms of idle time. Use a dedicated delayed work item integrated under
-the existing PSR mutex and frontbuffer busy-bit tracking; block normal
-immediate re-entry while it is armed, wait for sink idle, and cancel it
-on invalidate, pause, and disable.
+Replace the XPS 14 disable entry and add an exact XPS 16 match for the
+hardware-scoped workaround. Exit Panel Replay for relevant frontbuffer
+activity and re-enter it after 50 ms of idle time. Use a dedicated
+delayed work item integrated under the existing PSR mutex and frontbuffer
+busy-bit tracking; block normal immediate re-entry while it is armed,
+wait for sink idle, and cancel it on invalidate, pause, and disable.
 
 Other panels retain upstream behavior.
 
@@ -24,9 +25,9 @@ Signed-off-by: Gaggery Tsai <gaggery.tsai@intel.com>
 ---
  .../drm/i915/display/intel_display_types.h    |  1 +
  drivers/gpu/drm/i915/display/intel_psr.c      | 65 ++++++++++++++++++-
- drivers/gpu/drm/i915/display/intel_quirks.c   |  9 +--
+ drivers/gpu/drm/i915/display/intel_quirks.c   | 15 +++--
  drivers/gpu/drm/i915/display/intel_quirks.h   |  1 +
- 4 files changed, 71 insertions(+), 5 deletions(-)
+ 4 files changed, 77 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/gpu/drm/i915/display/intel_display_types.h b/drivers/gpu/drm/i915/display/intel_display_types.h
 index 2e6a857..51ae4ed 100644
@@ -194,13 +195,19 @@ index 883f297..7c772a9 100644
  }
  
  struct intel_quirk {
-@@ -267,7 +268,7 @@ static const struct intel_dpcd_quirk intel_dpcd_quirks[] = {
+@@ -267,7 +268,13 @@ static const struct intel_dpcd_quirk intel_dpcd_quirks[] = {
  		.subsystem_vendor = 0x1028,
  		.subsystem_device = 0x0db9,
  		.sink_oui = SINK_OUI(0x00, 0x22, 0xb9),
 -		.hook = quirk_disable_edp_panel_replay,
 +		.hook = quirk_panel_replay_alpm_cursor_lag,
  	},
++	{
++		.subsystem_vendor = 0x1028,
++		.subsystem_device = 0x0dba,
++		.sink_oui = SINK_OUI(0x00, 0x22, 0xb9),
++		.hook = quirk_panel_replay_alpm_cursor_lag,
++	},
  };
  
 diff --git a/drivers/gpu/drm/i915/display/intel_quirks.h b/drivers/gpu/drm/i915/display/intel_quirks.h
