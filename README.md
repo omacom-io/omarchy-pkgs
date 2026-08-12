@@ -228,9 +228,11 @@ setting is named for the repository rather than for building, which happens
 wherever you like. The same setting tells `bin/omarchy-pkgs release` which host
 to poke after a release push.
 
-Split packages are selected by their own names, not their pkgbase — pushing
-`nvidia-580xx-utils` does not carry `nvidia-580xx-dkms` along. Omit `--package` to
-push everything built.
+`--package` means the same thing as it does to `build`: a pkgbase, whose every
+output ships together. Pushing `nvidia-580xx-utils` carries `nvidia-580xx-dkms`
+and `opencl-nvidia-580xx` with it, because that is what the build produced. An
+output's own name still selects just that one, for publishing a single package
+on purpose. Omit `--package` to push everything built.
 
 Publishing signs and promotes everything staged on the host, not just what this
 push uploaded, so `push` stops when it finds packages already staged there —
@@ -558,20 +560,26 @@ State files are stored in `/root/.state/`:
 ### Installation
 
 ```bash
-# Copy systemd units
-cp /root/omarchy-pkgs/systemd/*.service /root/omarchy-pkgs/systemd/*.timer /etc/systemd/system/
-
-# Reload systemd
-systemctl daemon-reload
-
-# Enable and start timers
-systemctl enable --now omarchy-check-versions.timer
-systemctl enable --now omarchy-auto-release-edge.timer
-systemctl enable --now omarchy-auto-release-stable.timer
-
-# Create state directory
-mkdir -p /root/.state
+ssh root@<host> 'cd /root/omarchy-pkgs && bin/setup'
 ```
+
+`bin/setup` installs the dependencies, ensures Docker is running, creates the
+state directory, and installs and enables the release timers. It works on
+Debian/Ubuntu and on Arch, and is idempotent, so run it again whenever a
+dependency is added.
+
+The host does not need to be Arch: makepkg, repo-add and package signing all
+run inside containers, so it needs only Docker, rclone, bsdtar, jq, git and
+rsync. Docker is left alone when it already works, rather than replacing a
+working installation from Docker's own repository with the distribution's.
+
+```bash
+bin/repo setup --check         # Report what is missing, change nothing
+bin/repo setup --skip-timers   # Prepare the host without the release timers
+```
+
+Signing credentials (`/root/.omarchy/build-credentials`) and the rclone remote
+hold secrets, so setup reports on them rather than creating them.
 
 ### Management
 

@@ -143,29 +143,41 @@ if [[ -z "$PACKAGES" && "$ASSUME_YES" == true ]] && ! on_repo_host; then
   exit 1
 fi
 
+# --package means the same thing here as it does to bin/build: a pkgbase, whose
+# every output ships together. Selecting only the artifact whose filename matched
+# would publish one third of a split package like nvidia-580xx-utils and silently
+# leave nvidia-580xx-dkms and opencl-nvidia-580xx behind. An output's own name
+# still matches, for pushing just one of them on purpose.
+#
+# pkgbase comes from .PKGINFO rather than the PKGBUILD: it is what makepkg
+# actually recorded, and it needs no guessing about which directory built what.
+pkgbase_of() {
+  bsdtar -xOf "$1" .PKGINFO 2>/dev/null |
+    awk -F ' = ' '$1 == "pkgbase" { print $2; exit }'
+}
+
 FILES=()
 if [[ -z "$PACKAGES" ]]; then
   FILES=("${ALL_FILES[@]}")
 else
+  declare -A MATCHED=()
   for file in "${ALL_FILES[@]}"; do
     # name-version-release-arch.pkg.tar.zst -> name
     pkgname="${file%-*-*-*.pkg.tar.*}"
+    pkgbase=$(pkgbase_of "$BUILD_OUTPUT_DIR/$file")
     for wanted in $PACKAGES; do
-      if [[ "$pkgname" == "$wanted" ]]; then
+      if [[ "$pkgname" == "$wanted" || "$pkgbase" == "$wanted" ]]; then
         FILES+=("$file")
+        MATCHED["$wanted"]=1
         break
       fi
     done
   done
 
   for wanted in $PACKAGES; do
-    found=false
-    for file in "${FILES[@]}"; do
-      [[ "${file%-*-*-*.pkg.tar.*}" == "$wanted" ]] && found=true && break
-    done
-    if [[ "$found" != true ]]; then
+    if [[ -z "${MATCHED[$wanted]:-}" ]]; then
       print_error "No built artifact for '$wanted' in $BUILD_OUTPUT_DIR"
-      print_warning "Split packages are named after their outputs, not their pkgbase"
+      print_warning "Name a package or the pkgbase it was built from"
       exit 1
     fi
   done

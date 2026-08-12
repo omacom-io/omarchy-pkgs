@@ -141,6 +141,17 @@ if grep -qx 'omarchy\.db' <<<"$REMOTE_LISTING"; then
   REMOTE_DB_FILE=$(mktemp)
   trap 'rm -f "$REMOTE_DB_FILE"' EXIT
   rclone cat "$REMOTE/$DESTINATION_DIRECTORY/omarchy.db" --s3-no-head >"$REMOTE_DB_FILE" 2>/dev/null
+
+  if ! command -v bsdtar >/dev/null 2>&1; then
+    print_error "bsdtar is not installed"
+    echo ""
+    echo "The repository host needs it to read the repository database."
+    echo "Run bin/setup to install everything this host requires."
+    exit 1
+  fi
+
+  # bsdtar, not tar: repo-add has used both gzip and zstd for the database, and
+  # libarchive detects either without being told which.
   REMOTE_NAMES=$(bsdtar -tf "$REMOTE_DB_FILE" 2>/dev/null | sed 's|/.*||' |
     sed -E 's/-[^-]+-[^-]+$//' | sort -u)
 
@@ -148,7 +159,8 @@ if grep -qx 'omarchy\.db' <<<"$REMOTE_LISTING"; then
     print_error "The remote database exists but could not be read"
     echo ""
     echo "Refusing to sync rather than assume the remote is empty. Check that"
-    echo "bsdtar is installed and that omarchy.db is not corrupt."
+    echo "omarchy.db is not corrupt:"
+    echo "  rclone cat $REMOTE/$DESTINATION_DIRECTORY/omarchy.db | bsdtar -tf -"
     exit 1
   fi
 
