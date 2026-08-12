@@ -1,0 +1,143 @@
+# Maintainer: Ryan Hughes <ryan@omarchy.org>
+# Release versioning convention (do not "fix" this; enforced by bin/omarchy-pkgs release):
+#  - Pre-releases use the ATTACHED form pkgver=X.Y.ZrcN — NO separator. pacman's
+#    vercmp orders 4.0.0rc1 < 4.0.0rc2 < 4.0.0, but 4.0.0.rc1 and 4.0.0_rc1
+#    both sort AFTER 4.0.0 and would strand users on the pre-release.
+#  - pkgrel resets to 1 whenever pkgver changes; bump pkgrel alone only to
+#    repackage the same source.
+#  - epoch is a manual escape hatch decided by a human; tooling never sets it.
+#  - _commit is the single source of truth for what gets built. _tag is
+#    provenance only (empty when cut from a bare commit). omarchy and
+#    omarchy-settings must always carry identical _tag/_commit/pkgver/sha256sums.
+pkgname='omarchy'
+_tag=''
+_commit='4727bad5ebd37cf2344416ae937b02a931113ec3'
+pkgver=4.0.0rc1
+pkgrel=1
+pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
+arch=('any')
+url='https://github.com/basecamp/omarchy'
+license=('MIT')
+conflicts=('omarchy-dev')
+# Hard depends: only packages whose removal would brick the desktop. The ISO
+# pacstraps the full default install set from install/omarchy-base.packages.
+depends=(
+  # Omarchy meta
+  'omarchy-keyring'
+  'omarchy-settings'
+
+  # Bootloader stack. Lives here rather than on omarchy-settings because
+  # omarchy-settings is also installed into the live ISO env (for plymouth
+  # / /etc/skel seeding), where the limine-mkinitcpio-hook would fail with
+  # 'Cannot detect an ESP path' inside the chroot. The omarchy-settings
+  # config drop-ins under /etc/mkinitcpio.conf.d/, /etc/limine-entry-tool.d/,
+  # and /etc/snapper/config-templates/ only do anything when these are
+  # installed alongside.
+  'limine'
+  'limine-mkinitcpio-hook'
+  'limine-snapper-sync'
+  'snapper'
+
+  # Wayland / Hyprland core
+  'hyprland'
+  'quickshell'
+  'uwsm'
+  'sddm'
+  'xdg-desktop-portal-hyprland'
+
+  # Audio / auth / portal essentials
+  'wireplumber'
+  'pipewire'
+  'gnome-keyring'
+
+  # Required by omarchy-* scripts and omarchy-shell
+  'gum'
+  'jq'
+  'git'
+  'perl' # /usr/bin/omarchy-shell invokes perl directly
+
+  # Update availability checks (checkupdates from pacman-contrib uses fakeroot)
+  'fakeroot'
+  'pacman-contrib'
+
+  # System font (UI assumes it)
+  'ttf-jetbrains-mono-nerd-basic'
+)
+
+makedepends=(
+  'git'
+)
+
+# Source: the pinned release commit; set OMARCHY_SRC=/path/to/checkout to
+# build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
+if [[ -n "${OMARCHY_SRC:-}" ]]; then
+  source=()
+  sha256sums=()
+else
+  source=("omarchy::git+https://github.com/basecamp/omarchy.git#commit=${_commit}")
+  sha256sums=('c5f72624e2a7ba8ab92f84b7ef050cf6c3ce7a67d0fec883b378934c63c8aa38')
+fi
+
+prepare() {
+  if [[ -n "${OMARCHY_SRC:-}" ]]; then
+    rm -rf "$srcdir/omarchy"
+    mkdir -p "$srcdir/omarchy"
+    cp -a "${OMARCHY_SRC}/." "$srcdir/omarchy/"
+  fi
+}
+
+package() {
+  cd "$srcdir/omarchy"
+
+  # Runtime binaries — ship everything in bin/ except the debug helpers
+  # that ship from omarchy-settings (needed before omarchy is installed,
+  # e.g. on the ISO live env).
+  install -d "$pkgdir/usr/bin" "$pkgdir/usr/share/omarchy/bin"
+  for bin in bin/*; do
+    [[ -f $bin ]] || continue
+    local base
+    base=$(basename "$bin")
+    case "$base" in
+      omarchy-debug|omarchy-debug-idle|omarchy-upload-log)
+        continue
+        ;;
+    esac
+    install -Dm755 "$bin" "$pkgdir/usr/bin/$base"
+    ln -s "/usr/bin/$base" "$pkgdir/usr/share/omarchy/bin/$base"
+  done
+
+  install -d "$pkgdir/usr/share/omarchy"
+
+  # Guard direct pacman upgrades from bypassing the Omarchy update pipeline,
+  # and pause Hyprland live config reloads while settings files are replaced.
+  # Ship hooks with their Exec targets so package skew cannot leave a broken
+  # hook pointing at a missing binary.
+  install -Dm644 default/libalpm/hooks/00-omarchy-update-guard.hook "$pkgdir/usr/share/libalpm/hooks/00-omarchy-update-guard.hook"
+  install -Dm644 default/libalpm/hooks/10-omarchy-hyprland-reload-pause.hook "$pkgdir/usr/share/libalpm/hooks/10-omarchy-hyprland-reload-pause.hook"
+  install -Dm644 default/libalpm/hooks/90-omarchy-hyprland-reload-resume.hook "$pkgdir/usr/share/libalpm/hooks/90-omarchy-hyprland-reload-resume.hook"
+
+  # Target-side setup scripts and package lists used by ISO finalization,
+  # first login, future users, migrations, and reinstall/reset commands.
+  cp -a install "$pkgdir/usr/share/omarchy/"
+
+  # Theme bundles for theme switching.
+  cp -a themes "$pkgdir/usr/share/omarchy/"
+
+  # Versioned migrations runner reads from this tree.
+  cp -a migrations "$pkgdir/usr/share/omarchy/"
+
+  # Fresh users created after install are already on the package layout in this
+  # build, so seed migration markers through /etc/skel. Existing users keep
+  # their own state and still run pending migrations on update.
+  if compgen -G 'migrations/*.sh' >/dev/null; then
+    install -d "$pkgdir/etc/skel/.local/state/omarchy/migrations"
+    for migration in migrations/*.sh; do
+      touch "$pkgdir/etc/skel/.local/state/omarchy/migrations/$(basename "$migration")"
+    done
+  fi
+  # Quickshell desktop shell tree.
+  cp -a shell "$pkgdir/usr/share/omarchy/"
+
+  # Runtime version file.
+  install -Dm644 version "$pkgdir/usr/share/omarchy/version"
+}
