@@ -42,8 +42,8 @@
 # hardware ISP, and its install gate already excludes this machine.
 
 pkgname=hp-elitebook-x-g2i-camera
-pkgver=1.1.0
-pkgrel=4
+pkgver=1.2.0
+pkgrel=1
 pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL bypass)"
 arch=('x86_64')
 url="https://github.com/omacom-io/omarchy-pkgs"
@@ -51,12 +51,14 @@ license=('GPL-2.0-or-later')
 # ffmpeg does the debayer and scale. v4l-utils provides v4l2-ctl and media-ctl,
 # which configure the ISYS pipeline and are also how the daemon discovers it.
 # psmisc provides fuser, used to count consumers of the loopback device.
+makedepends=('gcc' 'pkgconf')
+
 depends=(
   'intel-ipu7-drivers'
   'linux-ptl'
+  'libcamera-ov05c10'
   'ffmpeg'
   'v4l-utils'
-  'psmisc'
   'v4l2loopback-dkms'
   'dkms'
   'linux-headers'
@@ -79,7 +81,7 @@ source=(
   'Makefile.ov05c10'
   'README.package.md'
   'dkms-ov05c10.conf'
-  'hp-elitebook-x-g2i-camera'
+  'hpcam-lc.cpp'
   'hp-elitebook-x-g2i-camera.install'
   'hp-elitebook-x-g2i-camera.service'
   'ov05c10.yaml'
@@ -92,6 +94,19 @@ sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP
 # replaces the file on upgrade while it still matches the version this package
 # shipped, and only falls back to .pacnew once someone has edited it by hand.
 backup=('etc/libcamera/ipa/simple/ov05c10.yaml')
+
+build() {
+  # The daemon links the private-prefix libcamera, not Arch's: it needs the
+  # ov05c10 sensor helper and the lens shading algorithm, and its IPA is signed
+  # by a key that only exists inside that build. Same soname either way, so the
+  # rpath is what decides, and getting it wrong fails at runtime rather than here.
+  local prefix=/usr/lib/libcamera-ov05c10
+  PKG_CONFIG_PATH="${prefix}/lib/pkgconfig" g++ -O2 -std=c++20 -Wall -Wextra \
+    -o hp-elitebook-x-g2i-camera hpcam-lc.cpp \
+    $(PKG_CONFIG_PATH="${prefix}/lib/pkgconfig" pkg-config --cflags --libs libcamera) \
+    $(pkg-config --cflags --libs libswscale libavutil) \
+    -Wl,-rpath,"${prefix}/lib"
+}
 
 package() {
   install -Dm755 hp-elitebook-x-g2i-camera "${pkgdir}/usr/bin/hp-elitebook-x-g2i-camera"
