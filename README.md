@@ -218,6 +218,11 @@ Split packages are selected by their own names, not their pkgbase — pushing
 `nvidia-580xx-utils` does not carry `nvidia-580xx-dkms` along. Omit `--package` to
 push everything built.
 
+Publishing signs and promotes everything staged on the host, not just what this
+push uploaded, so `push` stops when it finds packages already staged there —
+usually leftovers from a failed run. Remove them on the host, or pass
+`--include-staged` to publish them too.
+
 ### Sync AUR PKGBUILDs
 
 ```bash
