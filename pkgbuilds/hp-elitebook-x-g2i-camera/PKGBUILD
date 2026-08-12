@@ -43,7 +43,7 @@
 
 pkgname=hp-elitebook-x-g2i-camera
 pkgver=1.1.0
-pkgrel=3
+pkgrel=4
 pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL bypass)"
 arch=('x86_64')
 url="https://github.com/omacom-io/omarchy-pkgs"
@@ -83,8 +83,9 @@ source=(
   'hp-elitebook-x-g2i-camera.install'
   'hp-elitebook-x-g2i-camera.service'
   'ov05c10.yaml'
+  '50-hp-elitebook-x-g2i-disable-libcamera.conf'
 )
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 # Calibration data, not user configuration, but it lives in /etc because that is
 # where libcamera looks first. backup= gets this right either way: pacman
@@ -120,6 +121,11 @@ package() {
   # every ov05c10 ever fitted. This package is already gated to this machine;
   # that one is not.
   install -Dm644 ov05c10.yaml "${pkgdir}/etc/libcamera/ipa/simple/ov05c10.yaml"
+
+  # Silences 32 ERROR lines per WirePlumber start from the root-only raw ISYS
+  # nodes. Noise only -- the camera is measured to work without it. See the file.
+  install -Dm644 50-hp-elitebook-x-g2i-disable-libcamera.conf \
+    "${pkgdir}/usr/share/wireplumber/wireplumber.conf.d/50-hp-elitebook-x-g2i-disable-libcamera.conf"
 
   install -Dm644 README.package.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
 }
