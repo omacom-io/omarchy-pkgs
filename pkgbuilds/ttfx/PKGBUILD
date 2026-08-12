@@ -1,7 +1,7 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
 pkgname=ttfx
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="Terminal text effects as a single static binary — Rust port of terminaltexteffects"
 arch=('x86_64' 'aarch64')
@@ -12,7 +12,7 @@ makedepends=('cargo')
 options=('!debug')
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('fcc767ff2519581255a96dcb2796b9578cc203fdde27d00652535d37ffcf3429')
+sha256sums=('ea01955133b8614167748b4a63cbbdd00a99135765e3194675f8f37c00faad54')
 
 prepare() {
   cd "$pkgname-$pkgver"

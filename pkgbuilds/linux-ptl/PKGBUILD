@@ -2,9 +2,9 @@
 # Based on Arch Linux linux package by Jan Alexander Steffens (heftig)
 
 pkgbase=linux-ptl
-pkgver=7.1.5.arch1
+pkgver=7.1.8.arch1
 pkgrel=2
-pkgdesc='Linux with Panther Lake hardware backports (SDCA audio, PSR2, Panel Replay SU, IPU7 camera)'
+pkgdesc='Linux for Panther Lake with Panel Replay power, OLED VRR and HP EliteBook X G2i audio and camera fixes'
 url='https://github.com/archlinux/linux'
 arch=(
   x86_64
@@ -40,10 +40,7 @@ _srctag=v${pkgver%.*}-${pkgver##*.}
 source=(
   https://cdn.kernel.org/pub/linux/kernel/v${pkgver%%.*}.x/${_srcname}.tar.{xz,sign}
   $url/releases/download/$_srctag/linux-$_srctag.patch.zst{,.sig}
-  0017-ASoC-SDCA-Fix-NULL-pointer-dereference-in-sdca_jack_.patch
-  0019-drm-i915-psr-accept-early-transport-for-psr2.patch
   0020-drm-i915-alpm-limit-pr-alpm-to-panel-replay.patch
-  0027-drm-i915-trans-push-frame-change-for-panel-replay.patch
   0028-drm-i915-psr-exit-Panel-Replay-for-ALPM-lag.patch
   0029-drm-edid-populate-monitor-range-from-displayid-adaptive-sync.patch
   0030-ASoC-Intel-soc-acpi-intel-ptl-add-HP-EliteBook-X-G2i.patch
@@ -56,35 +53,30 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
   83BC8889351B5DEBBB68416EB8AC08600F108CDF  # Jan Alexander Steffens (heftig)
 )
-b2sums=('d1dcf9b2a7ba1ed431d2b2c785ffc9a4ce729e4a004629061a73451a471316f437212004fe128157b5fc56b58bb06e60e758124a88c408e0b9124592c6a2d886'
+b2sums=('84b59e5572d91f5ea1bb603aa7691851bd9549e1bf18a6bec8e27eb8a6e2de2e33da2ad3e3aad501c793e9756e70245a16545e76b65a44ee52b33ccf5c3dd8e7'
         'SKIP'
-        'a4c870cb5a22b410432d0aa773b591ed7778e8ef5ac46f589a26518d0c0650d7cd2e34566cf850dc827eb0b21f19957a4e50179298ca69c3a55da9a178d942e8'
+        '308952977c15ac3ad976ff1d99d0d186814d4b03e1c8512fc3a4c0ac1ecce3f74be8f3900a7fd286492d4f930bedc089674bf713a278fa80c35413e0e6339f97'
         'SKIP'
-        'b5c40077f538e67496f1c274774976d31c48af36a6bd0a5df570eddf097b18f79812ee811392534dae8b911dc1f2a9949d969f90ce4ad7bdf62692456908c1be'
-        'f893d63ef7b9e3ab05907117b561971a54c07422c46f7ec4511470b5dc81ab53815b6c73fac2b829fac43f4c480caa2f26741d604ad9ea5ecb460f7750f71635'
-        '217aed0e9dbb96ed845a1d686be7df3e27602600ab8b5fb663a54dbcd550c8e4bb2acce3bb8ed4d6ef268d5de1c6068d97d374de8ea2f208389a13dbb1ffa1c3'
-        '63339c2b7a073302c3e56148c1834fd9aed2adfcbb282c79fbc491c0013d9e16409cb46e3e3ff4d2cf6f39818b3873b449939e8d8c43acc664529a6e32229beb'
-        '4daaa96fac95436ad83ada07bb313ba1219b8b6c30f21b3d131d0f4731cd3739190c398b39ea9db636318b107b4ddd9c43ff7e15ac738d94dd2cfcc70d115264'
-        'c17328b6025bb55f229591506d7fff887f5da9580caf59e675dbaeee17447ef07254f70cf5282d6c46b4820a10724090a3e96b728f685dbbe26e1d08d17958d2'
-        'e8a8ac621983c25a1f1ced2b0245aa6d58cfe2434c9214adcce94608249a6a3967cf90f0df695e03ec83818d5ce2195b1229d8c166f9aea3f437b945f605cf17'
-        'ee9d73d1b798ad8f24e76ff6ff5304383dfa2f7cc348123bbeaeaf60fab64dca22000bad9ef73a8573cac22b1aedebebbb9e6b611ec5aeba71ad163ff0a9be46'
-        '9c80100c214905fced14b08743eaccc1bc6577fae862b6ee1ffa2feb8a34c1b038cac2a140524eb3227d967a7b967f7fe5d3bceeba420822fd1cc8225ec790f3')
-b2sums_x86_64=('4a50d4614f5428cc44ffcac11a01d432ac5bea380f7e2f9cb5d53c3570d2af42aff427b6271625779b0f053742ecdd3e9943698d16bce30e9043f853a335d8f3')
+        'e672cd8d1f48756cf1062f84b83b4f676504cc6b44496511816a670435e00ccc22720fcbc36d013fd9b393389b955de5ec90715429ddbdcea860e1be80ab13fd'
+        '5ebe470414df104da9b9b20076369df0fd853ee50800926125c73641aad79dae8f52ab57ff793d9644d4f7834195d17e356567914d7a074b315f9de4924d4836'
+        'ed167ad347e83f072316b0d980ad192d97d0c4a69f6d1841a96089aa17caa0e57cb785214ed9297290f034420b5d0838dc75f84c7e9a9459eb49fd9dc22f3a3e'
+            'e8a8ac621983c25a1f1ced2b0245aa6d58cfe2434c9214adcce94608249a6a3967cf90f0df695e03ec83818d5ce2195b1229d8c166f9aea3f437b945f605cf17'
+            'ee9d73d1b798ad8f24e76ff6ff5304383dfa2f7cc348123bbeaeaf60fab64dca22000bad9ef73a8573cac22b1aedebebbb9e6b611ec5aeba71ad163ff0a9be46'
+            '9c80100c214905fced14b08743eaccc1bc6577fae862b6ee1ffa2feb8a34c1b038cac2a140524eb3227d967a7b967f7fe5d3bceeba420822fd1cc8225ec790f3')
+b2sums_x86_64=('b10d80423aa3eb65e2046bf5b1998f9a7bdbc97494c6881881f50ffcdb5fe2e242782f59dbb6402cd77ce64b988dbf295fd9fa54f20180c76fbe88b82e1dbc9d')
 
 # https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
-sha256sums=('22a0196b3cbcdf34dc27b77561f4d040585fd3447edc9ab3531a1ac79e3041e7'
+sha256sums=('ff01dcb449279d5b4cfccdb01fee639cf5ff1803f1749a77844dd33915422c49'
             'SKIP'
-            '04efe829f7b0df735f18fd8c4a0f5025fb2811012a3c8cd20b6c88350171437d'
+            '351cfb04db323bf5dd55ae8ce626650d20ba61441d202cadd8e198c6b9ef8f36'
             'SKIP'
-            '167446c23001fe9d8dbe017e57a36f7f6e69f67a6b501ccbd9f4301ff08f8a47'
-            'a65fb17db3c5c44a9d1728d0bf182f20e0867eaabcdc20c76329e65d5cae2dd1'
-            '0ab145668a04b983b110b49fbd5a12f55c69106c7bb49cb968fff87392cc1c46'
-            'd4355299c1917a53b366e91c07e30bf595ade63654cfbca5ea8a2238730084a5'
-            '39530f920476e79578f41fbed94de825dd0e2285d578d1b5c5302e65e39b045f'
-            '3f6e98250b864125501a9968118861424977b3765eb4fcba7248735ed0b667ae'
+            '150f059eaf36580f9ca8eff4f917d8c3ee4eb5493507cbc29ce8e91b3ec56a93'
+            '82f3b6548b8badb9ec9ccc504c3d5d3ebdcb5f89837d5c48048ff8678f92dd61'
+            '1a0bebfba76248bbda67f8812278835de71754412369454ce60f4dde0bd81916'
             '18ad3e3ef72ec7d7451b8265d685325a1683454bf16c6a940e23ce41d5841a12'
             'a196f9af1751691452ceecc5b06ef815d1130bc3547592b78ce344a102829b69'
             'ec9bc5f46e06b68d03eeaf0b574de42d972caa82e7dc161c282f5d9f6dcf2037')
+
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
 export KBUILD_BUILD_TIMESTAMP="$(date -Ru${SOURCE_DATE_EPOCH:+d @$SOURCE_DATE_EPOCH})"

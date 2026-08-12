@@ -75,6 +75,40 @@ bin/repo update                         # Update database
 bin/repo sync                           # Sync to remote
 ```
 
+### Building Heavy Packages Locally
+
+Large packages build faster on a local machine than on the server. Build them
+here, then hand the artifacts to the repository host, which signs and publishes
+them:
+
+```bash
+bin/repo deploy --package nvidia-580xx-utils   # Build here, publish from the host
+```
+
+`deploy` is `build` followed by `push`. The two steps are also available
+separately when a build needs inspecting before it ships:
+
+```bash
+bin/repo build --package nvidia-580xx-utils    # Build on the fast machine
+bin/repo push --package nvidia-580xx-utils     # Upload + publish on the host
+```
+
+`push` uploads to the host's `build-output/`, verifies checksums, and runs
+`bin/upload-prebuilt` there. Do not publish from a local checkout instead: only
+the repository host holds the complete repository and the signing key.
+
+**Name the package.** `build` asks the local repository database which packages
+are already built, and a build machine has no such database, so an unscoped run
+treats every package as out of date and rebuilds the whole repository. `deploy`
+refuses to run unscoped when that database is missing. Unscoped builds belong on
+the repository host, where `bin/repo release` does the same job against a real
+database.
+
+Every other command in `bin/` — `sign`, `promote`, `update`, `clean`, `migrate`,
+`remove`, `sync`, `release` — works on the published tree directly and is meant
+to run on the repository host. `build`, `push` and `deploy` are the three that
+may run elsewhere.
+
 ## Commands
 
 ### Global Flags
@@ -141,9 +175,69 @@ bin/repo sync                           # Sync current arch/mirror
 bin/repo sync --mirror stable           # Sync stable
 bin/repo sync --arch aarch64            # Sync ARM64
 bin/repo sync --skip-prod-check         # No confirmation
+bin/repo sync --prune                   # Also delete remote packages missing locally
 ```
 
 Syncs package repositories to the remote server using rclone based on the configured mirror and architecture.
+
+**Uploads are additive.** A local tree is not authoritative about what belongs on
+the remote — `pkgs.omarchy.org/` is gitignored, and packages built on another
+machine exist only there — so sync never deletes by default. Removing packages
+from the remote requires `--prune`, which only makes sense from a complete tree.
+
+For the same reason sync refuses to publish a repository database built from a
+tree holding fewer packages than the remote database already lists. The database
+is what pacman resolves against, so a partial one hides every package it does not
+know about even though the files are still on the mirror. Use `bin/repo push` to
+publish packages built on another machine.
+
+### Deploy
+
+```bash
+bin/repo deploy --package nvidia-580xx-utils   # Build locally, publish from the host
+bin/repo deploy --host root@example.com        # Point at a specific repo host
+bin/repo deploy --dry-run                      # Show the plan, change nothing
+```
+
+Runs `build` then `push` in one command. The repository host is resolved before
+the build starts, so a missing `--host` fails immediately rather than after a long
+compile.
+
+### Push to the Repository Host
+
+```bash
+bin/repo push                                  # Push everything in build-output
+bin/repo push --package nvidia-580xx-utils     # Push one package
+bin/repo push --mirror stable --arch aarch64   # Pick mirror and architecture
+bin/repo push --host root@example.com          # Override the repo host
+bin/repo push --dry-run                        # Show the plan, transfer nothing
+```
+
+Uploads packages from `build-output/` to the repository host and publishes them there
+with `bin/upload-prebuilt` (sign → promote → update → sync). Use it when a package
+is quicker to build on a local machine than on the server.
+
+Publishing happens on the host rather than locally for two reasons: the GPG
+signing key lives there and nowhere else, and only the host holds the complete
+repository that a correct database and sync require. Local machines therefore
+need no secrets.
+
+The host comes from `--host`, `$OMARCHY_REPO_HOST`, then `.repo-host`. One
+machine both serves pkgs.omarchy.org and runs the scheduled builds, so the
+setting is named for the repository rather than for building, which happens
+wherever you like. The same setting tells `bin/omarchy-pkgs release` which host
+to poke after a release push.
+
+`--package` means the same thing as it does to `build`: a pkgbase, whose every
+output ships together. Pushing `nvidia-580xx-utils` carries `nvidia-580xx-dkms`
+and `opencl-nvidia-580xx` with it, because that is what the build produced. An
+output's own name still selects just that one, for publishing a single package
+on purpose. Omit `--package` to push everything built.
+
+Publishing signs and promotes everything staged on the host, not just what this
+push uploaded, so `push` stops when it finds packages already staged there —
+usually leftovers from a failed run. Remove them on the host, or pass
+`--include-staged` to publish them too.
 
 ### Sync AUR PKGBUILDs
 
@@ -161,6 +255,8 @@ bin/repo migrate --arch x86_64       # Promote tested edge artifacts -> stable, 
 bin/repo migrate --package <name>    # Promote a single package -> stable
 bin/repo migrate --dry-run           # Preview migration and cleanup
 bin/repo list                        # List package metadata
+bin/repo deploy                      # Build locally, then publish from the host
+bin/repo push                        # Upload local builds to the host and publish
 bin/add-package <package>            # Add an AUR/local package with metadata
 bin/package-worktree <package>       # Create upstream/patched/current scratch workspace
 bin/repo remove <package>            # Remove package
@@ -181,6 +277,63 @@ bin/repo list --repo --mirror stable # List packages in a published repo databas
 
 bin/package-worktree v4l2-relayd     # Create upstream/patched/current scratch workspace
 ```
+
+## Cutting an Omarchy Release
+
+The `omarchy` and `omarchy-settings` packages are released as a pair, always
+built from the same upstream commit of basecamp/omarchy. `bin/omarchy-pkgs`
+rewrites both PKGBUILDs in lockstep (same `_tag`/`_commit`/`pkgver`/
+`sha256sums`), validates ordering with `vercmp`, commits, and pushes the
+current branch. On master it pokes the build host directly; from any other
+branch add `--pr` to open the release PR — merging it is what goes live.
+
+```bash
+bin/omarchy-pkgs release v4.0.0          # Final release from the upstream v4.0.0 tag
+bin/omarchy-pkgs release rc v4.0.0       # Newest upstream v4.0.0-rcN tag -> 4.0.0rcN
+bin/omarchy-pkgs release beta v4.0.0     # Same for beta (alpha also supported)
+bin/omarchy-pkgs release latest          # Newest upstream tag, rc/beta included (prompts)
+bin/omarchy-pkgs release rc              # Untagged RC from the quattro tip, auto-numbered
+bin/omarchy-pkgs release --commit abc123 --base 4.1.0   # Untagged RC from a commit
+bin/omarchy-pkgs release ... --dry-run   # Show the plan; write nothing
+bin/omarchy-pkgs release ... --no-push   # Full flow, local commit only (testing)
+bin/omarchy-pkgs self-test               # Version normalization + ordering tests
+```
+
+### Versioning rules
+
+- Finals are `X.Y.Z`; pre-releases are `X.Y.ZalphaN` / `X.Y.ZbetaN` /
+  `X.Y.ZrcN` in the **attached** form only. pacman's vercmp orders
+  `4.0.0alpha1 < 4.0.0beta1 < 4.0.0rc1 < 4.0.0`, but separator forms
+  (`4.0.0.rc1`, `4.0.0_rc1`) sort **after** `4.0.0` and would strand users on
+  the pre-release — the tooling normalizes upstream tags (`v4.0.0-rc1`,
+  `v4.0.0-rc.1`, ...) to the attached form and refuses anything it cannot
+  normalize. Upstream tags are cut on the quattro branch.
+- `pkgrel` resets to 1 on every version change. Bump `pkgrel` by hand only to
+  repackage the same source.
+- `epoch` is never set by tooling. It is sticky forever; adding one is a
+  human decision of last resort.
+
+### Where releases land
+
+- **RCs build for edge only.** Stable never sees an rc version. Edge testers
+  upgrade rc1 → rc2 → final naturally.
+- **Finals build for edge first.** After the edge build completes and you have
+  verified it, promote the exact tested artifacts to stable:
+
+```bash
+bin/repo migrate --package omarchy && bin/repo migrate --package omarchy-settings
+bin/repo sync --mirror stable
+```
+
+Neither package is on the `fast` ring, and `bin/omarchy-pkgs` never touches
+stable — promotion is always this explicit step.
+
+### Build trigger
+
+After pushing, the command triggers the build host over ssh when
+`OMARCHY_REPO_HOST` is set (env var, or a hostname in the git-ignored
+`.repo-host` file). Without it, the 6-hourly auto-release timer picks up the
+change on its own.
 
 ## Directory Structure
 
@@ -407,20 +560,26 @@ State files are stored in `/root/.state/`:
 ### Installation
 
 ```bash
-# Copy systemd units
-cp /root/omarchy-pkgs/systemd/*.service /root/omarchy-pkgs/systemd/*.timer /etc/systemd/system/
-
-# Reload systemd
-systemctl daemon-reload
-
-# Enable and start timers
-systemctl enable --now omarchy-check-versions.timer
-systemctl enable --now omarchy-auto-release-edge.timer
-systemctl enable --now omarchy-auto-release-stable.timer
-
-# Create state directory
-mkdir -p /root/.state
+ssh root@<host> 'cd /root/omarchy-pkgs && bin/setup'
 ```
+
+`bin/setup` installs the dependencies, ensures Docker is running, creates the
+state directory, and installs and enables the release timers. It works on
+Debian/Ubuntu and on Arch, and is idempotent, so run it again whenever a
+dependency is added.
+
+The host does not need to be Arch: makepkg, repo-add and package signing all
+run inside containers, so it needs only Docker, rclone, bsdtar, jq, git and
+rsync. Docker is left alone when it already works, rather than replacing a
+working installation from Docker's own repository with the distribution's.
+
+```bash
+bin/repo setup --check         # Report what is missing, change nothing
+bin/repo setup --skip-timers   # Prepare the host without the release timers
+```
+
+Signing credentials (`/root/.omarchy/build-credentials`) and the rclone remote
+hold secrets, so setup reports on them rather than creating them.
 
 ### Management
 
