@@ -97,6 +97,18 @@ bin/repo push --package nvidia-580xx-utils     # Upload + publish on the host
 `bin/upload-prebuilt` there. Do not publish from a local checkout instead: only
 the repository host holds the complete repository and the signing key.
 
+**Name the package.** `build` asks the local repository database which packages
+are already built, and a build machine has no such database, so an unscoped run
+treats every package as out of date and rebuilds the whole repository. `deploy`
+refuses to run unscoped when that database is missing. Unscoped builds belong on
+the repository host, where `bin/repo release` does the same job against a real
+database.
+
+Every other command in `bin/` — `sign`, `promote`, `update`, `clean`, `migrate`,
+`remove`, `sync`, `release` — works on the published tree directly and is meant
+to run on the repository host. `build`, `push` and `deploy` are the three that
+may run elsewhere.
+
 ## Commands
 
 ### Global Flags

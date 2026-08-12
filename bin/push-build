@@ -126,6 +126,23 @@ if [[ "$PACKAGE_FLAG_GIVEN" == true && -z "$PACKAGES" ]]; then
   exit 1
 fi
 
+# On a build machine an unscoped build leaves the whole repository in
+# build-output, because there is no local database to tell it what already
+# exists. Interactively that is survivable — the confirmation below lists every
+# package first — but with --yes nobody sees the list, so require an explicit
+# selection instead.
+if [[ -z "$PACKAGES" && "$ASSUME_YES" == true ]] && ! on_repo_host; then
+  print_error "--package is required to publish unattended from a build machine"
+  echo ""
+  echo "There is no repository database in $REPO_DIR, so a preceding unscoped"
+  echo "build would have rebuilt everything rather than only what changed, and"
+  echo "--yes would publish all ${#ALL_FILES[@]} of them without showing the list."
+  echo ""
+  echo "Name the packages to publish:"
+  echo "  bin/repo push --package <name>"
+  exit 1
+fi
+
 FILES=()
 if [[ -z "$PACKAGES" ]]; then
   FILES=("${ALL_FILES[@]}")

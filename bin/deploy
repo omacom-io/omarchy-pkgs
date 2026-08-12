@@ -94,6 +94,26 @@ if [[ "$PACKAGE_FLAG_GIVEN" == true && ${#PACKAGES[@]} -eq 0 ]]; then
   exit 1
 fi
 
+# bin/build asks the local repository database what is already built. On a build
+# machine that database does not exist, so every package looks unbuilt and an
+# unscoped run rebuilds the entire repository and publishes it. Deploying from
+# here is for the occasional heavy package, so name it.
+if [[ ${#PACKAGES[@]} -eq 0 ]] && ! on_repo_host; then
+  print_error "--package is required when deploying from a build machine"
+  echo ""
+  echo "There is no repository database in:"
+  echo "  $REPO_DIR"
+  echo ""
+  echo "bin/build uses it to tell which packages are already built, so without it"
+  echo "every package looks out of date and this would build and publish all of"
+  echo "them. Name the package you came here to build:"
+  echo "  bin/repo deploy --package <name>"
+  echo ""
+  echo "Unscoped builds belong on the repository host, where 'bin/repo release'"
+  echo "does the same job against a real database."
+  exit 1
+fi
+
 echo ""
 print_info "This will:"
 echo "  1. Build packages locally"

@@ -33,6 +33,16 @@ resolve_repo_host() {
   return 1
 }
 
+# True when this checkout holds the published repository, which in practice means
+# this machine is the repository host. Every other command in bin/ works on that
+# tree directly; build, push and deploy are the ones that may run elsewhere.
+#
+# The database is the marker rather than the directory: bin/build creates empty
+# mirror directories as a side effect, so their presence proves nothing.
+on_repo_host() {
+  [[ -f "$REPO_DIR/omarchy.db" || -f "$REPO_DIR/omarchy.db.tar.zst" ]]
+}
+
 # Shared wording so every command explains configuration the same way.
 print_no_repo_host() {
   print_error "No repository host configured"
