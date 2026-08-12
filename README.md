@@ -195,7 +195,7 @@ branch add `--pr` to open the release PR — merging it is what goes live.
 bin/omarchy-pkgs release v4.0.0          # Final release from the upstream v4.0.0 tag
 bin/omarchy-pkgs release rc v4.0.0       # Newest upstream v4.0.0-rcN tag -> 4.0.0rcN
 bin/omarchy-pkgs release beta v4.0.0     # Same for beta (alpha also supported)
-bin/omarchy-pkgs release latest          # Newest upstream final tag (prompts first)
+bin/omarchy-pkgs release latest          # Newest upstream tag, rc/beta included (prompts)
 bin/omarchy-pkgs release rc              # Untagged RC from the quattro tip, auto-numbered
 bin/omarchy-pkgs release --commit abc123 --base 4.1.0   # Untagged RC from a commit
 bin/omarchy-pkgs release ... --dry-run   # Show the plan; write nothing

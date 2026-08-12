@@ -45,6 +45,7 @@ Options for release:
   --no-push         Rewrite and commit locally; skip push and build trigger
   --pr              When releasing from a non-master branch, open a GitHub PR
                     to master with gh after pushing
+  --rebuild         Same version + same commit: bump pkgrel to force a rebuild
   --dry-run         Resolve, validate, and show the plan; write nothing
   -h, --help        Show this help message
 
@@ -122,13 +123,12 @@ resolve_ref_commit() {
   git ls-remote "$UPSTREAM_URL" "refs/heads/$1" | awk '{print $1}'
 }
 
-# Newest upstream FINAL tag (pre-releases excluded — `release rc/beta/alpha`
-# are the channel-aware paths).
+# Newest upstream tag by vercmp, pre-releases included: v4.0.0-rc1 outranks
+# v3.8.4, and a final outranks its own rc/beta/alpha builds.
 latest_upstream_tag() {
   local best_tag="" best_ver="" tag ver
   while IFS= read -r tag; do
     ver=$(normalize_tag "$tag") || continue
-    version_is_prerelease "$ver" && continue
     if [[ -z "$best_ver" ]] || [[ $(vercmp "$ver" "$best_ver") -gt 0 ]]; then
       best_ver="$ver" best_tag="$tag"
     fi
@@ -176,23 +176,65 @@ guard_clean_tree() {
   fi
 }
 
+# Decides how this cut relates to what exists and sets RELEASE_PKGREL:
+#   new version                        -> pkgrel 1 (after the ordering floor)
+#   same version, different commit     -> re-release: pkgrel +1 (tag was moved)
+#   same version, same commit          -> no-op, or pkgrel +1 with --rebuild
 guard_version_ordering() {
-  local new_pkgver="$1" published
+  local new_pkgver="$1" new_commit="$2" rebuild="$3" published
   if ! published=$(published_edge_version omarchy); then
     print_error "Could not read the published edge DB ($EDGE_DB_URL) — refusing to release blind"
     exit 1
   fi
-  if [[ -z "$published" ]]; then
-    print_warning "omarchy not found in the published edge DB — first release, skipping downgrade guard"
+  local current_pkgver current_commit
+  current_pkgver=$(pkgbuild_var "${RELEASE_PACKAGES[0]}" pkgver)
+  current_commit=$(pkgbuild_var "${RELEASE_PACKAGES[0]}" _commit)
+
+  local current_pkgrel
+  current_pkgrel=$(pkgbuild_var "${RELEASE_PACKAGES[0]}" pkgrel)
+  RELEASE_PKGREL=1
+
+  if [[ "$new_pkgver" == "$current_pkgver" && "$new_commit" == "$current_commit" ]]; then
+    if [[ "$rebuild" == true ]]; then
+      RELEASE_PKGREL=$((current_pkgrel + 1))
+      print_warning "Rebuild: same source ($new_pkgver @ ${new_commit:0:12}), pkgrel $current_pkgrel → $RELEASE_PKGREL"
+      return 0
+    fi
+    print_success "Nothing to release — omarchy is already at $new_pkgver from commit ${new_commit:0:12} (use --rebuild to force a repackage)"
+    exit 0
+  fi
+
+  if [[ "$new_pkgver" == "$current_pkgver" ]]; then
+    # Same version, different commit: the upstream tag was moved/recut.
+    RELEASE_PKGREL=$((current_pkgrel + 1))
+    if [[ -n "$published" ]]; then
+      local published_pkgver="${published%-*}"
+      if [[ $(vercmp "$new_pkgver" "$published_pkgver") -lt 0 ]]; then
+        print_error "Refusing re-release of $new_pkgver: edge has already moved on to $published_pkgver"
+        exit 1
+      fi
+    fi
+    print_warning "Re-release: $new_pkgver was cut from ${current_commit:0:12}, now ${new_commit:0:12} — pkgrel $current_pkgrel → $RELEASE_PKGREL"
     return 0
   fi
-  local published_pkgver="${published%-*}"
-  if [[ $(vercmp "$new_pkgver" "$published_pkgver") -le 0 ]]; then
-    print_error "Refusing: $new_pkgver does not sort after published edge version $published_pkgver"
-    print_error "Re-releasing the same source needs a pkgrel bump; otherwise cut a newer version/rc."
+
+  # The floor is the newest version anyone could already have: the published
+  # edge DB, or the PKGBUILD itself (a cut that hasn't built/synced yet).
+  local floor="$current_pkgver" floor_src="current PKGBUILD"
+  if [[ -n "$published" ]]; then
+    local published_pkgver="${published%-*}"
+    if [[ $(vercmp "$published_pkgver" "$floor") -gt 0 ]]; then
+      floor="$published_pkgver" floor_src="published edge DB"
+    fi
+  else
+    print_warning "omarchy not found in the published edge DB yet — guarding against the current PKGBUILD only"
+  fi
+  if [[ $(vercmp "$new_pkgver" "$floor") -le 0 ]]; then
+    print_error "Refusing: $new_pkgver does not sort after $floor ($floor_src)"
+    print_error "Same version must mean same content — cut a newer version/rc, or bump pkgrel by hand to repackage."
     exit 1
   fi
-  print_info "Ordering vs published edge ($published_pkgver → $new_pkgver): OK"
+  print_info "Ordering OK: $floor ($floor_src) → $new_pkgver"
 }
 
 guard_rc_before_final() {
@@ -227,7 +269,7 @@ rewrite_pkgbuilds() {
       -e "s|^_tag=.*|_tag='$tag'|" \
       -e "s|^_commit=.*|_commit='$commit'|" \
       -e "s|^pkgver=.*|pkgver=$pkgver|" \
-      -e "s|^pkgrel=.*|pkgrel=1|" \
+      -e "s|^pkgrel=.*|pkgrel=${RELEASE_PKGREL:-1}|" \
       "$BUILD_ROOT/pkgbuilds/$pkg/PKGBUILD"
   done
 }
@@ -272,12 +314,13 @@ trigger_build_host() {
 # --- release command ---------------------------------------------------------
 
 cmd_release() {
-  local target="" target_arg="" base="" commit_arg="" ref="" dry_run=false assume_yes=false no_push=false open_pr=false
+  local target="" target_arg="" base="" commit_arg="" ref="" dry_run=false assume_yes=false no_push=false open_pr=false rebuild=false
   while [[ $# -gt 0 ]]; do
     case $1 in
     --base) base="$2"; shift 2 ;;
     --no-push) no_push=true; shift ;;
     --pr) open_pr=true; shift ;;
+    --rebuild) rebuild=true; shift ;;
     --commit) commit_arg="$2"; shift 2 ;;
     --ref) ref="$2"; shift 2 ;;
     --yes) assume_yes=true; shift ;;
@@ -300,7 +343,7 @@ cmd_release() {
     target="rc"
   fi
   if [[ -z "$target" ]]; then
-    print_error "Usage: $0 release <vX.Y.Z | vX.Y.Z-rcN | latest | rc> [options]"
+    print_error "Usage: $0 release <vX.Y.Z | vX.Y.Z-rcN | latest | rc | beta | alpha> [options]"
     exit 1
   fi
   if [[ ! "$target" =~ ^(rc|beta|alpha)$ && ( -n "$base" || -n "$commit_arg" || -n "$ref" ) ]]; then
@@ -413,20 +456,20 @@ cmd_release() {
     ;;
   esac
 
+  guard_rc_before_final "$pkgver"
+  guard_version_ordering "$pkgver" "$commit" "$rebuild"
+
   echo ""
   print_info "Packages: ${RELEASE_PACKAGES[*]}"
   print_info "Tag:      ${tag:-<none — cut from bare commit>}"
   print_info "Commit:   $commit"
-  print_info "Pkgver:   $pkgver-1"
+  print_info "Pkgver:   $pkgver-$RELEASE_PKGREL"
   if version_is_prerelease "$pkgver"; then
     print_info "Channel:  edge only (pre-release)"
   else
     print_info "Channel:  edge, then promote to stable via bin/repo migrate"
   fi
   echo ""
-
-  guard_rc_before_final "$pkgver"
-  guard_version_ordering "$pkgver"
 
   if [[ "$dry_run" == true ]]; then
     print_success "Dry run complete — nothing written."
