@@ -1,0 +1,187 @@
+#!/bin/bash
+# Prepare this machine to serve as the Omarchy repository host.
+#
+# The repository host builds packages, signs them, keeps the published tree, and
+# syncs it to the mirror. Everything it needs is installed and enabled here, so
+# the tooling can assume its toolchain instead of working around whatever
+# happens to be present.
+#
+# Run this on the host itself:
+#   ssh root@<host> 'cd /root/omarchy-pkgs && bin/setup'
+#
+# It is idempotent — run it again after adding a dependency.
+
+set -e
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+
+CHECK_ONLY=false
+SKIP_TIMERS=false
+
+# Packages, in "command:package" form so a missing tool names its own fix.
+#
+# tar, vercmp and repo-add come from base and pacman, which any Arch install
+# already has. bsdtar does not: libarchive ships the library pacman links
+# against without necessarily installing the binary.
+REQUIREMENTS=(
+  "bsdtar:libarchive"     # reads repo databases and .PKGINFO out of packages
+  "git:git"               # PKGBUILD sources and release commits
+  "jq:jq"                 # package metadata in .omarchy/package.json
+  "curl:curl"             # upstream version checks
+  "rsync:rsync"           # receives uploads from bin/repo push
+  "gpg:gnupg"             # package signing
+  "rclone:rclone"         # publishes to the mirror
+  "docker:docker"         # builds run in containers
+  "makepkg:base-devel"    # source verification for releases
+)
+
+STATE_DIR="${OMARCHY_STATE_DIR:-/root/.state}"
+CREDENTIALS="/root/.omarchy/build-credentials"
+
+print_header "Omarchy Repository Host Setup"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --check)
+    CHECK_ONLY=true
+    shift
+    ;;
+  --skip-timers)
+    SKIP_TIMERS=true
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Install and enable everything the repository host needs."
+    echo ""
+    echo "Options:"
+    echo "  --check         Report what is missing, change nothing"
+    echo "  --skip-timers   Do not install or enable the release timers"
+    echo "  -h, --help      Show this help message"
+    exit 0
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
+
+if ! command -v pacman >/dev/null 2>&1; then
+  print_error "This is not an Arch system — the repository host must be Arch"
+  exit 1
+fi
+
+if [[ "$CHECK_ONLY" != true && $EUID -ne 0 ]]; then
+  print_error "Run as root (installing packages and systemd units)"
+  exit 1
+fi
+
+# --- dependencies ------------------------------------------------------------
+
+print_info "Checking dependencies..."
+MISSING_PACKAGES=()
+for requirement in "${REQUIREMENTS[@]}"; do
+  cmd="${requirement%%:*}"
+  pkg="${requirement#*:}"
+  if command -v "$cmd" >/dev/null 2>&1; then
+    print_step "$cmd"
+  else
+    print_warning "$cmd missing (provided by $pkg)"
+    MISSING_PACKAGES+=("$pkg")
+  fi
+done
+echo ""
+
+if [[ ${#MISSING_PACKAGES[@]} -gt 0 ]]; then
+  if [[ "$CHECK_ONLY" == true ]]; then
+    print_warning "Would install: ${MISSING_PACKAGES[*]}"
+  else
+    print_info "Installing: ${MISSING_PACKAGES[*]}"
+    pacman -S --needed --noconfirm "${MISSING_PACKAGES[@]}"
+    print_success "Dependencies installed"
+  fi
+else
+  print_success "All dependencies present"
+fi
+echo ""
+
+# --- docker ------------------------------------------------------------------
+
+if [[ "$CHECK_ONLY" == true ]]; then
+  if systemctl is-enabled docker.service >/dev/null 2>&1; then
+    print_success "docker.service is enabled"
+  else
+    print_warning "docker.service would be enabled"
+  fi
+else
+  print_info "Enabling docker..."
+  systemctl enable --now docker.service
+  print_success "docker.service enabled"
+fi
+echo ""
+
+# --- state directory ---------------------------------------------------------
+
+if [[ -d "$STATE_DIR" ]]; then
+  print_success "State directory present: $STATE_DIR"
+elif [[ "$CHECK_ONLY" == true ]]; then
+  print_warning "Would create $STATE_DIR"
+else
+  mkdir -p "$STATE_DIR"
+  print_success "Created $STATE_DIR"
+fi
+echo ""
+
+# --- release timers ----------------------------------------------------------
+
+if [[ "$SKIP_TIMERS" == true ]]; then
+  print_info "Skipping release timers (--skip-timers)"
+elif [[ "$CHECK_ONLY" == true ]]; then
+  for timer in omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-stable; do
+    if systemctl is-enabled "$timer.timer" >/dev/null 2>&1; then
+      print_success "$timer.timer is enabled"
+    else
+      print_warning "$timer.timer would be enabled"
+    fi
+  done
+else
+  print_info "Installing release timers..."
+  cp "$BUILD_ROOT"/systemd/*.service "$BUILD_ROOT"/systemd/*.timer /etc/systemd/system/
+  systemctl daemon-reload
+  for timer in omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-stable; do
+    systemctl enable --now "$timer.timer"
+    print_step "$timer.timer"
+  done
+  print_success "Release timers enabled"
+fi
+echo ""
+
+# --- credentials -------------------------------------------------------------
+
+# These hold secrets, so setup reports on them rather than creating them.
+print_info "Checking credentials..."
+
+if [[ -f "$CREDENTIALS" ]]; then
+  print_success "Signing credentials present: $CREDENTIALS"
+else
+  print_warning "Missing $CREDENTIALS"
+  echo "    Must export GPG_PRIVATE_KEY and GPG_PASSPHRASE; the release"
+  echo "    services source it before signing."
+fi
+
+if rclone listremotes 2>/dev/null | grep -q '^pkgs.omarchy.org:'; then
+  print_success "rclone remote 'pkgs.omarchy.org' configured"
+else
+  print_warning "rclone remote 'pkgs.omarchy.org' not configured"
+  echo "    bin/repo sync publishes there; configure it with 'rclone config'."
+fi
+echo ""
+
+if [[ "$CHECK_ONLY" == true ]]; then
+  print_info "Check complete — nothing was changed"
+else
+  print_success "Repository host ready"
+fi

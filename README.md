@@ -560,20 +560,20 @@ State files are stored in `/root/.state/`:
 ### Installation
 
 ```bash
-# Copy systemd units
-cp /root/omarchy-pkgs/systemd/*.service /root/omarchy-pkgs/systemd/*.timer /etc/systemd/system/
-
-# Reload systemd
-systemctl daemon-reload
-
-# Enable and start timers
-systemctl enable --now omarchy-check-versions.timer
-systemctl enable --now omarchy-auto-release-edge.timer
-systemctl enable --now omarchy-auto-release-stable.timer
-
-# Create state directory
-mkdir -p /root/.state
+ssh root@<host> 'cd /root/omarchy-pkgs && bin/setup'
 ```
+
+`bin/setup` installs the dependencies, enables Docker, creates the state
+directory, and installs and enables the release timers. It is idempotent, so
+run it again whenever a dependency is added.
+
+```bash
+bin/repo setup --check         # Report what is missing, change nothing
+bin/repo setup --skip-timers   # Prepare the host without the release timers
+```
+
+Signing credentials (`/root/.omarchy/build-credentials`) and the rclone remote
+hold secrets, so setup reports on them rather than creating them.
 
 ### Management
 
