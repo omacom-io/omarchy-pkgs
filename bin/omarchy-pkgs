@@ -43,6 +43,8 @@ Options for release:
   --commit <sha>    (rc) Upstream commit to pin (default: tip of --ref)
   --ref <branch>    (rc) Upstream branch whose tip to pin (default: $DEFAULT_RC_REF)
   --yes             Skip confirmation prompts
+  --host <host>     ssh destination of the build host to trigger, overriding
+                    \$OMARCHY_BUILD_HOST and .build-host
   --no-push         Rewrite and commit locally; skip push and build trigger
   --pr              When releasing from a non-master branch, open a GitHub PR
                     to master with gh after pushing
@@ -312,7 +314,8 @@ regenerate_checksums() {
 # --- trigger -----------------------------------------------------------------
 
 trigger_build_host() {
-  local host="${OMARCHY_BUILD_HOST:-}"
+  local host="${BUILD_HOST_OVERRIDE:-}"
+  [[ -z "$host" ]] && host="${OMARCHY_BUILD_HOST:-}"
   [[ -z "$host" && -f "$BUILD_ROOT/.build-host" ]] && host=$(<"$BUILD_ROOT/.build-host")
   if [[ -z "$host" ]]; then
     print_info "No build host configured (set OMARCHY_BUILD_HOST or $BUILD_ROOT/.build-host)."
@@ -341,6 +344,7 @@ cmd_release() {
     --force) force=true; shift ;;
     --commit) commit_arg="$2"; shift 2 ;;
     --ref) ref="$2"; shift 2 ;;
+    --host) BUILD_HOST_OVERRIDE="$2"; shift 2 ;;
     --yes) assume_yes=true; shift ;;
     --dry-run) dry_run=true; shift ;;
     -h | --help) show_usage; exit 0 ;;

@@ -59,6 +59,7 @@ show_usage() {
   echo "  remove      Remove a specific package"
   echo "  sync        Sync repository to remote"
   echo "  push        Upload local builds to the build host and publish them there"
+  echo "  deploy      Build locally, then push: one command for a local build machine"
   echo ""
   echo "Typical workflows:"
   echo "  $0 release                  # Complete release workflow"
@@ -128,6 +129,10 @@ sync)
   ;;
 push)
   "$SCRIPT_DIR/push-build" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
+  ;;
+deploy)
+  "$SCRIPT_DIR/deploy" "$@" 2>&1 | tee "$LOG_FILE"
   exit ${PIPESTATUS[0]}
   ;;
 -h | --help | help)

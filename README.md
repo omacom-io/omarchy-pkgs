@@ -81,6 +81,13 @@ Large packages build faster on a local machine than on the server. Build them
 here, then hand the artifacts to the build host, which signs and publishes them:
 
 ```bash
+bin/repo deploy --package nvidia-580xx-utils   # Build here, publish from the host
+```
+
+`deploy` is `build` followed by `push`. The two steps are also available
+separately when a build needs inspecting before it ships:
+
+```bash
 bin/repo build --package nvidia-580xx-utils    # Build on the fast machine
 bin/repo push --package nvidia-580xx-utils     # Upload + publish on the host
 ```
@@ -171,6 +178,18 @@ is what pacman resolves against, so a partial one hides every package it does no
 know about even though the files are still on the mirror. Use `bin/repo push` to
 publish packages built on another machine.
 
+### Deploy
+
+```bash
+bin/repo deploy --package nvidia-580xx-utils   # Build locally, publish from the host
+bin/repo deploy --host root@example.com        # Point at a specific build host
+bin/repo deploy --dry-run                      # Show the plan, change nothing
+```
+
+Runs `build` then `push` in one command. The build host is resolved before the
+build starts, so a missing `--host` fails immediately rather than after a long
+compile.
+
 ### Push to the Build Host
 
 ```bash
@@ -215,6 +234,7 @@ bin/repo migrate --arch x86_64       # Promote tested edge artifacts -> stable, 
 bin/repo migrate --package <name>    # Promote a single package -> stable
 bin/repo migrate --dry-run           # Preview migration and cleanup
 bin/repo list                        # List package metadata
+bin/repo deploy                      # Build locally, then publish from the host
 bin/repo push                        # Upload local builds to the host and publish
 bin/add-package <package>            # Add an AUR/local package with metadata
 bin/package-worktree <package>       # Create upstream/patched/current scratch workspace
