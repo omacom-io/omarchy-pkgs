@@ -1,0 +1,60 @@
+_legacy_override="/etc/modprobe.d/dell-xps13-dx13260-sidecar-amps.conf"
+_legacy_sha256="97f36bce41581ecc6b1d7963cd0dab29c7b1a107b2dd4d17db7a56094a7b7289"
+
+_remove_legacy_override() {
+  local actual_sha256 hash_output
+
+  [ -f "$_legacy_override" ] || return 0
+  if ! hash_output=$(sha256sum "$_legacy_override"); then
+    printf ':: Unable to hash legacy override: %s\n' "$_legacy_override" >&2
+    return 1
+  fi
+  actual_sha256=${hash_output%% *}
+
+  if [ "$actual_sha256" = "$_legacy_sha256" ]; then
+    if ! rm -f -- "$_legacy_override"; then
+      printf ':: Unable to remove legacy override: %s\n' "$_legacy_override" >&2
+      return 1
+    fi
+    printf ':: Removed the superseded Dell XPS 13 sidecar amplifier override.\n'
+  else
+    printf ':: Preserving modified legacy override: %s\n' "$_legacy_override"
+  fi
+}
+
+_rebuild_boot_images() {
+  local output status
+
+  if command -v limine-mkinitcpio >/dev/null 2>&1; then
+    output=$(limine-mkinitcpio 2>&1)
+    status=$?
+    [ -z "$output" ] || printf '%s\n' "$output"
+
+    [ "$status" -eq 0 ] || return "$status"
+    case "$output" in
+      *"ERROR:"*) return 1 ;;
+    esac
+  elif command -v mkinitcpio >/dev/null 2>&1; then
+    mkinitcpio -P
+  else
+    printf ':: Unable to rebuild boot images: install mkinitcpio and rebuild before rebooting.\n' >&2
+    return 1
+  fi
+}
+
+post_install() {
+  _remove_legacy_override || return
+  _rebuild_boot_images || return
+  printf ':: Reboot to enable the Dell XPS 13 sidecar speaker amplifiers.\n'
+}
+
+post_upgrade() {
+  _remove_legacy_override || return
+  _rebuild_boot_images || return
+  printf ':: Reboot to apply the Dell XPS 13 sidecar amplifier update.\n'
+}
+
+post_remove() {
+  _rebuild_boot_images || return
+  printf ':: Reboot to finish removing the Dell XPS 13 sidecar amplifier workaround.\n'
+}
