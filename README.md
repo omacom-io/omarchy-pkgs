@@ -213,11 +213,8 @@ need no secrets.
 The host comes from `--host`, `$OMARCHY_REPO_HOST`, then `.repo-host`. One
 machine both serves pkgs.omarchy.org and runs the scheduled builds, so the
 setting is named for the repository rather than for building, which happens
-wherever you like.
-
-Note that `.repo-host` also arms the automatic build trigger in
-`bin/omarchy-pkgs release`; pass `--host` or set `OMARCHY_REPO_HOST` to keep the
-two separate.
+wherever you like. The same setting tells `bin/omarchy-pkgs release` which host
+to poke after a release push.
 
 Split packages are selected by their own names, not their pkgbase — pushing
 `nvidia-580xx-utils` does not carry `nvidia-580xx-dkms` along. Omit `--package` to

@@ -39,7 +39,4 @@ print_no_repo_host() {
   echo ""
   echo "Pass --host, set OMARCHY_REPO_HOST, or write the destination to:"
   echo "  $BUILD_ROOT/.repo-host"
-  echo ""
-  echo "That file also arms the automatic build trigger in 'bin/omarchy-pkgs"
-  echo "release'. Use --host or OMARCHY_REPO_HOST to keep them separate."
 }
