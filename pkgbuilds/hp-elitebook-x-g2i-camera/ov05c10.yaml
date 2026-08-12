@@ -1,0 +1,156 @@
+# SPDX-License-Identifier: CC0-1.0
+#
+# Tuning file for OmniVision OV05C10 as fitted to the HP EliteBook X G2i.
+# Used by the libcamera "simple" pipeline handler's software ISP (IPA "simple").
+#
+# INSTALL: /etc/libcamera/ipa/simple/ov05c10.yaml
+#   libcamera derives the filename from the sensor model reported by the kernel
+#   driver ("ov05c10"), see src/libcamera/pipeline/simple/simple.cpp:
+#       ipa_->configurationFile(sensor->model() + ".yaml", "uncalibrated.yaml");
+#   With this file absent you get uncalibrated.yaml, which has no CCM at all.
+#
+#   /etc and not /usr/share, because two libcameras have to find it. IPA_CONFIG_DIR
+#   is built in src/ipa/meson.build as sysconfdir first, then datadir, and both
+#   builds on this machine put /etc/libcamera/ipa at the front:
+#       Arch libcamera 0.7.2  "/etc/libcamera/ipa:/usr/share/libcamera/ipa"
+#       libcamera-ov05c10     "/etc/libcamera/ipa:/usr/lib/libcamera-ov05c10/share/libcamera/ipa"
+#   (read back with strings(1) from the shipped .so, not inferred). A copy under
+#   /usr/share/libcamera/ipa/simple only ever reaches the Arch build, and is
+#   shadowed by this one if both exist.
+#
+# SCHEMA NOTES — verified against libcamera v0.7.2 source, not guessed:
+#
+#   * Algorithms run in the order listed. Ccm must come after Awb, because
+#     Ccm::prepare() reads context.activeState.awb.temperatureK to pick which
+#     matrix to interpolate to (src/ipa/simple/algorithms/ccm.cpp).
+#
+#   * BlackLevel takes ONE scalar key, "blackLevel", in 16-bit units.
+#     src/ipa/simple/algorithms/blc.cpp:
+#         auto blackLevel = tuningData["blackLevel"].get<int16_t>();
+#         definedLevel_ = blackLevel.value() >> 8;
+#     The per-channel "r:/gr:/gb:/b:" form used by the (unowned, locally placed)
+#     /usr/share/libcamera/ipa/simple/ov08x40.yaml on this machine is NOT parsed
+#     by 0.7.2 and is silently ignored. Do not copy that form.
+#
+#   * Ccm takes a list "ccms" of { ct, ccm } entries. ccm is nine floats,
+#     ROW-MAJOR 3x3. src/ipa/simple/algorithms/ccm.cpp:
+#         ccm_.readYaml(tuningData["ccms"], "ct", "ccm");
+#     Entries are interpolated by correlated colour temperature; the matrix only
+#     changes when the estimated CT moves by >= 100 K. A single entry is legal
+#     and is used at every CT.
+#
+#   * Awb, Agc and Adjust have no tuning keys in 0.7.2 (their init() ignores
+#     tuningData). Gamma, Contrast and Saturation are runtime controls with
+#     built-in defaults. Saturation is only exposed when a CCM is present, so
+#     shipping this file also unlocks the Saturation control.
+#
+#   * The CCM is applied by the GPU debayer too, not just the CPU one:
+#     debayer_egl.cpp does
+#         glUniformMatrix3fv(ccmUniformDataIn_, 1, GL_TRUE,
+#                            params.combinedMatrix.data().data());
+#     GL_TRUE = transpose on upload, i.e. it expects the row-major data written
+#     here. So this file works on the GPU path as well as the CPU fallback.
+
+%YAML 1.1
+---
+version: 1
+algorithms:
+  # ---------------------------------------------------------------------------
+  # Black level.
+  #
+  # UNVERIFIED. 4096 is 64 in 10-bit units (64 << 6), the usual OmniVision
+  # optical-black pedestal, and matches what the local ov08x40 file was reaching
+  # for. The ov05c10 kernel driver (/usr/src/ov05c10-1.1.0/src/ov05c10.c) does
+  # not define a black level, so this is inference, not datasheet.
+  #
+  # TO VERIFY: cover the lens completely, capture, and read the mean raw value.
+  # If it is not 64/1023, change this to <measured 10-bit value> * 64.
+  # TO DISABLE: comment out the blackLevel line. BlackLevel then estimates the
+  # pedestal from the luma histogram each time exposure or gain changes, which
+  # is what the known-good 2026-08-06 capture ran with. Prefer the estimator if
+  # the fixed value makes shadows crushed or milky.
+  - BlackLevel:
+      blackLevel: 4096
+
+  - Awb:
+
+  # ---------------------------------------------------------------------------
+  # Colour correction matrices, from HP's factory tuning.
+  #
+  # PROVENANCE: all six are HP's factory matrices, reproduced verbatim. They were
+  # decoded from the tuning container HP ships on this machine's Windows
+  # partition, ov05c10_CJFPE50_PTL.aiqb, an Intel CPF/LARD/MKN AIQB:
+  #
+  #   group LCMC -> mode DFLT -> record 25, cmc_name_id_advanced_color_matrices
+  #   field cmc_parsed_advanced_color_matrices_ls_t.traditional_color_matrix
+  #
+  # Six calibrated illuminants, and these are all of them; HP calibrates no
+  # others, so nothing here is interpolated into existence. The "ct" values are
+  # HP's own measured CCTs from cmc_acm_color_matrices_info_t.cct.
+  #
+  # No conversion was needed. Intel stores them as IEEE-754 float32, row-major,
+  # already row-normalised, which is exactly what libcamera's Matrix::readYaml
+  # expects. No transpose, no rescale.
+  #
+  # The parse is corroborated by black level: two records in this container, in
+  # different encodings, give 64.00-64.07 in 10-bit across the four Bayer
+  # channels, and an independent measurement on the sensor itself -- dark frames
+  # at minimum exposure and minimum gain -- gives exactly 64. Hence blackLevel
+  # 4096 above.
+  #
+  # An earlier revision of this comment said only the 5101 K matrix was real and
+  # the rest were stubs. That was true of an older copy of this file and was not
+  # updated when the other five were filled in, which cost some time. The values
+  # were verified against the container directly and match to 4.9e-06, which is
+  # the 5-decimal rounding of the float32 originals.
+  #
+  # Not carried: the 24 per-hue-sector matrices in the same record, which drive
+  # Intel's ACM stage. libcamera's software ISP has no equivalent, so some of
+  # HP's saturation shaping is lost and there is nowhere to put it.
+  #
+  # FORM CHECK: each row of the 5101 K matrix sums to exactly 1.0
+  #   2.04196 - 0.87354 - 0.16842 = 1.00000
+  #  -0.37856 + 1.79833 - 0.41977 = 1.00000
+  #  -0.10306 - 0.82008 + 1.92314 = 1.00000
+  # That is the white-preserving normalisation libcamera wants: the CCM is
+  # applied AFTER the AWB gains have already neutralised grey, so a neutral
+  # input must survive the matrix unchanged. HP's matrices therefore drop
+  # straight in with no rescaling. Do not renormalise them.
+  #
+  # CAVEAT: the PR notes record that "a first attempt at applying them made the
+  # image worse". That attempt was in the ffmpeg chain, which has no transfer
+  # curve and applies a static grey-world gain, so a CCM there amplifies an
+  # already-wrong white point. Here the matrix sits after a real AWB estimate
+  # and before the gamma stage, which is where a CCM belongs. That is the reason
+  # to expect a different result — it is a reason, not a guarantee.
+  - Ccm:
+        ccms:
+          - ct: 2835
+            ccm: [1.87480, -0.61019, -0.26461, -0.55388, 2.01325, -0.45937, -0.36340, -1.62240, 2.98579 ]
+          - ct: 2988
+            ccm: [1.98949, -0.84816, -0.14133, -0.55082, 1.95221, -0.40139, -0.16027, -1.35042, 2.51069 ]
+          - ct: 3960
+            ccm: [2.17090, -1.09260, -0.07830, -0.46247, 1.83005, -0.36758, -0.11224, -0.99982, 2.11206 ]
+          - ct: 4080
+            ccm: [2.12583, -1.04228, -0.08355, -0.45774, 1.90701, -0.44927, -0.06673, -1.09965, 2.16639 ]
+          - ct: 5101
+            ccm: [2.04196, -0.87354, -0.16842, -0.37856, 1.79833, -0.41977, -0.10306, -0.82008, 1.92314 ]
+          - ct: 6497
+            ccm: [2.08268, -0.93168, -0.15100, -0.35939, 1.91248, -0.55309, -0.08132, -0.80391, 1.88523 ]
+        # - ct: <A / ~2856 K>
+        #   ccm: [ ..., ..., ...,
+        #          ..., ..., ...,
+        #          ..., ..., ... ]
+        # - ct: <TL84 / ~4000 K>
+        #   ccm: [ ... ]
+        # - ct: <D65 / ~6500 K>
+        #   ccm: [ ... ]
+        # - ct: <D75 / ~7500 K>
+        #   ccm: [ ... ]
+        # - ct: <H / ~2300 K>
+        #   ccm: [ ... ]
+
+  - Adjust:
+
+  - Agc:
+...

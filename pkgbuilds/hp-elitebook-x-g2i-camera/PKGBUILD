@@ -43,7 +43,7 @@
 
 pkgname=hp-elitebook-x-g2i-camera
 pkgver=1.1.0
-pkgrel=2
+pkgrel=3
 pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL bypass)"
 arch=('x86_64')
 url="https://github.com/omacom-io/omarchy-pkgs"
@@ -82,8 +82,15 @@ source=(
   'hp-elitebook-x-g2i-camera'
   'hp-elitebook-x-g2i-camera.install'
   'hp-elitebook-x-g2i-camera.service'
+  'ov05c10.yaml'
 )
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+# Calibration data, not user configuration, but it lives in /etc because that is
+# where libcamera looks first. backup= gets this right either way: pacman
+# replaces the file on upgrade while it still matches the version this package
+# shipped, and only falls back to .pacnew once someone has edited it by hand.
+backup=('etc/libcamera/ipa/simple/ov05c10.yaml')
 
 package() {
   install -Dm755 hp-elitebook-x-g2i-camera "${pkgdir}/usr/bin/hp-elitebook-x-g2i-camera"
@@ -105,6 +112,14 @@ package() {
   install -Dm644 Makefile.ov05c10 "${dkms_dir}/src/Makefile"
   install -Dm644 dkms-ov05c10.conf "${dkms_dir}/dkms.conf"
   sed -i "s/@PKGVER@/${pkgver}/" "${dkms_dir}/dkms.conf"
+
+  # Colour tuning for libcamera's software ISP: black level and the CCM set.
+  # Nothing in the current ffmpeg pipeline reads it -- it is here for the
+  # libcamera path, and it is here rather than in libcamera-ov05c10 because
+  # these are HP's matrices for this laptop's camera module, not a property of
+  # every ov05c10 ever fitted. This package is already gated to this machine;
+  # that one is not.
+  install -Dm644 ov05c10.yaml "${pkgdir}/etc/libcamera/ipa/simple/ov05c10.yaml"
 
   install -Dm644 README.package.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
 }

@@ -28,7 +28,7 @@ MSG
 # rather than leave the user to work that out from a restart counter.
 _retire_legacy_units() {
   local u
-  for u in hp-g2i-camera-bypass hp-g2i-camera-watchdog; do
+  for u in hp-g2i-camera-bypass hp-g2i-camera-watchdog camera-init; do
     # Only ever touch units no package owns.
     [ -e "/etc/systemd/system/$u.service" ] || continue
     if pacman -Qo "/etc/systemd/system/$u.service" >/dev/null 2>&1; then
@@ -40,9 +40,31 @@ _retire_legacy_units() {
   done
 }
 
+# This package installs the tuning file to /etc/libcamera/ipa/simple, which
+# libcamera searches before /usr/share/libcamera/ipa/simple. A hand-placed copy
+# in the datadir therefore stops having any effect the moment this package is
+# installed, without anything saying so. Editing that copy afterwards and seeing
+# no change in the colour is a bad afternoon, so say it out loud. Do not delete
+# it: no package owns it, and it may be someone's newer working copy.
+_warn_about_shadowed_tuning() {
+  local stale=/usr/share/libcamera/ipa/simple/ov05c10.yaml
+  [ -e "$stale" ] || return 0
+  pacman -Qo "$stale" >/dev/null 2>&1 && return 0
+  cat <<MSG
+
+  NOTE: $stale is still present and no package owns it. libcamera reads
+  /etc/libcamera/ipa/simple/ov05c10.yaml first, so that copy is now inert.
+  Delete it once you have confirmed nothing there is newer:
+
+    sudo rm $stale
+
+MSG
+}
+
 post_install() {
   systemctl daemon-reload >/dev/null 2>&1 || true
   _retire_legacy_units
+  _warn_about_shadowed_tuning
   systemctl enable hp-elitebook-x-g2i-camera.service >/dev/null 2>&1 || true
 
   cat <<'MSG'
@@ -76,6 +98,7 @@ post_upgrade() {
   systemctl daemon-reload >/dev/null 2>&1 || true
   systemctl try-restart hp-elitebook-x-g2i-camera.service >/dev/null 2>&1 || true
   _warn_about_predecessor
+  _warn_about_shadowed_tuning
 }
 
 pre_remove() {
