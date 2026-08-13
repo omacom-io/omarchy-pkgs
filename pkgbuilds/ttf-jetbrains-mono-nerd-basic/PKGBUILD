@@ -1,7 +1,7 @@
 # Maintainer: Omarchy <hello@omarchy.org>
 
 pkgname=ttf-jetbrains-mono-nerd-basic
-pkgver=3.4.0
+pkgver=3.5.0
 pkgrel=1
 pkgdesc="Basic JetBrains Mono Nerd Font family"
 arch=("any")
@@ -11,7 +11,7 @@ groups=("nerd-fonts")
 provides=("ttf-font-nerd" "ttf-jetbrains-mono-nerd=$pkgver")
 conflicts=("ttf-jetbrains-mono-nerd" "nerd-fonts-jetbrains-mono")
 source=("JetBrainsMono-${pkgver}.zip::https://github.com/ryanoasis/nerd-fonts/releases/download/v${pkgver}/JetBrainsMono.zip")
-sha256sums=("76f05ff3ace48a464a6ca57977998784ff7bdbb65a6d915d7e401cd3927c493c")
+sha256sums=("9577de1ae84ec523df16fc69bac5338b89497a5b4fb91489e2dcb79dc06ac2b5")
 
 package() {
   local font
