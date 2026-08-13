@@ -1,6 +1,6 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname=omarchy-nvim
-pkgver=2026.8.1
+pkgver=2026.8.13
 pkgrel=1
 pkgdesc="Pre-built LazyVim configuration with cached plugins"
 arch=('any')
@@ -61,9 +61,16 @@ slim_lazy_repos() {
     # is half the package -- ~70 MB of .git across the plugins. `git fetch`
     # into a shallow repo stays shallow and re-fetches tags, so :Lazy update
     # still works.
-    git -C "$dir" symbolic-ref -d refs/remotes/origin/HEAD 2>/dev/null || true
+    #
+    # Keep refs/remotes/origin/HEAD. It pins no objects (it is a symref, and
+    # stays readable after its target ref is gone), but lazy.nvim resolves the
+    # default branch through it for plugins parked on a detached HEAD by a
+    # version pin -- lazy.nvim, LazyVim and blink.cmp. Without it, get_branch()
+    # returns nil and every lockfile write asserts, so :Lazy install/update/sync
+    # dies with E5113 on a fresh install.
     git -C "$dir" for-each-ref --format='%(refname)' refs/remotes refs/tags |
       while IFS= read -r ref; do
+        [[ $ref == refs/remotes/origin/HEAD ]] && continue
         git -C "$dir" update-ref -d "$ref"
       done
     rm -f "$dir/.git/FETCH_HEAD" "$dir/.git/ORIG_HEAD"
