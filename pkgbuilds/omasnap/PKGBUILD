@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc="Native Wayland screenshot and annotation overlay for Hyprland"
 arch=('x86_64')
 url="https://github.com/tobi/omasnap"
-license=('custom')
+license=('MIT')
 depends=(
   'grim'
   'hyprland'
@@ -44,4 +44,6 @@ package() {
   cmake --install build --prefix "$pkgdir/usr"
   install -Dm644 "$pkgname-$pkgver/README.md" \
     "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 "$pkgname-$pkgver/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
