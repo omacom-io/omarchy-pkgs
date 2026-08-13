@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Grok Bot
+Comment=Grok Bot desktop agent
+Exec=grok-bot %U
+TryExec=grok-bot
+Icon=grok-bot
+Terminal=false
+Type=Application
+Categories=Development;
+MimeType=x-scheme-handler/sand;
+StartupWMClass=Grok Bot
+StartupNotify=true
+Keywords=Grok;AI;Agent;
