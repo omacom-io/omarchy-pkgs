@@ -29,7 +29,9 @@ show_usage() {
 Usage: $0 <command> [options]
 
 Commands:
-  release <vX.Y.Z | vX.Y.Z-rcN>  Cut a release from an upstream tag
+  release <vX.Y.Z | vX.Y.Z-rcN>  Cut a release from an upstream tag; if the
+                                 tag doesn't exist, uses the tip of quattro
+                                 (or --ref/--commit) with that version
   release latest [rc|beta|alpha] Cut from the newest upstream tag, optionally
                                  restricted to one pre-release channel
   release rc [vX.Y.Z]            Newest upstream vX.Y.Z-rcN tag → X.Y.ZrcN
@@ -367,8 +369,12 @@ cmd_release() {
     print_error "Usage: $0 release <vX.Y.Z | vX.Y.Z-rcN | latest | rc | beta | alpha> [options]"
     exit 1
   fi
-  if [[ ! "$target" =~ ^(rc|beta|alpha)$ && ( -n "$base" || -n "$commit_arg" || -n "$ref" ) ]]; then
-    print_error "--base/--commit/--ref only apply to pre-release modes (rc/beta/alpha)"
+  if [[ ! "$target" =~ ^(rc|beta|alpha)$ && -n "$base" ]]; then
+    print_error "--base only applies to pre-release modes (rc/beta/alpha)"
+    exit 1
+  fi
+  if [[ "$target" == "latest" && ( -n "$commit_arg" || -n "$ref" ) ]]; then
+    print_error "--commit/--ref do not apply to 'release latest'"
     exit 1
   fi
 
@@ -469,15 +475,33 @@ cmd_release() {
   v*)
     pkgver=$(normalize_tag "$target") || {
       print_error "Cannot parse '$target' as a release tag."
-      print_error "Accepted: vX.Y.Z, vX.Y.Z-rcN, vX.Y.Z-rc.N, vX.Y.Z.rcN, vX.Y.Z_rcN"
+      print_error "Accepted: vX.Y.Z, vX.Y.Z-rcN, vX.Y.Z-rc.N, vX.Y.Z.rcN, vX.Y.Z_rcN (beta/alpha too)"
       exit 1
     }
     tag="$target"
-    print_info "Resolving $tag upstream..."
-    commit=$(resolve_tag_commit "$tag")
-    if [[ -z "$commit" ]]; then
-      print_error "Tag '$tag' not found at $UPSTREAM_URL"
-      exit 1
+    if [[ -n "$commit_arg" ]]; then
+      # Explicit commit wins — release this version from exactly that commit.
+      ensure_clone
+      commit=$(git -C "$CLONE_DIR" rev-parse --verify --quiet "$commit_arg^{commit}") || {
+        print_error "Commit '$commit_arg' not found in upstream $UPSTREAM_URL"
+        exit 1
+      }
+      tag=""
+      print_warning "Releasing $pkgver from explicit commit ${commit:0:12} (no upstream tag)"
+    else
+      print_info "Resolving $tag upstream..."
+      commit=$(resolve_tag_commit "$tag")
+      if [[ -z "$commit" ]]; then
+        # No such tag: fall back to the branch tip, like the rc flow.
+        ref="${ref:-$DEFAULT_RC_REF}"
+        commit=$(resolve_ref_commit "$ref")
+        if [[ -z "$commit" ]]; then
+          print_error "Tag '$tag' not found and branch '$ref' not found at $UPSTREAM_URL"
+          exit 1
+        fi
+        tag=""
+        print_warning "Tag '$target' not found upstream — releasing $pkgver from the tip of '$ref' (${commit:0:12})"
+      fi
     fi
     ;;
   *)
