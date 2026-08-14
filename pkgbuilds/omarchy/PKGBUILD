@@ -12,7 +12,7 @@
 pkgname='omarchy'
 _tag=''
 _commit='f0020448ca87329199de7cb12f2015ebc4a3e5e7'
-pkgver=4.0.0rc6
+pkgver=4.0.0
 pkgrel=1
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
