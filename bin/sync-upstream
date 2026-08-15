@@ -1,0 +1,390 @@
+#!/bin/bash
+set -euo pipefail
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/package-metadata.sh"
+
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR"' EXIT
+
+SPECIFIC_PACKAGES=()
+
+usage() {
+  cat <<EOF
+Usage: $0 [PACKAGE...]
+
+Update packages that track an upstream vendor release feed instead of the AUR.
+
+A package opts in by providing pkgbuilds/<package>/.omarchy/upstream.sh, a hook
+that reports the newest upstream release as JSON on stdout:
+
+  {
+    "pkgver": "1.2.3",
+    "sha256sums": { "x86_64": ["<sha256>"], "aarch64": ["<sha256>"] }
+  }
+
+Architecture keys become sha256sums_<arch> in the PKGBUILD; the key "any" means
+the unsuffixed sha256sums array. An empty object ({}) reports no update.
+
+When the reported version is newer than the checked-in one, pkgver and the
+listed checksum arrays are rewritten and pkgrel is reset to 1.
+
+Arguments:
+  PACKAGE    One or more package names to update (optional)
+
+Examples:
+  $0                          # Update every package with an upstream hook
+  $0 openai-codex-desktop     # Update specific packages
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --*)
+      print_error "Unknown option: $1"
+      exit 1
+      ;;
+    *)
+      SPECIFIC_PACKAGES+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if ! command -v vercmp >/dev/null 2>&1; then
+  print_error "vercmp not found: this needs pacman to decide whether a release is an upgrade"
+  exit 1
+fi
+
+print_header "Upstream Package Sync"
+
+UPDATED=0
+SKIPPED=0
+FAILED=0
+SPECIFIC_MODE=false
+
+get_pkgver() {
+  local package_dir="$1"
+
+  grep -m1 '^pkgver=' "$package_dir/PKGBUILD" | cut -d= -f2- | tr -d "\"'"
+}
+
+assert_single_assignment() {
+  local pkgbuild="$1"
+  local pattern="$2"
+  local label="$3"
+
+  if [[ $(grep -c "$pattern" "$pkgbuild") -ne 1 ]]; then
+    print_error "Expected exactly one $label assignment in $pkgbuild"
+    return 1
+  fi
+}
+
+set_pkgbuild_scalar() {
+  local pkgbuild="$1"
+  local field="$2"
+  local value="$3"
+
+  assert_single_assignment "$pkgbuild" "^${field}=" "$field" || return 1
+  sed -i "s/^${field}=.*/${field}=${value}/" "$pkgbuild"
+}
+
+# Replace an array assignment, however many lines the original spans.
+set_pkgbuild_array() {
+  local pkgbuild="$1"
+  local name="$2"
+  shift 2
+  local values=("$@")
+
+  assert_single_assignment "$pkgbuild" "^${name}=(" "$name" || return 1
+
+  if [[ ${#values[@]} -eq 0 ]]; then
+    print_error "No values to write for ${name}"
+    return 1
+  fi
+
+  local block="$TEMP_DIR/array-block"
+  if [[ ${#values[@]} -eq 1 ]]; then
+    printf "%s=('%s')\n" "$name" "${values[0]}" > "$block" || return 1
+  else
+    {
+      printf '%s=(\n' "$name"
+      printf "  '%s'\n" "${values[@]}"
+      printf ')\n'
+    } > "$block" || return 1
+  fi
+
+  local rewritten="$TEMP_DIR/pkgbuild-rewritten"
+  if ! awk -v prefix="${name}=(" -v block="$block" '
+    !replaced && index($0, prefix) == 1 {
+      while ((getline line < block) > 0) print line
+      close(block)
+      replaced = 1
+      # A ")" anywhere past the opening closes the array; testing for one at end
+      # of line instead would treat a trailing comment as a continuation and eat
+      # every line up to the next ")".
+      if (index(substr($0, length(prefix) + 1), ")") == 0) skipping = 1
+      next
+    }
+    skipping { if ($0 ~ /\)/) skipping = 0; next }
+    { print }
+  ' "$pkgbuild" > "$rewritten"; then
+    print_error "Failed to rewrite ${name} in $pkgbuild"
+    rm -f "$rewritten"
+    return 1
+  fi
+
+  mv "$rewritten" "$pkgbuild"
+}
+
+# pacman's own comparator, because nothing else agrees with it at the corners:
+# sort -V calls 1.0a newer than 1.0, vercmp calls it older, and pacman is what
+# decides whether a published package is an upgrade.
+version_is_newer() {
+  local candidate="$1"
+  local current="$2"
+
+  [[ "$candidate" != "$current" ]] || return 1
+  [[ "$(vercmp "$candidate" "$current")" -gt 0 ]]
+}
+
+validate_release() {
+  local release="$1"
+
+  # pkgver is written into the PKGBUILD, which makepkg sources as shell, so it
+  # is held to pacman's own character set rather than merely being non-empty.
+  # The anchors are \A and \z, not ^ and $: jq's $ also matches before a
+  # trailing newline, which would let "1.0\n" through and break the rewrite.
+  jq -e '
+    (.pkgver | type == "string" and test("\\A[A-Za-z0-9._+]+\\z"))
+    and (.sha256sums | type == "object" and length > 0)
+    and (.sha256sums | to_entries | all(
+      .key | test("\\A[a-z0-9_]+\\z")
+    ))
+    and (.sha256sums | to_entries | all(
+      .value | type == "array" and length > 0 and all(test("\\A[0-9a-f]{64}\\z"))
+    ))
+  ' <<<"$release" >/dev/null
+}
+
+# Confirm the rewritten PKGBUILD parses and actually holds what we meant to put
+# in it. Editing shell with awk and sed can go wrong in ways no amount of
+# pattern-matching anticipates -- an array element carrying a ")" in a comment,
+# say -- so the result is checked rather than trusted.
+verify_pkgbuild() {
+  local pkgbuild="$1"
+  local release="$2"
+  local pkgver="$3"
+  shift 3
+  local arrays=("$@")
+
+  if ! bash -n "$pkgbuild" 2>/dev/null; then
+    print_error "Rewritten PKGBUILD is not valid shell"
+    return 1
+  fi
+
+  local dump
+  if ! dump=$(CARCH=x86_64 bash -c '
+    source "$1" >/dev/null 2>&1 || exit 1
+    printf "pkgver\t%s\n" "$pkgver"
+    printf "pkgrel\t%s\n" "$pkgrel"
+    for name in "${@:2}"; do
+      declare -n array="$name"
+      printf "%s\t%s\n" "$name" "${array[*]}"
+    done
+  ' _ "$pkgbuild" "${arrays[@]}" 2>/dev/null); then
+    print_error "Rewritten PKGBUILD could not be read back"
+    return 1
+  fi
+
+  local expected
+  expected=$(
+    printf 'pkgver\t%s\n' "$pkgver"
+    printf 'pkgrel\t1\n'
+    local array arch
+    for array in "${arrays[@]}"; do
+      arch="${array#sha256sums}"
+      arch="${arch#_}"
+      [[ -n "$arch" ]] || arch="any"
+      printf '%s\t%s\n' "$array" \
+        "$(jq -r --arg arch "$arch" '.sha256sums[$arch] | join(" ")' <<<"$release")"
+    done
+  )
+
+  if [[ "$dump" != "$expected" ]]; then
+    print_error "Rewritten PKGBUILD does not hold the reported release"
+    diff <(echo "$expected") <(echo "$dump") | sed 's/^/    /' >&2 || true
+    return 1
+  fi
+}
+
+apply_release() {
+  local package_dir="$1"
+  local release="$2"
+  local pkgver="$3"
+  local pkgbuild="$package_dir/PKGBUILD"
+
+  local arch array values
+  local arrays=()
+
+  while IFS= read -r arch; do
+    if [[ "$arch" == "any" ]]; then
+      array="sha256sums"
+    else
+      array="sha256sums_$arch"
+    fi
+    arrays+=("$array")
+  done < <(jq -r '.sha256sums | keys[]' <<<"$release")
+
+  # validate_release guarantees at least one entry, so an empty list here means
+  # jq died inside the process substitution rather than that there is nothing
+  # to do.
+  if [[ ${#arrays[@]} -eq 0 ]]; then
+    print_error "Could not read the checksum architectures from the reported release"
+    return 1
+  fi
+
+  # Every edit lands on a scratch copy that replaces the PKGBUILD in one rename
+  # at the end, so a failure part way through leaves the original untouched
+  # rather than half updated.
+  local scratch="$pkgbuild.sync-upstream"
+  cp "$pkgbuild" "$scratch" || return 1
+
+  if ! (
+    assert_single_assignment "$scratch" '^pkgver=' pkgver || exit 1
+    assert_single_assignment "$scratch" '^pkgrel=' pkgrel || exit 1
+
+    for array in "${arrays[@]}"; do
+      arch="${array#sha256sums}"
+      arch="${arch#_}"
+      [[ -n "$arch" ]] || arch="any"
+
+      mapfile -t values < <(jq -r --arg arch "$arch" '.sha256sums[$arch][]' <<<"$release")
+      set_pkgbuild_array "$scratch" "$array" "${values[@]}" || exit 1
+    done
+
+    set_pkgbuild_scalar "$scratch" pkgver "$pkgver" || exit 1
+    set_pkgbuild_scalar "$scratch" pkgrel 1 || exit 1
+
+    verify_pkgbuild "$scratch" "$release" "$pkgver" "${arrays[@]}" || exit 1
+  ); then
+    rm -f "$scratch"
+    return 1
+  fi
+
+  chmod --reference="$pkgbuild" "$scratch"
+  mv "$scratch" "$pkgbuild"
+}
+
+sync_package() {
+  local package="$1"
+  local package_dir="$PKGBUILDS_DIR/$package"
+  local hook="$package_dir/.omarchy/upstream.sh"
+
+  if [[ ! -f "$package_dir/PKGBUILD" ]]; then
+    print_error "Package $package has no PKGBUILD"
+    ((++FAILED))
+    return 0
+  fi
+
+  if [[ ! -f "$hook" ]]; then
+    if [[ "$SPECIFIC_MODE" == true ]]; then
+      print_error "Package $package is missing .omarchy/upstream.sh"
+      ((++FAILED))
+    else
+      print_info "Skipping $package: no upstream hook"
+      ((++SKIPPED))
+    fi
+    return 0
+  fi
+
+  print_info "Checking $package for upstream releases..."
+
+  local release
+  if ! release=$(cd "$package_dir" && PACKAGE_NAME="$package" bash .omarchy/upstream.sh); then
+    print_error "Upstream hook failed for $package"
+    ((++FAILED))
+    return 0
+  fi
+
+  if ! jq -e . >/dev/null 2>&1 <<<"$release"; then
+    print_error "Upstream hook for $package did not report valid JSON"
+    ((++FAILED))
+    return 0
+  fi
+
+  if [[ "$(jq -r 'has("pkgver")' <<<"$release")" == "false" ]]; then
+    print_info "  No upstream update reported"
+    ((++SKIPPED))
+    return 0
+  fi
+
+  if ! validate_release "$release"; then
+    print_error "Upstream hook for $package reported a malformed release"
+    ((++FAILED))
+    return 0
+  fi
+
+  local pkgver current_pkgver
+  pkgver=$(jq -r '.pkgver' <<<"$release")
+  current_pkgver=$(get_pkgver "$package_dir")
+
+  if [[ -z "$current_pkgver" ]]; then
+    print_error "Could not read pkgver from $package_dir/PKGBUILD"
+    ((++FAILED))
+    return 0
+  fi
+
+  if [[ "$pkgver" == "$current_pkgver" ]]; then
+    print_info "  Already at $current_pkgver"
+    ((++SKIPPED))
+    return 0
+  fi
+
+  if ! version_is_newer "$pkgver" "$current_pkgver"; then
+    print_warning "  Upstream reports $pkgver, older than the checked-in $current_pkgver; leaving it alone"
+    ((++SKIPPED))
+    return 0
+  fi
+
+  if ! apply_release "$package_dir" "$release" "$pkgver"; then
+    print_error "Failed to update $package"
+    ((++FAILED))
+    return 0
+  fi
+
+  print_success "  $current_pkgver -> $pkgver"
+  ((++UPDATED))
+}
+
+if [[ ${#SPECIFIC_PACKAGES[@]} -gt 0 ]]; then
+  SPECIFIC_MODE=true
+  for package in "${SPECIFIC_PACKAGES[@]}"; do
+    sync_package "$package"
+  done
+else
+  while IFS= read -r package; do
+    sync_package "$package"
+  done < <(packages_for_upstream_sync)
+fi
+
+echo ""
+if [[ $FAILED -gt 0 ]]; then
+  print_error "Upstream sync completed with failures"
+else
+  print_success "Upstream sync complete!"
+fi
+echo "  Target: $PKGBUILDS_DIR"
+echo "  Updated: $UPDATED"
+echo "  Skipped: $SKIPPED"
+echo "  Failed: $FAILED"
+
+if [[ $FAILED -gt 0 ]]; then
+  exit 1
+fi
