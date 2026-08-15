@@ -135,6 +135,19 @@ packages_for_aur_sync() {
   done
 }
 
+package_has_upstream_hook() {
+  local pkgdir="$1"
+  [[ -f "$pkgdir/.omarchy/upstream.sh" ]]
+}
+
+packages_for_upstream_sync() {
+  package_dirs | while IFS= read -r pkgdir; do
+    if package_has_upstream_hook "$pkgdir"; then
+      basename "$pkgdir"
+    fi
+  done
+}
+
 packages_for_mirror() {
   local mirror="$1"
 

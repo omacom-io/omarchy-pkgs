@@ -15,6 +15,7 @@ The filesystem no longer encodes release policy. Instead:
 - all other packages reach `stable` by promoting tested edge artifacts with `bin/repo migrate`
 - AUR sync behavior is controlled by `source`, `sync`, `aur`, patches, and hooks in `.omarchy/`
 - packages can opt out of unscoped builds with `skip_build`; explicit `--package` builds remain available
+- packages that follow a vendor release feed instead of the AUR carry an `.omarchy/upstream.sh` hook
 
 ## Prerequisites
 ### aarch64 Builds (Optional)
@@ -248,6 +249,40 @@ bin/sync-aur yay v4l2-relayd            # Sync specific packages
 
 AUR sync is metadata-driven. It preserves `.omarchy/`, replaces the package root with AUR contents, applies `.omarchy/patches/*.patch`, runs `.omarchy/post-sync.sh` when present, applies pkgrel metadata, removes AUR-only `.SRCINFO` and `.gitignore` files, and records `upstream_commit`.
 
+### Sync Upstream Releases
+
+```bash
+bin/sync-upstream                       # Update every package with an upstream hook
+bin/sync-upstream openai-codex-desktop  # Update specific packages
+```
+
+Some vendors publish a release feed of their own that is faster and more precise
+than the AUR packaging of it. Those packages are `source: local` — Omarchy owns
+the PKGBUILD — and provide `.omarchy/upstream.sh`, a hook that reports the newest
+upstream release as JSON on stdout:
+
+```json
+{
+  "pkgver": "1.2.3",
+  "sha256sums": { "x86_64": ["<sha256>"], "aarch64": ["<sha256>"] }
+}
+```
+
+Architecture keys become `sha256sums_<arch>` in the PKGBUILD; the key `any` means
+the unsuffixed `sha256sums` array, and only the arrays a hook names are touched.
+An empty object (`{}`) reports no update, which is how a hook waits out a release
+that has landed for one architecture but not yet the other.
+
+When the reported version is newer than the checked-in one, `bin/sync-upstream`
+rewrites `pkgver` and those checksum arrays and resets `pkgrel` to 1. A version
+that is equal or older leaves the package alone, so a vendor rolling a release
+back cannot walk the repository backwards.
+
+Hooks should read checksums from whatever manifest the vendor publishes rather
+than downloading the artifacts — see `pkgbuilds/openai-codex-desktop/.omarchy/upstream.sh`,
+which reads OpenAI's Debian package index and never fetches the 750 MB of debs
+it describes.
+
 ### Other
 
 ```bash
@@ -260,6 +295,7 @@ bin/repo push                        # Upload local builds to the host and publi
 bin/add-package <package>            # Add an AUR/local package with metadata
 bin/package-worktree <package>       # Create upstream/patched/current scratch workspace
 bin/repo remove <package>            # Remove package
+bin/sync-upstream                    # Update packages that track a vendor release feed
 bin/clean-docker                     # Clear Docker images/cache (forces fresh rebuild)
 ```
 
@@ -345,7 +381,8 @@ omarchy-pkgs/
 │       └── .omarchy/
 │           ├── package.json    # Source/sync/release metadata
 │           ├── patches/        # Omarchy patches reapplied after AUR sync
-│           └── post-sync.sh    # Optional dynamic post-sync customization hook
+│           ├── post-sync.sh    # Optional dynamic post-sync customization hook
+│           └── upstream.sh     # Optional vendor release feed hook (non-AUR packages)
 ├── build/
 ├── build-output/               # Unsigned packages (temporary)
 │   ├── edge/
@@ -396,7 +433,7 @@ Minimal examples:
 
 Fields:
 
-- `source`: `aur` or `local`
+- `source`: `aur` or `local`. A `local` package can still follow an upstream release with an `.omarchy/upstream.sh` hook.
 - `sync`: optional for AUR packages; defaults to `true`. Set `false` for AUR-origin packages that Omarchy maintains manually.
 - `aur`: optional AUR package name when it differs from the local package directory, usually for split packages.
 - `release_ring`: optional. `fast` means the package is built directly for stable as well as edge. Packages without a ring build in edge and reach stable through tested artifact promotion (`bin/repo migrate`).
@@ -539,6 +576,7 @@ The repository includes GitHub workflows and systemd services for automated rele
 #### GitHub Workflows
 
 1. **sync-aur.yml** (Every 6 hours): Syncs AUR packages according to `.omarchy/package.json` and opens a PR when changes are found.
+2. **sync-upstream.yml** (Every 6 hours): Runs `.omarchy/upstream.sh` for packages that track a vendor release feed and opens a PR when a newer version is out.
 
 #### Systemd Services
 
