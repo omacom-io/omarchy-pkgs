@@ -1,26 +1,4 @@
-_legacy_override="/etc/modprobe.d/dell-xps13-dx13260-sidecar-amps.conf"
-_legacy_sha256="97f36bce41581ecc6b1d7963cd0dab29c7b1a107b2dd4d17db7a56094a7b7289"
-
-_remove_legacy_override() {
-  local actual_sha256 hash_output
-
-  [ -f "$_legacy_override" ] || return 0
-  if ! hash_output=$(sha256sum "$_legacy_override"); then
-    printf ':: Unable to hash legacy override: %s\n' "$_legacy_override" >&2
-    return 1
-  fi
-  actual_sha256=${hash_output%% *}
-
-  if [ "$actual_sha256" = "$_legacy_sha256" ]; then
-    if ! rm -f -- "$_legacy_override"; then
-      printf ':: Unable to remove legacy override: %s\n' "$_legacy_override" >&2
-      return 1
-    fi
-    printf ':: Removed the superseded Dell XPS 13 sidecar amplifier override.\n'
-  else
-    printf ':: Preserving modified legacy override: %s\n' "$_legacy_override"
-  fi
-}
+_apply_command="/usr/bin/dell-xps13-sidecar-amps-apply"
 
 _rebuild_boot_images() {
   local output status
@@ -43,14 +21,12 @@ _rebuild_boot_images() {
 }
 
 post_install() {
-  _remove_legacy_override || return
-  _rebuild_boot_images || return
+  "$_apply_command" || return
   printf ':: Reboot to enable the Dell XPS 13 sidecar speaker amplifiers.\n'
 }
 
 post_upgrade() {
-  _remove_legacy_override || return
-  _rebuild_boot_images || return
+  "$_apply_command" || return
   printf ':: Reboot to apply the Dell XPS 13 sidecar amplifier update.\n'
 }
 

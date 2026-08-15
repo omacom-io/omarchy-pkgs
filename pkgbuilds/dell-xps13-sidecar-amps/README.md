@@ -14,6 +14,11 @@ The package does not replace the kernel, audio firmware, or speaker tuning. It
 owns only a modprobe drop-in and rebuilds the boot images when installed,
 upgraded, or removed.
 
+`dell-xps13-sidecar-amps-apply` repeats the legacy cleanup and boot-image
+rebuild idempotently. System integrations can run it as root after installation
+when they need a directly observable success or failure status; package-manager
+scriptlet failures are otherwise only reported by Pacman.
+
 ## Removal
 
 Once every kernel you intend to boot contains the upstream commit, remove the
