@@ -1,10 +1,12 @@
-# Maintainer: Parsiad Azimzadeh <parsiad.azimzadeh at gmail dot com>
-# Maintainer: mothran
-# Official downloads: https://chatgpt.com/codex/
+# Maintainer: David Heinemeier Hansson <david@hey.com>
+
+# Omarchy tracks OpenAI's own Debian repository rather than the AUR, which lags
+# behind releases that ship several times a week. .omarchy/upstream.sh rewrites
+# the version and checksums below from that repository's package index.
 
 pkgname=openai-codex-desktop
-pkgver=26.803.81509
-pkgrel=8.1
+pkgver=26.810.52044
+pkgrel=1
 pkgdesc="Official ChatGPT desktop app with Codex"
 arch=('x86_64' 'aarch64')
 url="https://chatgpt.com/codex/"
@@ -64,16 +66,13 @@ COMPRESSZST=(zstd -c -z -q --ultra -22 --threads=0 -)
 _deb_x86_64="chatgpt_${pkgver}_amd64.deb"
 _deb_aarch64="chatgpt_${pkgver}_arm64.deb"
 source=('chatgpt-launcher.sh')
-source_x86_64=(
-  "${_deb_x86_64}::https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb"
-)
-source_aarch64=(
-  "${_deb_aarch64}::https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb"
-)
+_pool="https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt"
+source_x86_64=("${_deb_x86_64}::${_pool}/${_deb_x86_64}")
+source_aarch64=("${_deb_aarch64}::${_pool}/${_deb_aarch64}")
 noextract=("${_deb_x86_64}" "${_deb_aarch64}")
-sha256sums=('4e3ca9302600bed268f8fd3ba2c9ac2f1ceb99da139ed71c50db0289b118d06f')
-sha256sums_x86_64=('a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb')
-sha256sums_aarch64=('f38fcc194eca9ab0327dc10c92340681eae77c5d75164df700384ce2adaccbc1')
+sha256sums=('fc70527cd961f3a660e2a9d0a2d62b1e3f7a61d8482ee1935a6b25307da278eb')
+sha256sums_x86_64=('708a15a1bb76e2bb7f0e376e5145391fa277ad3a64057c1d32537bdc2a1b4e6e')
+sha256sums_aarch64=('6ebea681b1e494d218a199f638b4bc886e94e1458dd61079b1e390a6fb98fdd2')
 
 package() {
   cd "${srcdir}"
