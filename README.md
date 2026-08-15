@@ -248,6 +248,22 @@ bin/sync-aur yay v4l2-relayd            # Sync specific packages
 
 AUR sync is metadata-driven. It preserves `.omarchy/`, replaces the package root with AUR contents, applies `.omarchy/patches/*.patch`, runs `.omarchy/post-sync.sh` when present, applies pkgrel metadata, removes AUR-only `.SRCINFO` and `.gitignore` files, and records `upstream_commit`.
 
+### Releasing Omarchy
+
+```bash
+bin/omarchy-pkgs release latest         # Cut the newest upstream tag
+bin/omarchy-pkgs release v4.0.0         # Cut a specific version
+bin/omarchy-pkgs release rc             # Untagged RC from the tip of quattro
+```
+
+Tag-driven releases are automated: the `Release Omarchy` GitHub workflow polls
+basecamp/omarchy hourly and runs `release latest --if-newer` when a new release
+tag appears, pushing the PKGBUILD bump to master. The build host's auto-release
+timer then builds and publishes it to edge. Tagging upstream is the only human
+step for an edge release; promoting a final to stable stays manual
+(`bin/repo migrate`). Untagged RCs from bare commits remain a manual
+`bin/omarchy-pkgs release rc` away.
+
 ### Other
 
 ```bash
