@@ -70,7 +70,7 @@ _pool="https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/cha
 source_x86_64=("${_deb_x86_64}::${_pool}/${_deb_x86_64}")
 source_aarch64=("${_deb_aarch64}::${_pool}/${_deb_aarch64}")
 noextract=("${_deb_x86_64}" "${_deb_aarch64}")
-sha256sums=('fc70527cd961f3a660e2a9d0a2d62b1e3f7a61d8482ee1935a6b25307da278eb')
+sha256sums=('b3a4503b5931f102444bc7015c3cf4e40266cf034e0d682bd2a407dc5b3ee58c')
 sha256sums_x86_64=('708a15a1bb76e2bb7f0e376e5145391fa277ad3a64057c1d32537bdc2a1b4e6e')
 sha256sums_aarch64=('6ebea681b1e494d218a199f638b4bc886e94e1458dd61079b1e390a6fb98fdd2')
 

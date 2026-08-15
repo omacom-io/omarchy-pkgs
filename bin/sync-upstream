@@ -104,17 +104,23 @@ set_pkgbuild_array() {
 
   assert_single_assignment "$pkgbuild" "^${name}=(" "$name" || return 1
 
-  local block="$TEMP_DIR/array-block"
-  if [[ ${#values[@]} -eq 1 ]]; then
-    printf "%s=('%s')\n" "$name" "${values[0]}" > "$block"
-  else
-    printf '%s=(\n' "$name" > "$block"
-    printf "  '%s'\n" "${values[@]}" >> "$block"
-    printf ')\n' >> "$block"
+  if [[ ${#values[@]} -eq 0 ]]; then
+    print_error "No values to write for ${name}"
+    return 1
   fi
 
-  # Rewrite beside the PKGBUILD so the move is an atomic same-filesystem rename.
-  local rewritten="$pkgbuild.sync-upstream"
+  local block="$TEMP_DIR/array-block"
+  if [[ ${#values[@]} -eq 1 ]]; then
+    printf "%s=('%s')\n" "$name" "${values[0]}" > "$block" || return 1
+  else
+    {
+      printf '%s=(\n' "$name"
+      printf "  '%s'\n" "${values[@]}"
+      printf ')\n'
+    } > "$block" || return 1
+  fi
+
+  local rewritten="$TEMP_DIR/pkgbuild-rewritten"
   if ! awk -v prefix="${name}=(" -v block="$block" '
     !replaced && index($0, prefix) == 1 {
       while ((getline line < block) > 0) print line
@@ -134,7 +140,6 @@ set_pkgbuild_array() {
     return 1
   fi
 
-  chmod --reference="$pkgbuild" "$rewritten"
   mv "$rewritten" "$pkgbuild"
 }
 
@@ -154,16 +159,69 @@ validate_release() {
 
   # pkgver is written into the PKGBUILD, which makepkg sources as shell, so it
   # is held to pacman's own character set rather than merely being non-empty.
+  # The anchors are \A and \z, not ^ and $: jq's $ also matches before a
+  # trailing newline, which would let "1.0\n" through and break the rewrite.
   jq -e '
-    (.pkgver | type == "string" and test("^[A-Za-z0-9._+]+$"))
+    (.pkgver | type == "string" and test("\\A[A-Za-z0-9._+]+\\z"))
     and (.sha256sums | type == "object" and length > 0)
     and (.sha256sums | to_entries | all(
-      .key | test("^[a-z0-9_]+$")
+      .key | test("\\A[a-z0-9_]+\\z")
     ))
     and (.sha256sums | to_entries | all(
-      .value | type == "array" and length > 0 and all(test("^[0-9a-f]{64}$"))
+      .value | type == "array" and length > 0 and all(test("\\A[0-9a-f]{64}\\z"))
     ))
   ' <<<"$release" >/dev/null
+}
+
+# Confirm the rewritten PKGBUILD parses and actually holds what we meant to put
+# in it. Editing shell with awk and sed can go wrong in ways no amount of
+# pattern-matching anticipates -- an array element carrying a ")" in a comment,
+# say -- so the result is checked rather than trusted.
+verify_pkgbuild() {
+  local pkgbuild="$1"
+  local release="$2"
+  local pkgver="$3"
+  shift 3
+  local arrays=("$@")
+
+  if ! bash -n "$pkgbuild" 2>/dev/null; then
+    print_error "Rewritten PKGBUILD is not valid shell"
+    return 1
+  fi
+
+  local dump
+  if ! dump=$(CARCH=x86_64 bash -c '
+    source "$1" >/dev/null 2>&1 || exit 1
+    printf "pkgver\t%s\n" "$pkgver"
+    printf "pkgrel\t%s\n" "$pkgrel"
+    for name in "${@:2}"; do
+      declare -n array="$name"
+      printf "%s\t%s\n" "$name" "${array[*]}"
+    done
+  ' _ "$pkgbuild" "${arrays[@]}" 2>/dev/null); then
+    print_error "Rewritten PKGBUILD could not be read back"
+    return 1
+  fi
+
+  local expected
+  expected=$(
+    printf 'pkgver\t%s\n' "$pkgver"
+    printf 'pkgrel\t1\n'
+    local array arch
+    for array in "${arrays[@]}"; do
+      arch="${array#sha256sums}"
+      arch="${arch#_}"
+      [[ -n "$arch" ]] || arch="any"
+      printf '%s\t%s\n' "$array" \
+        "$(jq -r --arg arch "$arch" '.sha256sums[$arch] | join(" ")' <<<"$release")"
+    done
+  )
+
+  if [[ "$dump" != "$expected" ]]; then
+    print_error "Rewritten PKGBUILD does not hold the reported release"
+    diff <(echo "$expected") <(echo "$dump") | sed 's/^/    /' >&2 || true
+    return 1
+  fi
 }
 
 apply_release() {
@@ -173,7 +231,7 @@ apply_release() {
   local pkgbuild="$package_dir/PKGBUILD"
 
   local arch array values
-  local targets=()
+  local arrays=()
 
   while IFS= read -r arch; do
     if [[ "$arch" == "any" ]]; then
@@ -181,29 +239,47 @@ apply_release() {
     else
       array="sha256sums_$arch"
     fi
-    targets+=("$arch:$array")
+    arrays+=("$array")
   done < <(jq -r '.sha256sums | keys[]' <<<"$release")
 
-  # Everything the update will touch is checked before anything is written. A
-  # hook naming an array the PKGBUILD does not have must fail with the file
-  # untouched rather than half rewritten.
-  assert_single_assignment "$pkgbuild" '^pkgver=' pkgver || return 1
-  assert_single_assignment "$pkgbuild" '^pkgrel=' pkgrel || return 1
-  local target
-  for target in "${targets[@]}"; do
-    assert_single_assignment "$pkgbuild" "^${target#*:}=(" "${target#*:}" || return 1
-  done
+  # validate_release guarantees at least one entry, so an empty list here means
+  # jq died inside the process substitution rather than that there is nothing
+  # to do.
+  if [[ ${#arrays[@]} -eq 0 ]]; then
+    print_error "Could not read the checksum architectures from the reported release"
+    return 1
+  fi
 
-  for target in "${targets[@]}"; do
-    arch="${target%%:*}"
-    array="${target#*:}"
+  # Every edit lands on a scratch copy that replaces the PKGBUILD in one rename
+  # at the end, so a failure part way through leaves the original untouched
+  # rather than half updated.
+  local scratch="$pkgbuild.sync-upstream"
+  cp "$pkgbuild" "$scratch" || return 1
 
-    mapfile -t values < <(jq -r --arg arch "$arch" '.sha256sums[$arch][]' <<<"$release")
-    set_pkgbuild_array "$pkgbuild" "$array" "${values[@]}" || return 1
-  done
+  if ! (
+    assert_single_assignment "$scratch" '^pkgver=' pkgver || exit 1
+    assert_single_assignment "$scratch" '^pkgrel=' pkgrel || exit 1
 
-  set_pkgbuild_scalar "$pkgbuild" pkgver "$pkgver" || return 1
-  set_pkgbuild_scalar "$pkgbuild" pkgrel 1 || return 1
+    for array in "${arrays[@]}"; do
+      arch="${array#sha256sums}"
+      arch="${arch#_}"
+      [[ -n "$arch" ]] || arch="any"
+
+      mapfile -t values < <(jq -r --arg arch "$arch" '.sha256sums[$arch][]' <<<"$release")
+      set_pkgbuild_array "$scratch" "$array" "${values[@]}" || exit 1
+    done
+
+    set_pkgbuild_scalar "$scratch" pkgver "$pkgver" || exit 1
+    set_pkgbuild_scalar "$scratch" pkgrel 1 || exit 1
+
+    verify_pkgbuild "$scratch" "$release" "$pkgver" "${arrays[@]}" || exit 1
+  ); then
+    rm -f "$scratch"
+    return 1
+  fi
+
+  chmod --reference="$pkgbuild" "$scratch"
+  mv "$scratch" "$pkgbuild"
 }
 
 sync_package() {

@@ -9,17 +9,28 @@ set -euo pipefail
 BASE_URL="https://persistent.oaistatic.com/codex-app-prod/linux/deb"
 declare -A DEB_ARCHES=([x86_64]=amd64 [aarch64]=arm64)
 
-# Print "<version> <sha256>" for the newest stanza in a Packages index.
+# Print "<version> <sha256>" for the newest stanza in a Packages index. Newest
+# is vercmp's opinion, which is the one bin/sync-upstream and pacman both use;
+# sort -V disagrees with it over versions like 1.0a.
 newest_release() {
   local index="$1"
+  local version sha256 best_version="" best_sha256=""
 
-  awk '
+  while read -r version sha256; do
+    if [[ -z "$best_version" ]] || [[ "$(vercmp "$version" "$best_version")" -gt 0 ]]; then
+      best_version="$version"
+      best_sha256="$sha256"
+    fi
+  done < <(awk '
     { sub(/\r$/, "") }
     /^Version:/ { version = $2 }
     /^SHA256:/  { sha256 = $2 }
     /^$/        { if (version && sha256) print version, sha256; version = sha256 = "" }
     END         { if (version && sha256) print version, sha256 }
-  ' <<<"$index" | sort -V | tail -n 1
+  ' <<<"$index")
+
+  [[ -n "$best_version" ]] || return 1
+  echo "$best_version $best_sha256"
 }
 
 versions=()

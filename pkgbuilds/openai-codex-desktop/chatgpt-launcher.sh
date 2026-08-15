@@ -2,9 +2,11 @@
 set -euo pipefail
 
 user_flags=()
-flags_file="${XDG_CONFIG_HOME:-${HOME:-}/.config}/codex-flags.conf"
+config_home="${XDG_CONFIG_HOME:-}"
+[[ -n "$config_home" || -z "${HOME:-}" ]] || config_home="$HOME/.config"
+flags_file="${config_home:+$config_home/codex-flags.conf}"
 
-if [[ -r "$flags_file" ]]; then
+if [[ -n "$flags_file" && -f "$flags_file" && -r "$flags_file" ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%%#*}"
     [[ -n "${line//[[:space:]]/}" ]] || continue
