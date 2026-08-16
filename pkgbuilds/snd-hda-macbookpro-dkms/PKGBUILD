@@ -7,9 +7,14 @@
 # pins the commit verified on MacBookPro14,3 / linux 7.1.8.
 
 _pkgbase=snd-hda-macbookpro
+# Must match PACKAGE_NAME in upstream dkms.conf. The AUR dest uses hyphens
+# (snd-hda-macbookpro-0.1); Arch's alpm hook then runs
+# `dkms install snd-hda-macbookpro/0.1`, which exits 7 because PACKAGE_NAME
+# is snd_hda_macbookpro. omarchy-pkg-add relies on that hook.
+_srcname=snd_hda_macbookpro
 pkgname=${_pkgbase}-dkms
 pkgver=0.1
-pkgrel=1
+pkgrel=2
 pkgdesc="DKMS driver for Cirrus CS8409 HDA on 2016–2017 MacBook Pros"
 arch=('x86_64')
 url="https://github.com/davidjo/snd_hda_macbookpro"
@@ -25,7 +30,7 @@ source=("git+https://github.com/davidjo/snd_hda_macbookpro.git#commit=${_commit}
 sha256sums=('SKIP')
 
 package() {
-    local dest="${pkgdir}/usr/src/${_pkgbase}-${pkgver}"
+    local dest="${pkgdir}/usr/src/${_srcname}-${pkgver}"
 
     install -dm755 "$dest"
     cp -a snd_hda_macbookpro/. "$dest/"
