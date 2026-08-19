@@ -1,0 +1,112 @@
+# Maintainer: David Heinemeier Hansson <david@hey.com>
+
+# T3 Code ships Linux as an AppImage and nothing else, so Omarchy unpacks it and
+# keeps only the Electron tree. AppRun, the compatibility libraries bundled for
+# distributions that do not ship their own, and the AppImage's icon shims are all
+# dead weight here. .omarchy/upstream.sh rewrites the version and checksum below
+# from the release feed the app updates itself from.
+
+pkgname=t3code-bin
+pkgver=0.0.33
+pkgrel=1
+pkgdesc="Open-source control plane for coding agents"
+arch=('x86_64')
+url="https://t3.codes"
+license=('MIT')
+
+depends=(
+  'alsa-lib'
+  'at-spi2-core'
+  'cairo'
+  'dbus'
+  'expat'
+  'gcc-libs'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libcups'
+  'libnotify'
+  'libx11'
+  'libxcb'
+  'libxcomposite'
+  'libxdamage'
+  'libxext'
+  'libxfixes'
+  'libxkbcommon'
+  'libxrandr'
+  'mesa'
+  'nspr'
+  'nss'
+  'pango'
+  'systemd-libs'
+  'xdg-utils'
+)
+
+optdepends=(
+  'claude-code: drive Claude Code from the app'
+  'cursor-cli: drive Cursor from the app'
+  'github-copilot-cli: drive Copilot from the app'
+  'openai-codex: drive Codex from the app'
+)
+
+provides=("t3code=${pkgver}")
+conflicts=('t3code')
+options=('!debug' '!strip')
+
+_appimage="T3-Code-${pkgver}-x86_64.AppImage"
+source=('t3code-launcher.sh' 'LICENSE')
+source_x86_64=("${_appimage}::https://github.com/pingdotgg/t3code/releases/download/v${pkgver}/${_appimage}")
+noextract=("${_appimage}")
+sha256sums=('cb905ff341372ef2ef6e402cf485959f8bd1df8f0efebee4cda1afdd5e6abc0a'
+            '935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43')
+sha256sums_x86_64=('415c8648f43c3d22d572f27f2c50fdc8c310ea7fcde9537b903e1e2f1c8775a1')
+
+prepare() {
+  chmod +x "${srcdir}/${_appimage}"
+  rm -rf "${srcdir}/squashfs-root"
+  "${srcdir}/${_appimage}" --appimage-extract >/dev/null
+}
+
+package() {
+  cd "${srcdir}/squashfs-root"
+
+  # The AppImage's usr/ tree is compatibility libraries for distributions that
+  # lack them, and Arch is not one; its icons are the only part worth keeping.
+  # A release that starts shipping something else there stops the build rather
+  # than having it deleted quietly on the way past.
+  local unexpected
+  unexpected=$(find usr \( -type f -o -type l \) | grep -vE \
+    '^usr/share/icons/hicolor/[0-9]+x[0-9]+/apps/t3code\.png$|^usr/lib/lib(Xss\.so\.1|Xtst\.so\.6|appindicator\.so\.1|gconf-2\.so\.4|indicator\.so\.7|notify\.so\.4)$' || true)
+  if [[ -n "${unexpected}" ]]; then
+    echo "Unexpected files in the AppImage's usr/ tree:" >&2
+    echo "${unexpected}" >&2
+    return 1
+  fi
+
+  local icon size
+  for icon in usr/share/icons/hicolor/*/apps/t3code.png; do
+    size="${icon#usr/share/icons/hicolor/}"
+    install -Dm644 "${icon}" "${pkgdir}/usr/share/icons/hicolor/${size%%/*}/apps/t3code.png"
+  done
+
+  # Upstream's own entry rather than a hand-written one: it carries the
+  # t3code:// scheme handlers that make the app's deep links resolve.
+  sed -e 's|^Exec=.*|Exec=t3code %U|' -e '/^X-AppImage-Version=/d' t3code.desktop \
+    > "${srcdir}/t3code.desktop.arch"
+  install -Dm644 "${srcdir}/t3code.desktop.arch" \
+    "${pkgdir}/usr/share/applications/t3code.desktop"
+
+  rm -rf AppRun .DirIcon usr t3code.desktop t3code.png
+  install -d "${pkgdir}/usr/lib/t3code"
+  cp -a . "${pkgdir}/usr/lib/t3code/"
+  chmod -R a+rX "${pkgdir}/usr/lib/t3code"
+
+  # Arch ships Chromium's and Electron's own sandbox helper setuid, which is
+  # what keeps the sandbox up on a kernel that denies unprivileged user
+  # namespaces -- linux-hardened, mainly -- instead of aborting the app.
+  chmod 4755 "${pkgdir}/usr/lib/t3code/chrome-sandbox"
+
+  install -Dm755 "${srcdir}/t3code-launcher.sh" "${pkgdir}/usr/bin/t3code"
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
