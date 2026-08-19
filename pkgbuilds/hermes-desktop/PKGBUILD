@@ -58,18 +58,28 @@ makedepends=('git' 'imagemagick' 'nodejs' 'npm' 'python')
 # Electron bundles prebuilt binaries that stripping corrupts.
 options=('!strip' '!debug')
 
+# The tag's commit. apps/desktop/scripts/write-build-stamp.mjs pins the app's
+# first-launch bootstrap to a Hermes commit, and resolves it from $GITHUB_SHA
+# before falling back to `git rev-parse`. That fallback is wrong here: makepkg
+# builds inside this repository, so git ascends out of srcdir and stamps the
+# app with an omarchy-pkgs commit that means nothing upstream.
+_commit=e624e9fde561e1add9388384012b295fde669ade
+
 _srcdir="hermes-agent-${pkgver}"
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz"
         'hermes-desktop.sh'
         'hermes-desktop.desktop'
         'hermes-desktop.png')
 sha256sums=('1e3d39d3638ec15fa9d31af262568a953e9272090deb1c50c44cd401175f5b80'
-            'f6d06594c2a60a01c369992e44b20afcaf92d8f454a822dc6fccad67d4b6c58b'
-            'a71e5b3599515b97ea694d51771edede69107a221f301f91c088a5d81de7a8c0'
+            'bac4626a3bbde4c05cf6072c05f6c47d1804c99066e04ee5328cea707fae1a3f'
+            '3ef685bfcf366776b025d26c37d32854d8d4aa2023b2bd07c8e08b001ef1e8c4'
             'd60d164e24fdcf6532133b8ea43c77a201e4b9e9dbc396187b58d51d8590ef52')
 
 build() {
   cd "${srcdir}/${_srcdir}"
+
+  export GITHUB_SHA="${_commit}"
+  export GITHUB_REF_NAME="v${pkgver}"
 
   # The desktop workspace resolves against the repo root, so the install has to
   # happen there rather than in apps/desktop.
@@ -99,6 +109,8 @@ package() {
       "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps/${pkgname}.png"
   done
 
+  install -Dm644 "${srcdir}/${_srcdir}/LICENSE" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 "${pkgdir}/opt/${pkgname}/LICENSE.electron.txt" \
     "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.electron.txt"
 

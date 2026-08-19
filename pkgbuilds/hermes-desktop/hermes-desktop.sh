@@ -7,13 +7,15 @@ set -euo pipefail
 #
 # command -v rather than omarchy-cmd-present: no other launcher in this repo
 # makes a package depend on omarchy, and this has to behave on a plain Arch box.
-if ! command -v hermes >/dev/null 2>&1; then
-  if command -v omarchy-install-hermes-cli >/dev/null 2>&1; then
-    omarchy-install-hermes-cli --now
-  else
-    echo "The Hermes CLI is not installed, so Hermes Desktop will install its" >&2
-    echo "own copy under ~/.hermes. Install the CLI first to avoid that." >&2
-  fi
+# Run the installer even when hermes is already on PATH. A stub can be there
+# and cold, and `mise up` can leave one pointing at a Hermes built against the
+# wrong Python; repairing either costs minutes, and the app allows 15 seconds
+# before it gives up and bootstraps. Installing here is a no-op when healthy.
+if command -v omarchy-install-hermes-cli >/dev/null 2>&1; then
+  omarchy-install-hermes-cli --now
+elif ! command -v hermes >/dev/null 2>&1; then
+  echo "The Hermes CLI is not installed, so Hermes Desktop will install its" >&2
+  echo "own copy under ~/.hermes. Install the CLI first to avoid that." >&2
 fi
 
 # Chromium's own Ozone detection falls back to XWayland often enough to matter,
