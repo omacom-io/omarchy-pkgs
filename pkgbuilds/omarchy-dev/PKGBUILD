@@ -1,7 +1,7 @@
 # Maintainer: Ryan Hughes <ryan@omarchy.org>
 pkgname='omarchy-dev'
-pkgver=4.0.0.r847.g4de185b
-pkgrel=1
+pkgver=4.0.0.r1787.g9455496
+pkgrel=2
 _pkgver_base=4.0.0
 _pkgver_base_tag=v3.8.2
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH (quattro branch tip)'
@@ -28,6 +28,10 @@ depends=(
   'limine-mkinitcpio-hook'
   'limine-snapper-sync'
   'snapper'
+
+  # Memory-pressure protection. omarchy-settings-dev ships the zram config but
+  # stays live-ISO safe by leaving this target-only dependency here.
+  'zram-generator'
 
   # Wayland / Hyprland core
   'hyprland'
