@@ -8,7 +8,7 @@
 
 pkgname=t3code-bin
 pkgver=0.0.33
-pkgrel=1
+pkgrel=2
 pkgdesc="Open-source control plane for coding agents"
 arch=('x86_64')
 url="https://t3.codes"
@@ -92,7 +92,10 @@ package() {
 
   # Upstream's own entry rather than a hand-written one: it carries the
   # t3code:// scheme handlers that make the app's deep links resolve.
-  sed -e 's|^Exec=.*|Exec=t3code %U|' -e '/^X-AppImage-Version=/d' t3code.desktop \
+  # The name drops the "(Alpha)" upstream's electron-builder still appends; the
+  # app itself now calls that string legacy and keeps its data under t3code.
+  sed -e 's|^Exec=.*|Exec=t3code %U|' -e 's|^Name=.*|Name=T3 Code|' \
+    -e '/^X-AppImage-Version=/d' t3code.desktop \
     > "${srcdir}/t3code.desktop.arch"
   install -Dm644 "${srcdir}/t3code.desktop.arch" \
     "${pkgdir}/usr/share/applications/t3code.desktop"
