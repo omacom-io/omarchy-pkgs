@@ -4,9 +4,10 @@ Type=Application
 Name=Hermes
 GenericName=AI Agent
 Comment=The self-improving AI agent that grows with you
-Exec=xdg-terminal-exec --app-id=TUI.tile -e hermes
-Icon=hermes
+Exec=hermes-desktop %U
+Icon=hermes-desktop
 Terminal=false
-Categories=Utility;
+Categories=Development;
 Keywords=ai;agent;assistant;hermes;nous;
 StartupNotify=true
+StartupWMClass=Hermes
