@@ -37,8 +37,8 @@ options=('!debug')
 source=('hermes.sh'
         'hermes.desktop'
         'hermes.png')
-sha256sums=('bed3664912e9e818c623fb77cc0111ec3a376da400bd329032a1949b9bd9991f'
-            'fc738787ccf156aee9f701252a298d47bc6828ea53ea4b53d0e31d27d6209c7b'
+sha256sums=('39a13f25b2a1616b55da19400045630e6b0900140444a4457d7e0ff58208badb'
+            '0fee8e42dce35e7eee0e6b0ee296cc90ddf192f0f9b8297b7e5ea66800d94159'
             'd60d164e24fdcf6532133b8ea43c77a201e4b9e9dbc396187b58d51d8590ef52')
 
 build() {
