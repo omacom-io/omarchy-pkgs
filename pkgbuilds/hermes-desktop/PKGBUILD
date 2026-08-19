@@ -5,20 +5,20 @@
 # so there is no vendor binary to repackage. Their electron-builder config does
 # carry a Linux target, though, and it works; this builds it.
 #
-# The version tracks PyPI rather than the newest tag. The app and the Hermes
-# CLI have to agree on the dashboard session-token handshake, and a newer app
-# against an older CLI fails its readiness probe with a 401 and never starts.
-# Upstream never hits this because their installer builds the app from the same
-# checkout it installs the CLI from -- and refuses a non-editable source
-# install, so the CLI cannot simply be pinned to the app's commit instead.
-# v2026.7.20 is the tag behind hermes-agent 0.19.0 on PyPI; both move together.
+# The app only runs against a Hermes runtime built from its own commit, so it
+# provisions one itself under ~/.hermes on first launch and the package stays
+# on the newest tag. Pairing it with the mise CLI instead was tried and does
+# not work: PyPI trails the tags, and the version gap fails the readiness probe
+# with a 401. Pinning back to the tag behind PyPI's release does not rescue it
+# either -- v2026.7.20's desktop hangs after "backend is ready" without ever
+# opening a window, against its own matching runtime.
 #
 # The app is only a shell: it runs `hermes serve` against a Hermes CLI it does
 # not ship, and clones its own copy with the upstream install script when it
 # finds none. /usr/bin/hermes-desktop heads that off. See hermes-desktop.sh.
 
 pkgname=hermes-desktop
-pkgver=2026.7.20
+pkgver=2026.8.18
 pkgrel=1
 pkgdesc='Native desktop shell for Hermes Agent'
 arch=('x86_64')
@@ -31,8 +31,10 @@ depends=(
   'cairo'
   'dbus'
   'expat'
+  'curl'
   'gcc-libs'
   'gdk-pixbuf2'
+  'git'
   'glib2'
   'glibc'
   'gtk3'
@@ -50,12 +52,10 @@ depends=(
   'libxkbcommon'
   'libxrandr'
   'mesa'
-  'mise'
   'nspr'
   'nss'
   'pango'
   'systemd-libs'
-  'uv'
   'xdg-utils'
 )
 
@@ -73,15 +73,15 @@ options=('!strip' '!debug')
 # before falling back to `git rev-parse`. That fallback is wrong here: makepkg
 # builds inside this repository, so git ascends out of srcdir and stamps the
 # app with an omarchy-pkgs commit that means nothing upstream.
-_commit=3ef6bbd201263d354fd83ec55b3c306ded2eb72a
+_commit=e624e9fde561e1add9388384012b295fde669ade
 
 _srcdir="hermes-agent-${pkgver}"
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz"
         'hermes-desktop.sh'
         'hermes-desktop.desktop'
         'hermes-desktop.png')
-sha256sums=('285f3fc134ff466a90065e1517801a68993733b807158ee8f32aa01613786990'
-            'e7c0e1fd343e9b013de4575fbefdd4f03b3b62fb5c2c2dd3c508f4a26b6608ea'
+sha256sums=('1e3d39d3638ec15fa9d31af262568a953e9272090deb1c50c44cd401175f5b80'
+            'fc5f07c9bf77c82366ba9f631ae2c86ba657ca2a4f8712034ba03800e88fe699'
             '3ef685bfcf366776b025d26c37d32854d8d4aa2023b2bd07c8e08b001ef1e8c4'
             'd60d164e24fdcf6532133b8ea43c77a201e4b9e9dbc396187b58d51d8590ef52')
 
