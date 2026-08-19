@@ -2,7 +2,7 @@
 
 pkgname=herdr
 pkgver=0.8.0.r13
-pkgrel=1
+pkgrel=2
 pkgdesc="Herdr terminal workspace manager built from the Omarchy fork"
 arch=('x86_64' 'aarch64')
 url="https://github.com/omacom-io/herdr"
@@ -34,6 +34,10 @@ build() {
   export CARGO_TARGET_DIR=target
   export ZIG="$srcdir/zig-$CARCH-linux-$_zigver/zig"
   export ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-cache"
+  # The fork speaks protocol 20 while Cargo.toml still says 0.8.0, so an unmarked build is
+  # indistinguishable from upstream's protocol-19 v0.8.0 that carries the same version string.
+  export HERDR_BUILD_CHANNEL=omarchy
+  export HERDR_BUILD_ID="${pkgver##*.}"
   cargo build --frozen --release
 }
 
