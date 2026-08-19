@@ -66,6 +66,26 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare the bind-mounted build directories
+        # bin/build bind-mounts build-output/ and pkgs.omarchy.org/ into the
+        # builder container, which works as the image's "builder" user (uid
+        # 1000, from the useradd in build/Dockerfile). A GitHub runner is uid
+        # 1001, and make_dir_writable() chowns these directories to the host
+        # user -- so the container cannot write its incremental
+        # omarchy-build.db, and pacman then fails to resolve any makedepends.
+        # This is invisible on a workstation where the developer is also uid
+        # 1000. chown preserves the mode, so opening the mode first leaves both
+        # users able to write.
+        env:
+          MIRROR: ${{ inputs.mirror }}
+        run: |
+          set -euo pipefail
+          echo "Runner uid: $(id -u)"
+          for dir in "build-output/$MIRROR/aarch64" "pkgs.omarchy.org/$MIRROR/aarch64"; do
+            mkdir -p "$dir"
+            chmod -R 777 "$dir"
+          done
+
       - name: Build packages
         env:
           PACKAGES: ${{ inputs.packages }}
