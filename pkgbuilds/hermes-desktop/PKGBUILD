@@ -64,7 +64,7 @@ source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz
         'hermes-desktop.desktop'
         'hermes-desktop.png')
 sha256sums=('1e3d39d3638ec15fa9d31af262568a953e9272090deb1c50c44cd401175f5b80'
-            '716978c836ad46aa4ad173366d3a5d322c174fadf2f8095e6ce81301e1cad048'
+            'f6d06594c2a60a01c369992e44b20afcaf92d8f454a822dc6fccad67d4b6c58b'
             'a71e5b3599515b97ea694d51771edede69107a221f301f91c088a5d81de7a8c0'
             'd60d164e24fdcf6532133b8ea43c77a201e4b9e9dbc396187b58d51d8590ef52')
 
