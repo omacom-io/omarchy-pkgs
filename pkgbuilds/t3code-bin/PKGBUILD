@@ -1,15 +1,19 @@
-# Maintainer: anon
+# Maintainer: David Heinemeier Hansson <david@hey.com>
+
+# T3 Code ships Linux as an AppImage and nothing else, so Omarchy unpacks it and
+# keeps only the Electron tree. AppRun, the compatibility libraries bundled for
+# distributions that do not ship their own, and the AppImage's icon shims are all
+# dead weight here. .omarchy/upstream.sh rewrites the version and checksum below
+# from the release feed the app updates itself from.
 
 pkgname=t3code-bin
 pkgver=0.0.33
-pkgrel=1.1
-pkgdesc='T3 Code desktop app packaged from the upstream AppImage'
+pkgrel=1
+pkgdesc="Open-source control plane for coding agents"
 arch=('x86_64')
-_upstream_tag='v0.0.33'
-_upstream_version='0.0.33'
-_appimage_name="T3-Code-${_upstream_version}-x86_64.AppImage"
-url='https://t3.codes'
+url="https://t3.codes"
 license=('MIT')
+
 depends=(
   'alsa-lib'
   'at-spi2-core'
@@ -17,12 +21,12 @@ depends=(
   'dbus'
   'expat'
   'gcc-libs'
-  'gdk-pixbuf2'
   'glib2'
+  'glibc'
   'gtk3'
   'hicolor-icon-theme'
   'libcups'
-  'libdrm'
+  'libnotify'
   'libx11'
   'libxcb'
   'libxcomposite'
@@ -37,91 +41,56 @@ depends=(
   'pango'
   'systemd-libs'
   'xdg-utils'
-  'zlib'
 )
+
 optdepends=(
-  'openai-codex: use the system-installed Codex CLI'
+  'claude-code: drive Claude Code from the app'
+  'cursor-cli: drive Cursor from the app'
+  'github-copilot-cli: drive Copilot from the app'
+  'openai-codex: drive Codex from the app'
 )
+
 provides=("t3code=${pkgver}")
 conflicts=('t3code')
-options=('!debug' '!emptydirs' '!strip')
-source=(
-  "${_appimage_name}::https://github.com/pingdotgg/t3code/releases/download/${_upstream_tag}/${_appimage_name}"
-  't3code-icon.png'
-  'LICENSE'
-)
-sha256sums=(
-  '415c8648f43c3d22d572f27f2c50fdc8c310ea7fcde9537b903e1e2f1c8775a1'
-  '52c86008b11f90f36b8a8f4cc43b1352d5fda9084c6e5691b806f5bca1a968b6'
-  '935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43'
-)
+options=('!debug' '!strip')
+
+_appimage="T3-Code-${pkgver}-x86_64.AppImage"
+source=('t3code-launcher.sh' 'LICENSE')
+source_x86_64=("${_appimage}::https://github.com/pingdotgg/t3code/releases/download/v${pkgver}/${_appimage}")
+noextract=("${_appimage}")
+sha256sums=('cb905ff341372ef2ef6e402cf485959f8bd1df8f0efebee4cda1afdd5e6abc0a'
+            '935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43')
+sha256sums_x86_64=('415c8648f43c3d22d572f27f2c50fdc8c310ea7fcde9537b903e1e2f1c8775a1')
 
 prepare() {
-  chmod +x "$srcdir/$_appimage_name"
-  rm -rf "$srcdir/squashfs-root"
-  "$srcdir/$_appimage_name" --appimage-extract >/dev/null
-
-  if [[ ! -d "$srcdir/squashfs-root" ]]; then
-    echo "Failed to extract AppImage payload." >&2
-    return 1
-  fi
+  chmod +x "${srcdir}/${_appimage}"
+  rm -rf "${srcdir}/squashfs-root"
+  "${srcdir}/${_appimage}" --appimage-extract >/dev/null
 }
 
 package() {
-  install -d "$pkgdir/opt/$pkgname"
-  cp -a "$srcdir/squashfs-root/." "$pkgdir/opt/$pkgname/"
+  cd "${srcdir}/squashfs-root"
 
-  # Preserve upstream execute bits while ensuring the payload stays readable.
-  chmod -R a+rX "$pkgdir/opt/$pkgname"
+  # The AppImage's usr/ tree is compatibility libraries for distributions that
+  # lack them, and Arch is not one; its icons are the only part worth keeping.
+  local icon size
+  for icon in usr/share/icons/hicolor/*/apps/t3code.png; do
+    size="${icon#usr/share/icons/hicolor/}"
+    install -Dm644 "${icon}" "${pkgdir}/usr/share/icons/hicolor/${size%%/*}/apps/t3code.png"
+  done
 
-  install -Dm755 /dev/stdin "$pkgdir/usr/bin/t3code" << 'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
+  # Upstream's own entry rather than a hand-written one: it carries the
+  # t3code:// scheme handlers that make the app's deep links resolve.
+  sed -e 's|^Exec=.*|Exec=t3code %U|' -e '/^X-AppImage-Version=/d' t3code.desktop \
+    > "${srcdir}/t3code.desktop.arch"
+  install -Dm644 "${srcdir}/t3code.desktop.arch" \
+    "${pkgdir}/usr/share/applications/t3code.desktop"
 
-appdir='/opt/t3code-bin'
-export APPDIR="$appdir"
+  rm -rf AppRun .DirIcon usr t3code.desktop t3code.png
+  install -d "${pkgdir}/usr/lib/t3code"
+  cp -a . "${pkgdir}/usr/lib/t3code/"
+  chmod -R a+rX "${pkgdir}/usr/lib/t3code"
 
-if [[ -z "${CODEX_CLI_PATH-}" ]] && command -v codex >/dev/null 2>&1; then
-  export CODEX_CLI_PATH="$(command -v codex)"
-fi
-
-export PATH="$appdir:$appdir/usr/bin:$appdir/usr/sbin:$PATH"
-export XDG_DATA_DIRS="$appdir/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
-export GSETTINGS_SCHEMA_DIR="$appdir/usr/share/glib-2.0/schemas${GSETTINGS_SCHEMA_DIR:+:$GSETTINGS_SCHEMA_DIR}"
-
-extra_flags=()
-if [[ -n "${WAYLAND_DISPLAY-}" || "${XDG_SESSION_TYPE-}" == "wayland" ]]; then
-  extra_flags+=(--enable-features=UseOzonePlatform --ozone-platform=wayland --ozone-platform-hint=wayland)
-else
-  extra_flags+=(--ozone-platform-hint=auto)
-fi
-
-# Omarchy: Chromium sandboxes itself with a user namespace when it cannot find a
-# setuid helper, which is the case on Arch, so --no-sandbox buys nothing here.
-exec "$appdir/t3code" "${extra_flags[@]}" "$@"
-EOF
-
-  ln -s t3code "$pkgdir/usr/bin/t3-code-desktop"
-
-  install -Dm644 "$srcdir/t3code-icon.png" \
-    "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/t3code.png"
-  ln -s t3code.png \
-    "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/t3-code-desktop.png"
-  install -Dm644 "$srcdir/t3code-icon.png" \
-    "$pkgdir/usr/share/pixmaps/t3code.png"
-  ln -s t3code.png "$pkgdir/usr/share/pixmaps/t3-code-desktop.png"
-
-  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/t3code.desktop" << 'EOF'
-[Desktop Entry]
-Name=T3 Code
-Comment=T3 Code desktop build
-Exec=t3code %U
-Terminal=false
-Type=Application
-Icon=t3code
-StartupWMClass=t3code
-Categories=Development;
-EOF
-
-  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm755 "${srcdir}/t3code-launcher.sh" "${pkgdir}/usr/bin/t3code"
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
