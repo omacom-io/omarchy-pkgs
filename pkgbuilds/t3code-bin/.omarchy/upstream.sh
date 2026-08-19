@@ -23,6 +23,15 @@ if [[ -n "$current" ]] && [[ "$(vercmp "$version" "$current")" -le 0 ]]; then
   exit 0
 fi
 
+# The PKGBUILD builds one fixed asset name, so a feed naming anything else --
+# a rename, or an arm64 build reaching the Linux feed first -- has to stop the
+# sync rather than pin that file's checksum to a URL nobody will fetch.
+expected="T3-Code-${version}-x86_64.AppImage"
+if [[ "$asset" != "$expected" ]]; then
+  echo "Upstream feed names $asset, but the PKGBUILD builds $expected" >&2
+  exit 1
+fi
+
 sha256=$(curl -fsSL "$RELEASE_URL/v${version}/${asset}" | sha256sum | cut -d' ' -f1)
 
 jq -n --arg pkgver "$version" --arg sha256 "$sha256" \
