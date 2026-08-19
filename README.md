@@ -398,7 +398,7 @@ bin/omarchy-pkgs release rc              # Untagged RC from the quattro tip, aut
 bin/omarchy-pkgs release --commit abc123 --base 4.1.0   # Untagged RC from a commit
 bin/omarchy-pkgs release ... --dry-run   # Show the plan; write nothing
 bin/omarchy-pkgs release ... --no-push   # Full flow, local commit only (testing)
-bin/omarchy-pkgs self-test               # Version normalization + ordering tests
+bin/omarchy-pkgs self-test               # Release invariants + package contract tests
 ```
 
 ### Versioning rules

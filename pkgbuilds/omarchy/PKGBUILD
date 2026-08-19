@@ -13,7 +13,7 @@ pkgname='omarchy'
 _tag='v4.0.1'
 _commit='13f18b2cb7286fb54f87daf571a031aa6af3d8f0'
 pkgver=4.0.1
-pkgrel=1
+pkgrel=2
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -42,6 +42,10 @@ depends=(
   'limine-mkinitcpio-hook'
   'limine-snapper-sync'
   'snapper'
+
+  # Memory-pressure protection. omarchy-settings ships the zram config but
+  # stays live-ISO safe by leaving this target-only dependency here.
+  'zram-generator'
 
   # Wayland / Hyprland core
   'hyprland'
