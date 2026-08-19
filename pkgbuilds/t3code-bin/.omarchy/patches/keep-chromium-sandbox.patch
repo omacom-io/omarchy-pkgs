@@ -1,0 +1,13 @@
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -96,7 +96,9 @@
+   extra_flags+=(--ozone-platform-hint=auto)
+ fi
+ 
+-exec "$appdir/t3code" --no-sandbox "${extra_flags[@]}" "$@"
++# Omarchy: Chromium sandboxes itself with a user namespace when it cannot find a
++# setuid helper, which is the case on Arch, so --no-sandbox buys nothing here.
++exec "$appdir/t3code" "${extra_flags[@]}" "$@"
+ EOF
+ 
+   ln -s t3code "$pkgdir/usr/bin/t3-code-desktop"
