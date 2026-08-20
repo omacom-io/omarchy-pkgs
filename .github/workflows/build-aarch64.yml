@@ -1,0 +1,148 @@
+name: Build aarch64 Packages
+
+# Builds the aarch64 half of the repository on GitHub's native ARM64 runners,
+# which are free for public repositories. The build system already supports
+# aarch64 end to end -- bin/build, bin/sign, bin/update-repo and bin/sync-repo
+# all take --arch -- but it has only ever been driven by hand, and the README
+# tells you to emulate ARM64 on an x86_64 host with QEMU. Running it on a
+# native runner removes the emulation entirely.
+#
+# This builds and uploads packages as artifacts; it deliberately does not
+# publish. Publishing needs the repository signing key and the pkgs.omarchy.org
+# credentials, so promoting these artifacts stays a maintainer step:
+#
+#   bin/repo sign --arch aarch64
+#   bin/repo promote --arch aarch64
+#   bin/repo sync --arch aarch64
+#
+# Packages whose PKGBUILD arch=() excludes aarch64 are skipped by
+# should_build_for_arch() in build/build.sh, so hardware-specific x86 packages
+# (nvidia, asusctl, intel-*) cost nothing here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Specific packages to build (space-separated, leave empty for all)'
+        required: false
+        default: ''
+      mirror:
+        description: 'Mirror to build against'
+        required: false
+        default: edge
+        type: choice
+        options:
+          - edge
+          - stable
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    # A full unscoped build compiles every aarch64-capable package from source.
+    # GitHub caps a job at 6 hours; if the full set ever outgrows that, drive it
+    # in batches with the packages input rather than raising this.
+    timeout-minutes: 360
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Confirm the runner is natively aarch64
+        # bin/build falls back to QEMU when it finds an x86_64 host. That still
+        # produces correct packages, but takes many times longer -- long enough
+        # to hit the job timeout. If this ever runs somewhere else, fail loudly
+        # rather than silently emulating.
+        run: |
+          set -euo pipefail
+          arch=$(uname -m)
+          echo "Runner architecture: $arch"
+          if [[ $arch != "aarch64" ]]; then
+            echo "::error::Expected a native aarch64 runner, got $arch." \
+                 "Building aarch64 under emulation here would exceed the job timeout."
+            exit 1
+          fi
+
+      - name: Prepare the bind-mounted build directories
+        # bin/build bind-mounts build-output/ and pkgs.omarchy.org/ into the
+        # builder container, which works as the image's "builder" user (uid
+        # 1000, from the useradd in build/Dockerfile). A GitHub runner is uid
+        # 1001, and make_dir_writable() chowns these directories to the host
+        # user -- so the container cannot write its incremental
+        # omarchy-build.db, and pacman then fails to resolve any makedepends.
+        # This is invisible on a workstation where the developer is also uid
+        # 1000. chown preserves the mode, so opening the mode first leaves both
+        # users able to write.
+        env:
+          MIRROR: ${{ inputs.mirror }}
+        run: |
+          set -euo pipefail
+          echo "Runner uid: $(id -u)"
+          for dir in "build-output/$MIRROR/aarch64" "pkgs.omarchy.org/$MIRROR/aarch64"; do
+            mkdir -p "$dir"
+            chmod -R 777 "$dir"
+          done
+
+      - name: Build packages
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          MIRROR: ${{ inputs.mirror }}
+        run: |
+          set -euo pipefail
+          if [[ -n $PACKAGES ]]; then
+            bin/build --arch aarch64 --mirror "$MIRROR" --package "$PACKAGES"
+          else
+            bin/build --arch aarch64 --mirror "$MIRROR"
+          fi
+
+      - name: Summarize what was built
+        if: always()
+        env:
+          MIRROR: ${{ inputs.mirror }}
+        run: |
+          set -euo pipefail
+          output="build-output/$MIRROR/aarch64"
+          {
+            echo "## aarch64 packages ($MIRROR)"
+            echo
+            if compgen -G "$output/*.pkg.tar.*" >/dev/null; then
+              echo '```'
+              (cd "$output" && ls -1 ./*.pkg.tar.*)
+              echo '```'
+            else
+              echo "No packages were produced."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omarchy-aarch64-${{ inputs.mirror }}-${{ github.run_id }}
+          path: build-output/${{ inputs.mirror }}/aarch64
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ github.run_id }}
+          path: logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Notify Basecamp on failure
+        if: failure() && env.BASECAMP_CHATBOT_URL != ''
+        env:
+          BASECAMP_CHATBOT_URL: ${{ secrets.BASECAMP_CHATBOT_URL }}
+        run: |
+          curl -s -o /dev/null \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg content \
+              "🔴 <strong>aarch64 build failed</strong><br><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View run</a>" \
+              '{content: $content}')" \
+            "$BASECAMP_CHATBOT_URL"
