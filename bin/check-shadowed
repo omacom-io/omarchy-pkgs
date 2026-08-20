@@ -1,10 +1,18 @@
 #!/bin/bash
-# Omarchy's pacman.conf orders [omarchy] above core, extra and multilib, and pacman
+# Omarchy's pacman.conf orders [omarchy] above [extra] and [multilib], and pacman
 # takes the first repository carrying a name without comparing versions across the
 # rest. So a package here that falls behind Arch is not dead weight: -Syu stops
 # offering the newer official build, and the -Syyuu in omarchy-refresh-pacman
 # downgrades to ours. Publishing a name Arch also ships is a promise to stay ahead
 # of it.
+#
+# [core] keeps its place above [omarchy], so a name Arch ships from core is
+# unreachable here rather than shadowed. That is worth reporting and not worth
+# failing over: users get Arch's build either way.
+#
+# This reads the PKGBUILDs, which is what a pull request changes. It says nothing
+# about what the mirror currently serves -- a build that never published leaves an
+# older package in the repository than the PKGBUILD here claims.
 set -euo pipefail
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
@@ -12,7 +20,10 @@ source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/package-metadata.sh"
 
-OFFICIAL_REPOS=(core extra multilib)
+# Loaded in pacman's own resolution order, so the first repository carrying a name
+# is the one that answers for it.
+OUTRANKING_REPOS=(core)
+SHADOWED_REPOS=(extra multilib)
 
 print_header "Shadowed Package Check"
 
@@ -23,29 +34,39 @@ for tool in pacman vercmp; do
   }
 done
 
-# One listing per repository, rather than a pacman -Si per package. A repository
-# that lists nothing is a hole in the check rather than an empty repository, so
-# stop instead of quietly checking fewer names: multilib is disabled in a stock
-# Arch container, and multilib is exactly where umu-launcher was hiding.
-official=""
-for repo in "${OFFICIAL_REPOS[@]}"; do
-  # || true because pacman reports an unknown repository as a failure, and errexit
-  # would take the script out here with no output rather than reaching the check.
-  listing=$(pacman -Sl "$repo" 2>/dev/null | awk -v repo="$repo" '{print $2"\t"repo"\t"$3}' || true)
+declare -A official_repo official_version
 
-  if [[ -z "$listing" ]]; then
-    print_error "[$repo] lists no packages; enable it and sync the databases first"
+load_repo() {
+  local repo="$1" listing name version rest
+
+  # Not `|| true`: a listing that fails after emitting some rows would leave a
+  # partial repository behind and check fewer names while reporting success.
+  if ! listing=$(pacman -Sl "$repo" 2>/dev/null); then
+    print_error "[$repo] could not be listed; enable it and sync the package databases first"
     exit 1
   fi
 
-  official+="$listing"$'\n'
+  if [[ -z $listing ]]; then
+    print_error "[$repo] lists no packages; enable it and sync the package databases first"
+    exit 1
+  fi
+
+  while read -r _ name version rest; do
+    [[ -n $name ]] || continue
+    [[ -n ${official_repo[$name]:-} ]] && continue
+    official_repo[$name]="$repo"
+    official_version[$name]="$version"
+  done <<<"$listing"
+}
+
+for repo in "${OUTRANKING_REPOS[@]}" "${SHADOWED_REPOS[@]}"; do
+  load_repo "$repo"
 done
 
 # The PKGBUILD is the only place pkgname and epoch are recorded, and makepkg
 # sources it too, so read it the same way rather than parsing it by hand. That
-# means supplying the variables makepkg exports -- three PKGBUILDs here read
-# CARCH or SRCDEST at the top level and die under set -u without them, which is
-# how they would drop out of this check unnoticed.
+# means supplying the variables makepkg exports: three PKGBUILDs here read CARCH
+# or SRCDEST at the top level and would die under set -u without them.
 package_versions() {
   (
     set +eu
@@ -59,7 +80,11 @@ package_versions() {
 
     # shellcheck disable=SC1091
     source PKGBUILD 2>/dev/null
+    local status=$?
 
+    # A PKGBUILD that failed partway can leave a stale pkgver assigned from the
+    # lines that did run, so the status decides this rather than the variables.
+    [[ $status -eq 0 ]] || exit 1
     [[ -n "${pkgname:-}" && -n "${pkgver:-}" && -n "${pkgrel:-}" ]] || exit 1
 
     local version="${pkgver}-${pkgrel}"
@@ -72,27 +97,42 @@ package_versions() {
   )
 }
 
-stale=0
+examined=0
+names=0
 shadowed=0
+stale=0
+unreachable=0
 unreadable=0
 
 while IFS= read -r pkgdir; do
-  # A PKGBUILD that cannot be read is not a package that passes; say so, because
-  # skipping it quietly is what lets an unnoticed one drift behind Arch.
-  if ! versions=$(package_versions "$pkgdir"); then
-    print_error "$(basename "$pkgdir"): could not read pkgname and pkgver from its PKGBUILD"
+  package=$(basename "$pkgdir")
+
+  # Empty output counts as unreadable too: a PKGBUILD that calls exit at the top
+  # level ends the subshell successfully without ever naming a package, and
+  # skipping it quietly is how one drifts behind Arch unnoticed.
+  if ! versions=$(package_versions "$pkgdir") || [[ -z $versions ]]; then
+    print_error "$package: could not read pkgname and pkgver from its PKGBUILD"
     unreadable=$((unreadable + 1))
     continue
   fi
 
+  examined=$((examined + 1))
+
   while read -r name ours; do
-    [[ -n "$name" ]] || continue
+    [[ -n $name ]] || continue
+    names=$((names + 1))
 
-    entry=$(awk -F'\t' -v n="$name" '$1 == n { print $2"\t"$3; exit }' <<<"$official")
-    [[ -n "$entry" ]] || continue
+    repo="${official_repo[$name]:-}"
+    [[ -n $repo ]] || continue
 
-    repo="${entry%%$'\t'*}"
-    theirs="${entry##*$'\t'}"
+    theirs="${official_version[$name]}"
+
+    if [[ " ${OUTRANKING_REPOS[*]} " == *" $repo "* ]]; then
+      print_info "$name also exists in $repo, which outranks [omarchy]; ours is unreachable"
+      unreachable=$((unreachable + 1))
+      continue
+    fi
+
     shadowed=$((shadowed + 1))
 
     if [[ "$(vercmp "$theirs" "$ours")" -gt 0 ]]; then
@@ -105,8 +145,16 @@ while IFS= read -r pkgdir; do
 done < <(package_dirs)
 
 echo
+
 if ((unreadable > 0)); then
   print_error "$unreadable PKGBUILD(s) could not be read, so they went unchecked"
+  exit 1
+fi
+
+# Nothing examined means the tree was not found, not that the tree is clean. A
+# check that passes when it compared nothing is worse than no check at all.
+if ((examined == 0)); then
+  print_error "No packages were examined; expected PKGBUILDs under $PKGBUILDS_DIR"
   exit 1
 fi
 
@@ -116,4 +164,6 @@ if ((stale > 0)); then
   exit 1
 fi
 
-print_success "$shadowed shadowed package(s), none behind the official repositories"
+print_success "Checked $examined package(s) ($names names) against ${SHADOWED_REPOS[*]}: $shadowed shadowed, none behind"
+((unreachable > 0)) && print_info "$unreachable name(s) are unreachable behind ${OUTRANKING_REPOS[*]}"
+exit 0

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'pkgbuilds/**'
+      - 'helpers/**'
       - 'bin/check-shadowed'
       - '.github/workflows/check-shadowed.yml'
   schedule:
@@ -25,8 +26,11 @@ jobs:
       # get: Arch's own repositories for what it ships, and vercmp for which of
       # the two builds pacman calls newer.
       - name: Check for packages behind the official repositories
+        id: check
         run: |
           docker run --rm \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
             -v "$PWD/bin:/workspace/bin:ro" \
             -v "$PWD/helpers:/workspace/helpers:ro" \
             -v "$PWD/pkgbuilds:/workspace/pkgbuilds:ro" \
@@ -39,19 +43,27 @@ jobs:
               printf "\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n" >> /etc/pacman.conf
               pacman -Sy --noconfirm
 
-              ./bin/check-shadowed
+              # The check sources every PKGBUILD, so it does not run as root: a
+              # pull request could otherwise replace vercmp in the container and
+              # have its own comparison come back equal.
+              groupadd -g "$HOST_GID" runner
+              useradd -m -u "$HOST_UID" -g "$HOST_GID" runner
+
+              runuser -u runner -- ./bin/check-shadowed
             '
 
-      # Only for the scheduled run: a pull request reports its own failure, but
-      # Arch moving ahead of a package here happens with nobody watching.
-      - name: Notify Basecamp on failure
-        if: failure() && github.event_name == 'schedule' && env.BASECAMP_CHATBOT_URL != ''
+      # Only when the check itself failed, and only on the schedule: a pull
+      # request reports its own result, while Arch pulling ahead of a package
+      # here happens with nobody watching. Without the step condition a mirror
+      # or Docker failure would announce a stale package that does not exist.
+      - name: Notify Basecamp
+        if: failure() && steps.check.outcome == 'failure' && github.event_name == 'schedule' && env.BASECAMP_CHATBOT_URL != ''
         env:
           BASECAMP_CHATBOT_URL: ${{ secrets.BASECAMP_CHATBOT_URL }}
         run: |
-          curl -s -o /dev/null \
+          curl -sS --fail -o /dev/null \
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg content \
-              "🔴 <strong>A package is behind the official repositories</strong><br>Omarchy outranks Arch, so users are stuck on the older build.<br><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View run</a>" \
+              "🔴 <strong>A package is behind the official repositories</strong><br>Omarchy outranks extra and multilib, so users are held on the older build.<br><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View run</a>" \
               '{content: $content}')" \
             "$BASECAMP_CHATBOT_URL"
