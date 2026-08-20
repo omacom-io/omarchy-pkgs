@@ -1,0 +1,340 @@
+#!/bin/bash
+set -euo pipefail
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/package-metadata.sh"
+
+SPECIFIC_PACKAGES=()
+
+# Only the repositories a user actually installs from. A Qt release sitting in
+# testing or kde-unstable is not what the build container will link against, and
+# rebuilding for it would ship a package built against the wrong ABI.
+OFFICIAL_REPOS=" core extra multilib core-debug extra-debug "
+
+usage() {
+  cat <<EOF
+Usage: $0 [PACKAGE...]
+
+Bump pkgrel for packages that have to be rebuilt when a dependency changes
+underneath them, rather than when their own source moves.
+
+A package opts in by naming those dependencies in .omarchy/package.json:
+
+  { "source": "aur", "sync": false, "rebuild_on": ["qt6-base"] }
+
+The versions the current pkgrel was last bumped for are recorded alongside, in
+rebuilt_against, and written by this command:
+
+  { "rebuild_on": ["qt6-base"], "rebuilt_against": { "qt6-base": "6.11.2-2" } }
+
+When a named package in the official repositories no longer matches what is
+recorded, pkgrel is bumped and the record is rewritten. A package with no record
+yet is only recorded, never bumped: the versions its published build was linked
+against are not knowable from here, so the first run establishes the baseline
+and the next real change acts on it.
+
+The bump has to happen in git rather than in the builder, because a rebuild that
+reuses the published version string is a package pacman will never offer anyone.
+
+Arguments:
+  PACKAGE    One or more package names to update (optional)
+
+Examples:
+  $0                   # Update every package that declares rebuild_on
+  $0 quickshell-git    # Update specific packages
+
+Trigger versions are read from the local pacman database, so sync it first
+(pacman -Sy) or this reports whatever that database last saw.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --*)
+      print_error "Unknown option: $1"
+      exit 1
+      ;;
+    *)
+      SPECIFIC_PACKAGES+=("$1")
+      shift
+      ;;
+  esac
+done
+
+for tool in pacman vercmp jq; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    print_error "$tool not found: reading trigger versions and ordering pkgrels both need pacman"
+    exit 1
+  fi
+done
+
+print_header "Rebuild Trigger Sync"
+
+UPDATED=0
+SKIPPED=0
+FAILED=0
+SPECIFIC_MODE=false
+
+# The version of a trigger package as the build container would resolve it.
+# A name pacman does not know reports nothing rather than failing, so the caller
+# gets to say which package was left alone instead of the run dying here.
+repo_version() {
+  local package="$1"
+  local info
+
+  info=$(LC_ALL=C pacman -Si "$package" 2>/dev/null) || return 0
+
+  awk -v allowed="$OFFICIAL_REPOS" '
+    /^Repository[[:space:]]*:/ { repo = $3 }
+    /^Version[[:space:]]*:/ {
+      if (index(allowed, " " repo " ") > 0) { print $3; exit }
+    }
+  ' <<<"$info"
+}
+
+pkgbuild_field() {
+  local package_dir="$1"
+  local field="$2"
+
+  (cd "$package_dir" && env -u OMARCHY_SRC bash -c "source PKGBUILD 2>/dev/null; echo \"\${$field:-}\"")
+}
+
+# 2 -> 3, and 1.1 -> 1.2. Anything else is a pkgrel this command has no business
+# rewriting.
+bump_pkgrel() {
+  local pkgrel="$1"
+
+  [[ "$pkgrel" =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 1
+
+  local head tail
+  if [[ "$pkgrel" == *.* ]]; then
+    head="${pkgrel%.*}."
+    tail="${pkgrel##*.}"
+  else
+    head=""
+    tail="$pkgrel"
+  fi
+
+  echo "${head}$((tail + 1))"
+}
+
+write_pkgrel() {
+  local package_dir="$1"
+  local pkgrel="$2"
+  local pkgbuild="$package_dir/PKGBUILD"
+
+  if [[ $(grep -c '^pkgrel=' "$pkgbuild") -ne 1 ]]; then
+    print_error "Expected exactly one pkgrel assignment in $pkgbuild"
+    return 1
+  fi
+
+  # Every edit lands on a scratch copy that replaces the PKGBUILD in one rename,
+  # so a failed rewrite leaves the original alone rather than half updated.
+  local scratch="$pkgbuild.sync-rebuilds"
+  cp "$pkgbuild" "$scratch" || return 1
+  sed -i "s/^pkgrel=.*/pkgrel=$pkgrel/" "$scratch"
+
+  if ! bash -n "$scratch" 2>/dev/null; then
+    print_error "Rewritten PKGBUILD is not valid shell"
+    rm -f "$scratch"
+    return 1
+  fi
+
+  local written
+  written=$(CARCH=x86_64 bash -c 'source "$1" >/dev/null 2>&1 || exit 1; echo "$pkgrel"' _ "$scratch" 2>/dev/null)
+  if [[ "$written" != "$pkgrel" ]]; then
+    print_error "Rewritten PKGBUILD reads back pkgrel=$written, not $pkgrel"
+    rm -f "$scratch"
+    return 1
+  fi
+
+  chmod --reference="$pkgbuild" "$scratch"
+  mv "$scratch" "$pkgbuild"
+}
+
+write_metadata() {
+  local package_dir="$1"
+  local filter="$2"
+  shift 2
+  local metadata
+  metadata=$(metadata_file_for_dir "$package_dir")
+
+  local scratch="$metadata.sync-rebuilds"
+  jq "$@" "$filter" "$metadata" > "$scratch" || { rm -f "$scratch"; return 1; }
+  chmod --reference="$metadata" "$scratch"
+  mv "$scratch" "$metadata"
+}
+
+record_triggers() {
+  local package_dir="$1"
+  local current="$2"
+
+  write_metadata "$package_dir" '.rebuilt_against = $current' --argjson current "$current"
+}
+
+sync_package() {
+  local package="$1"
+  local package_dir="$PKGBUILDS_DIR/$package"
+
+  if [[ ! -f "$package_dir/PKGBUILD" ]]; then
+    print_error "Package $package has no PKGBUILD"
+    ((++FAILED))
+    return 0
+  fi
+
+  local triggers=()
+  mapfile -t triggers < <(package_rebuild_triggers "$package_dir")
+
+  if [[ ${#triggers[@]} -eq 0 ]]; then
+    if [[ "$SPECIFIC_MODE" == true ]]; then
+      print_error "Package $package does not declare rebuild_on"
+      ((++FAILED))
+    else
+      print_info "Skipping $package: no rebuild triggers"
+      ((++SKIPPED))
+    fi
+    return 0
+  fi
+
+  print_info "Checking $package against ${triggers[*]}..."
+
+  local current="{}" trigger version
+  for trigger in "${triggers[@]}"; do
+    version=$(repo_version "$trigger")
+    if [[ -z "$version" ]]; then
+      print_error "  $trigger is in no official repository; leaving $package alone"
+      ((++FAILED))
+      return 0
+    fi
+    if ! current=$(jq -c --arg name "$trigger" --arg version "$version" '.[$name] = $version' <<<"$current"); then
+      print_error "  Could not record $trigger $version for $package"
+      ((++FAILED))
+      return 0
+    fi
+  done
+
+  local recorded
+  if ! recorded=$(package_metadata_value "$package_dir" '.rebuilt_against' ""); then
+    print_error "  Could not read .omarchy/package.json for $package"
+    ((++FAILED))
+    return 0
+  fi
+
+  if [[ -z "$recorded" || "$recorded" == "null" ]]; then
+    if ! record_triggers "$package_dir" "$current"; then
+      print_error "  Failed to record trigger versions for $package"
+      ((++FAILED))
+      return 0
+    fi
+    print_success "  Recorded baseline: $(jq -r 'to_entries | map("\(.key) \(.value)") | join(", ")' <<<"$current")"
+    ((++UPDATED))
+    return 0
+  fi
+
+  local moved
+  if ! moved=$(jq -r --argjson current "$current" '
+    to_entries
+    | map(select($current[.key] != .value) | "\(.key) \(.value) -> \($current[.key])")
+    | join(", ")
+  ' <<<"$recorded"); then
+    print_error "  Could not compare recorded trigger versions for $package"
+    ((++FAILED))
+    return 0
+  fi
+
+  if [[ -z "$moved" ]]; then
+    print_info "  Already rebuilt against $(jq -r 'to_entries | map("\(.key) \(.value)") | join(", ")' <<<"$current")"
+    ((++SKIPPED))
+    return 0
+  fi
+
+  local pkgrel next_pkgrel
+  pkgrel=$(pkgbuild_field "$package_dir" pkgrel)
+
+  # An AUR-synced package gets its PKGBUILD replaced wholesale on the next sync,
+  # so the bump only survives as the dotted Omarchy suffix that sync-aur
+  # reapplies from .omarchy/package.json.
+  local suffix=""
+  if package_sync_enabled "$package_dir"; then
+    if [[ "$pkgrel" == *.* ]]; then
+      next_pkgrel=$(bump_pkgrel "$pkgrel") || next_pkgrel=""
+      suffix="${next_pkgrel##*.}"
+    else
+      next_pkgrel="$pkgrel.1"
+      suffix="1"
+    fi
+  else
+    next_pkgrel=$(bump_pkgrel "$pkgrel") || next_pkgrel=""
+  fi
+
+  if [[ -z "$next_pkgrel" ]]; then
+    print_error "  Cannot bump pkgrel=$pkgrel for $package; bump it by hand"
+    ((++FAILED))
+    return 0
+  fi
+
+  local pkgver epoch old_version new_version
+  pkgver=$(pkgbuild_field "$package_dir" pkgver)
+  epoch=$(pkgbuild_field "$package_dir" epoch)
+  old_version="${epoch:+$epoch:}$pkgver-$pkgrel"
+  new_version="${epoch:+$epoch:}$pkgver-$next_pkgrel"
+
+  if [[ "$(vercmp "$new_version" "$old_version")" -le 0 ]]; then
+    print_error "  pkgrel $pkgrel -> $next_pkgrel would not be an upgrade for $package"
+    ((++FAILED))
+    return 0
+  fi
+
+  if ! write_pkgrel "$package_dir" "$next_pkgrel"; then
+    print_error "  Failed to bump pkgrel for $package"
+    ((++FAILED))
+    return 0
+  fi
+
+  if [[ -n "$suffix" ]] && ! write_metadata "$package_dir" '.pkgrel.suffix = ($suffix | tonumber)' --arg suffix "$suffix"; then
+    print_error "  Failed to record pkgrel suffix for $package"
+    ((++FAILED))
+    return 0
+  fi
+
+  if ! record_triggers "$package_dir" "$current"; then
+    print_error "  Failed to record trigger versions for $package"
+    ((++FAILED))
+    return 0
+  fi
+
+  print_success "  $moved; pkgrel $pkgrel -> $next_pkgrel"
+  ((++UPDATED))
+}
+
+if [[ ${#SPECIFIC_PACKAGES[@]} -gt 0 ]]; then
+  SPECIFIC_MODE=true
+  for package in "${SPECIFIC_PACKAGES[@]}"; do
+    sync_package "$package"
+  done
+else
+  while IFS= read -r package; do
+    sync_package "$package"
+  done < <(packages_for_rebuild_sync)
+fi
+
+echo ""
+if [[ $FAILED -gt 0 ]]; then
+  print_error "Rebuild trigger sync completed with failures"
+else
+  print_success "Rebuild trigger sync complete!"
+fi
+echo "  Target: $PKGBUILDS_DIR"
+echo "  Updated: $UPDATED"
+echo "  Skipped: $SKIPPED"
+echo "  Failed: $FAILED"
+
+if [[ $FAILED -gt 0 ]]; then
+  exit 1
+fi
