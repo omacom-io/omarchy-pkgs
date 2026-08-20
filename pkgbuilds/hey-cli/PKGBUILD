@@ -1,0 +1,52 @@
+# Maintainer: David Heinemeier Hansson <david@hey.com>
+
+# Built from a pinned commit rather than a release: the AUR's hey-cli is a name
+# reservation whose source tag was never cut, and upstream has tagged nothing yet.
+# Point _commit at the tag and drop the .rN suffix once the first release lands.
+
+pkgname=hey-cli
+pkgver=0.0.0.r132
+pkgrel=1
+pkgdesc="CLI and TUI for HEY email"
+arch=('x86_64' 'aarch64')
+url="https://github.com/basecamp/hey-cli"
+license=('MIT')
+depends=('glibc')
+makedepends=('go')
+provides=('hey')
+conflicts=('hey' 'hey-bin')
+options=('!debug')
+
+_commit=de6e86e6c529e8ad7235442f7711ac4aaf43b97d
+source=("hey-cli-$_commit.tar.gz::$url/archive/$_commit.tar.gz")
+sha256sums=('b8ef40d3c5b7edbfd4c8274d1a293e3b01c4dffd71fd4f66ca18fe81e20a21f9')
+
+build() {
+  cd "hey-cli-$_commit"
+
+  export CGO_CPPFLAGS="$CPPFLAGS"
+  export CGO_CFLAGS="$CFLAGS"
+  export CGO_CXXFLAGS="$CXXFLAGS"
+  export CGO_LDFLAGS="$LDFLAGS"
+  export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
+
+  go build \
+    -ldflags "-s -w \
+      -X github.com/basecamp/hey-cli/internal/version.Version=$pkgver \
+      -X github.com/basecamp/hey-cli/internal/version.Commit=${_commit::7}" \
+    -o hey ./cmd/hey
+
+  ./hey completion bash >hey.bash
+  ./hey completion zsh >hey.zsh
+  ./hey completion fish >hey.fish
+}
+
+package() {
+  cd "hey-cli-$_commit"
+
+  install -Dm755 hey "$pkgdir/usr/bin/hey"
+  install -Dm644 LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE.md"
+  install -Dm644 hey.bash "$pkgdir/usr/share/bash-completion/completions/hey"
+  install -Dm644 hey.zsh "$pkgdir/usr/share/zsh/site-functions/_hey"
+  install -Dm644 hey.fish "$pkgdir/usr/share/fish/vendor_completions.d/hey.fish"
+}
