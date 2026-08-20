@@ -1,6 +1,11 @@
 # Common path variables for Omarchy package build system
 # This file should be sourced after setting BUILD_ROOT
 
+# Every script that knows these paths is a script that can mutate them, so the
+# mutex travels with them. Sourcing only defines acquire_repo_lock; each entry
+# point decides when to call it.
+source "$BUILD_ROOT/helpers/lock-helpers.sh"
+
 # Default architecture and mirror
 ARCH=${ARCH:-x86_64}
 MIRROR=${MIRROR:-edge}

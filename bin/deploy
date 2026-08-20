@@ -94,6 +94,11 @@ if [[ "$PACKAGE_FLAG_GIVEN" == true && ${#PACKAGES[@]} -eq 0 ]]; then
   exit 1
 fi
 
+# Guards this machine's build workspace for the whole build-then-push run. The
+# repository host runs its own lock; see the note in bin/push-build about the
+# window this does not cover.
+[[ "$DRY_RUN" == true ]] || acquire_repo_lock "deploy --mirror $MIRROR --arch $ARCH"
+
 # bin/build asks the local repository database what is already built. On a build
 # machine that database does not exist, so every package looks unbuilt and an
 # unscoped run rebuilds the entire repository and publishes it. Deploying from

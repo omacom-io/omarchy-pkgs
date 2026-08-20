@@ -22,27 +22,6 @@ for ((i=1; i<=$#; i++)); do
   fi
 done
 
-# Setup logging with timestamps
-mkdir -p "$LOG_DIR"
-
-# Rotate logs first - keep only the 10 most recent
-if [[ -d "$LOG_DIR" ]]; then
-  cd "$LOG_DIR"
-  # List logs by modification time (newest first), skip first 9, delete the rest
-  # This way after we create the new log, we'll have exactly 10
-  ls -t repo_*.log 2>/dev/null | tail -n +10 | xargs -r rm -f
-  cd "$BUILD_ROOT"
-fi
-
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-if [[ -n "$LOG_MIRROR" ]]; then
-  LOG_FILE="$LOG_DIR/repo_${LOG_MIRROR}_${TIMESTAMP}.log"
-else
-  LOG_FILE="$LOG_DIR/repo_${TIMESTAMP}.log"
-fi
-export LOG_FILE
-export OMARCHY_LOG_FILE="$LOG_FILE"
-
 # Show usage
 show_usage() {
   echo "Usage: $0 <command> [options]"
@@ -85,6 +64,35 @@ fi
 # Get command and shift arguments
 COMMAND="$1"
 shift
+
+# Reading metadata changes nothing; every other command touches the shared build
+# workspace or the published repository and must not overlap with another run.
+case $COMMAND in
+list | -h | --help | help) ;;
+*) acquire_repo_lock "repo $COMMAND" ;;
+esac
+
+# Setup logging with timestamps. Named after the lock is held so a run that
+# queued behind another one is logged under the time it actually started.
+mkdir -p "$LOG_DIR"
+
+# Rotate logs first - keep only the 10 most recent
+if [[ -d "$LOG_DIR" ]]; then
+  cd "$LOG_DIR"
+  # List logs by modification time (newest first), skip first 9, delete the rest
+  # This way after we create the new log, we'll have exactly 10
+  ls -t repo_*.log 2>/dev/null | tail -n +10 | xargs -r rm -f
+  cd "$BUILD_ROOT"
+fi
+
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+if [[ -n "$LOG_MIRROR" ]]; then
+  LOG_FILE="$LOG_DIR/repo_${LOG_MIRROR}_${TIMESTAMP}.log"
+else
+  LOG_FILE="$LOG_DIR/repo_${TIMESTAMP}.log"
+fi
+export LOG_FILE
+export OMARCHY_LOG_FILE="$LOG_FILE"
 
 # Route to appropriate script with logging
 case $COMMAND in

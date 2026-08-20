@@ -97,6 +97,11 @@ if [[ "$DRY_RUN" == true ]]; then
   exit $?
 fi
 
+# Past the dry run everything below mutates shared state: the workspace is wiped
+# a few lines down, and src/ is shared across mirrors. A no-op when bin/repo or
+# bin/release already holds the lock.
+acquire_repo_lock "build --mirror $MIRROR --arch $ARCH"
+
 # Create directories if they don't exist
 mkdir -p "$BUILD_OUTPUT_DIR" "$REPO_DIR" "$SRC_DIR"
 
