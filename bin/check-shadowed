@@ -1,0 +1,119 @@
+#!/bin/bash
+# Omarchy's pacman.conf orders [omarchy] above core, extra and multilib, and pacman
+# takes the first repository carrying a name without comparing versions across the
+# rest. So a package here that falls behind Arch is not dead weight: -Syu stops
+# offering the newer official build, and the -Syyuu in omarchy-refresh-pacman
+# downgrades to ours. Publishing a name Arch also ships is a promise to stay ahead
+# of it.
+set -euo pipefail
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/package-metadata.sh"
+
+OFFICIAL_REPOS=(core extra multilib)
+
+print_header "Shadowed Package Check"
+
+for tool in pacman vercmp; do
+  command -v "$tool" >/dev/null || {
+    print_error "$tool is required; run this on Arch or in the archlinux container"
+    exit 1
+  }
+done
+
+# One listing per repository, rather than a pacman -Si per package. A repository
+# that lists nothing is a hole in the check rather than an empty repository, so
+# stop instead of quietly checking fewer names: multilib is disabled in a stock
+# Arch container, and multilib is exactly where umu-launcher was hiding.
+official=""
+for repo in "${OFFICIAL_REPOS[@]}"; do
+  # || true because pacman reports an unknown repository as a failure, and errexit
+  # would take the script out here with no output rather than reaching the check.
+  listing=$(pacman -Sl "$repo" 2>/dev/null | awk -v repo="$repo" '{print $2"\t"repo"\t"$3}' || true)
+
+  if [[ -z "$listing" ]]; then
+    print_error "[$repo] lists no packages; enable it and sync the databases first"
+    exit 1
+  fi
+
+  official+="$listing"$'\n'
+done
+
+# The PKGBUILD is the only place pkgname and epoch are recorded, and makepkg
+# sources it too, so read it the same way rather than parsing it by hand. That
+# means supplying the variables makepkg exports -- three PKGBUILDs here read
+# CARCH or SRCDEST at the top level and die under set -u without them, which is
+# how they would drop out of this check unnoticed.
+package_versions() {
+  (
+    set +eu
+    cd "$1" || exit 1
+
+    CARCH="${CARCH:-x86_64}"
+    SRCDEST="${SRCDEST:-$PWD}"
+    startdir="$PWD"
+    srcdir="$PWD/src"
+    pkgdir="$PWD/pkg"
+
+    # shellcheck disable=SC1091
+    source PKGBUILD 2>/dev/null
+
+    [[ -n "${pkgname:-}" && -n "${pkgver:-}" && -n "${pkgrel:-}" ]] || exit 1
+
+    local version="${pkgver}-${pkgrel}"
+    [[ -n "${epoch:-}" ]] && version="${epoch}:${version}"
+
+    local name
+    for name in "${pkgname[@]}"; do
+      echo "$name $version"
+    done
+  )
+}
+
+stale=0
+shadowed=0
+unreadable=0
+
+while IFS= read -r pkgdir; do
+  # A PKGBUILD that cannot be read is not a package that passes; say so, because
+  # skipping it quietly is what lets an unnoticed one drift behind Arch.
+  if ! versions=$(package_versions "$pkgdir"); then
+    print_error "$(basename "$pkgdir"): could not read pkgname and pkgver from its PKGBUILD"
+    unreadable=$((unreadable + 1))
+    continue
+  fi
+
+  while read -r name ours; do
+    [[ -n "$name" ]] || continue
+
+    entry=$(awk -F'\t' -v n="$name" '$1 == n { print $2"\t"$3; exit }' <<<"$official")
+    [[ -n "$entry" ]] || continue
+
+    repo="${entry%%$'\t'*}"
+    theirs="${entry##*$'\t'}"
+    shadowed=$((shadowed + 1))
+
+    if [[ "$(vercmp "$theirs" "$ours")" -gt 0 ]]; then
+      print_error "$name shadows $repo/$name with an older build: ours $ours, $repo $theirs"
+      stale=$((stale + 1))
+    else
+      print_info "$name shadows $repo/$name (ours $ours, $repo $theirs)"
+    fi
+  done <<<"$versions"
+done < <(package_dirs)
+
+echo
+if ((unreadable > 0)); then
+  print_error "$unreadable PKGBUILD(s) could not be read, so they went unchecked"
+  exit 1
+fi
+
+if ((stale > 0)); then
+  print_error "$stale of $shadowed shadowed package(s) are behind the official repositories"
+  echo "Either update them, or drop them so pacman resolves the official build."
+  exit 1
+fi
+
+print_success "$shadowed shadowed package(s), none behind the official repositories"
