@@ -1,4 +1,4 @@
-name: Check Shadowed Packages
+name: Check Packages Against Arch
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
       - 'pkgbuilds/**'
       - 'helpers/**'
       - 'bin/check-shadowed'
+      - 'bin/check-published'
       - '.github/workflows/check-shadowed.yml'
   schedule:
     # Daily, off the hour to dodge the scheduling backlog at :00
@@ -65,5 +66,52 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg content \
               "🔴 <strong>A package is behind the official repositories</strong><br>Omarchy outranks extra and multilib, so users are held on the older build.<br><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View run</a>" \
+              '{content: $content}')" \
+            "$BASECAMP_CHATBOT_URL"
+
+  # The mirror is a separate question from the tree: a build that never published,
+  # or a package removed here but never removed from the repository, leaves
+  # [omarchy] serving something older than any PKGBUILD says. A pull request
+  # cannot change that, so this does not run on one.
+  published:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check what the mirror serves against the official repositories
+        id: check
+        run: |
+          docker run --rm \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -v "$PWD/bin:/workspace/bin:ro" \
+            -v "$PWD/helpers:/workspace/helpers:ro" \
+            -w /workspace \
+            archlinux:base-devel bash -lc '
+              set -euo pipefail
+
+              printf "\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n" >> /etc/pacman.conf
+              pacman -Sy --noconfirm
+
+              groupadd -g "$HOST_GID" runner
+              useradd -m -u "$HOST_UID" -g "$HOST_GID" runner
+
+              runuser -u runner -- ./bin/check-published
+            '
+
+      - name: Notify Basecamp
+        if: failure() && steps.check.outcome == 'failure' && github.event_name == 'schedule' && env.BASECAMP_CHATBOT_URL != ''
+        env:
+          BASECAMP_CHATBOT_URL: ${{ secrets.BASECAMP_CHATBOT_URL }}
+        run: |
+          curl -sS --fail -o /dev/null \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg content \
+              "🔴 <strong>The mirror is serving a package behind Arch</strong><br>Omarchy outranks extra and multilib, so users cannot upgrade past it.<br><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View run</a>" \
               '{content: $content}')" \
             "$BASECAMP_CHATBOT_URL"

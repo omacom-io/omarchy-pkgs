@@ -1,0 +1,112 @@
+#!/bin/bash
+# What check-shadowed cannot see. That one reads the PKGBUILDs, which is what a
+# pull request changes; this reads what the mirror actually serves. A build that
+# never published, or a package removed from the tree but never removed from the
+# repository, leaves [omarchy] answering with something older than the PKGBUILD
+# claims -- and users resolve the mirror, not this git repository.
+#
+# x86_64 only. The comparison is against Arch's own core, extra and multilib, and
+# an aarch64 machine resolves Arch Linux ARM instead, whose versions differ.
+set -euo pipefail
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/official-packages.sh"
+
+MIRRORS=(edge stable)
+REPO_ARCH="${REPO_ARCH:-x86_64}"
+REPO_URL="${OMARCHY_REPO_URL:-https://pkgs.omarchy.org}"
+
+print_header "Published Package Check"
+
+for tool in curl tar pacman vercmp; do
+  command -v "$tool" >/dev/null || {
+    print_error "$tool is required; run this on Arch or in the archlinux container"
+    exit 1
+  }
+done
+
+load_official_packages || exit 1
+
+workdir=$(mktemp -d)
+trap 'rm -rf "$workdir"' EXIT
+
+checked=0
+shadowed=0
+stale=0
+unreachable=0
+
+for mirror in "${MIRRORS[@]}"; do
+  db="$workdir/$mirror.db.tar.zst"
+  url="$REPO_URL/$mirror/$REPO_ARCH/omarchy.db.tar.zst"
+
+  if ! curl -fsSL "$url" -o "$db"; then
+    print_error "Could not fetch $url"
+    exit 1
+  fi
+
+  # tar's status is checked rather than piped away: it exits non-zero when the
+  # archive holds no entry descriptions, and a pipeline would take that failure
+  # out of reach of the emptiness check below.
+  if ! descs=$(tar -xOf "$db" --wildcards '*/desc' 2>/dev/null); then
+    print_error "Could not read package entries from $url"
+    exit 1
+  fi
+
+  entries=$(awk '
+    /^%NAME%$/    { getline name; next }
+    /^%VERSION%$/ { getline version; if (name != "") { print name, version; name = "" }; next }
+  ' <<<"$descs")
+
+  # An unreadable database is not an empty repository. Reporting a clean mirror
+  # off a database we could not parse is the failure this check exists to avoid.
+  if [[ -z $entries ]]; then
+    print_error "Read no packages from $url"
+    exit 1
+  fi
+
+  print_info "$mirror: $(wc -l <<<"$entries") published package(s)"
+
+  while read -r name ours; do
+    [[ -n $name ]] || continue
+    checked=$((checked + 1))
+
+    repo="${official_repo[$name]:-}"
+    [[ -n $repo ]] || continue
+
+    theirs="${official_version[$name]}"
+
+    if repo_outranks_omarchy "$repo"; then
+      print_info "$mirror/$name is unreachable behind $repo/$name"
+      unreachable=$((unreachable + 1))
+      continue
+    fi
+
+    shadowed=$((shadowed + 1))
+
+    if [[ "$(vercmp "$theirs" "$ours")" -gt 0 ]]; then
+      print_error "$mirror serves $name $ours, behind $repo's $theirs"
+      stale=$((stale + 1))
+    else
+      print_info "$mirror/$name $ours (ahead of or level with $repo's $theirs)"
+    fi
+  done <<<"$entries"
+done
+
+echo
+
+if ((checked == 0)); then
+  print_error "No published packages were examined"
+  exit 1
+fi
+
+if ((stale > 0)); then
+  print_error "$stale published package(s) are behind the official repositories"
+  echo "Users resolve these from [omarchy] and cannot upgrade past them."
+  echo "Publish a build at or above Arch's version, or drop it with bin/repo remove-package."
+  exit 1
+fi
+
+print_success "Checked $checked published package(s) across ${MIRRORS[*]}: $shadowed shadowed, none behind"
+((unreachable > 0)) && print_info "$unreachable are unreachable behind ${OUTRANKING_REPOS[*]}"
+exit 0
