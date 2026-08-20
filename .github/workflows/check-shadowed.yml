@@ -1,0 +1,57 @@
+name: Check Shadowed Packages
+
+on:
+  pull_request:
+    paths:
+      - 'pkgbuilds/**'
+      - 'bin/check-shadowed'
+      - '.github/workflows/check-shadowed.yml'
+  schedule:
+    # Daily, off the hour to dodge the scheduling backlog at :00
+    - cron: '40 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Runs in an Arch container because the comparison has to be the one users
+      # get: Arch's own repositories for what it ships, and vercmp for which of
+      # the two builds pacman calls newer.
+      - name: Check for packages behind the official repositories
+        run: |
+          docker run --rm \
+            -v "$PWD/bin:/workspace/bin:ro" \
+            -v "$PWD/helpers:/workspace/helpers:ro" \
+            -v "$PWD/pkgbuilds:/workspace/pkgbuilds:ro" \
+            -w /workspace \
+            archlinux:base-devel bash -lc '
+              set -euo pipefail
+
+              # multilib is disabled in the stock image, and multilib is where
+              # umu-launcher sat behind an older Omarchy build for three months.
+              printf "\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n" >> /etc/pacman.conf
+              pacman -Sy --noconfirm
+
+              ./bin/check-shadowed
+            '
+
+      # Only for the scheduled run: a pull request reports its own failure, but
+      # Arch moving ahead of a package here happens with nobody watching.
+      - name: Notify Basecamp on failure
+        if: failure() && github.event_name == 'schedule' && env.BASECAMP_CHATBOT_URL != ''
+        env:
+          BASECAMP_CHATBOT_URL: ${{ secrets.BASECAMP_CHATBOT_URL }}
+        run: |
+          curl -s -o /dev/null \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg content \
+              "🔴 <strong>A package is behind the official repositories</strong><br>Omarchy outranks Arch, so users are stuck on the older build.<br><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View run</a>" \
+              '{content: $content}')" \
+            "$BASECAMP_CHATBOT_URL"
