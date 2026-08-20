@@ -288,6 +288,7 @@ it describes.
 ```bash
 bin/sync-rebuilds                       # Bump every package whose dependencies moved
 bin/sync-rebuilds quickshell-git        # Update specific packages
+bin/sync-rebuilds --self-test           # Run the regression tests
 ```
 
 Some packages have to be rebuilt when something they link against changes, even though nothing in their own source moved. A Qt private-API consumer is the usual case: `Qt_6_PRIVATE_API` symbols are not covered by the soname, so a qt6-base point release can leave an installed binary unable to resolve a symbol at startup, and pacman upgrades Qt out from under it because the dependency is unversioned. The package still builds from the same git commit, so nothing in the normal version check notices.
@@ -298,13 +299,17 @@ A package names those dependencies in `.omarchy/package.json`:
 { "source": "aur", "sync": false, "rebuild_on": ["qt6-base", "qt6-declarative", "qt6-wayland"] }
 ```
 
-`bin/sync-rebuilds` reads each named package's version from the official repositories and compares it to `rebuilt_against`, the record of what the checked-in pkgrel was last bumped for. When they differ it bumps pkgrel and rewrites the record. A package with no record yet is only recorded, never bumped: what its published build linked against is not knowable from here, so the first run establishes the baseline and the next change acts on it.
+`bin/sync-rebuilds` reads each named package's version from the official repositories and compares it to `rebuilt_against`, the record of what the checked-in pkgrel was last bumped for. pkgrel is bumped unless every name in `rebuild_on` is recorded and still matches, so a name the record does not carry reads as changed rather than going unexamined forever. Opting a package in therefore buys one rebuild: what its published build actually linked against is not knowable from here, and a record written without a rebuild would certify a build nobody checked.
 
 The bump is the point of the command, and it has to land in git rather than in the builder. A rebuild that reuses the published version string produces a package pacman will never offer anyone, so merely unlocking the build gate would ship nothing. Bumping pkgrel needs no other change: `bin/check-versions` and the builder both already rebuild when pkgrel moves.
 
 For an AUR-synced package the bump is expressed as the dotted Omarchy pkgrel suffix in the metadata as well as in the PKGBUILD, because the next AUR sync replaces the PKGBUILD wholesale and would otherwise drop it.
 
-Versions are read from the local pacman database, so this runs on Arch or in an Arch container against a synced database. Only `core`, `extra` and `multilib` count: a Qt release sitting in testing or kde-unstable is not what the builder will link against, and rebuilding for it would ship a package built against the wrong ABI.
+The bumped version is checked against the published one as well as the checked-in one, and refused when pacman would not order it higher. The checked-in version is not the floor; what a user already has is, and a checkout that has fallen behind the repository can otherwise be bumped to something that loses to the package it means to replace. That check is skipped with a warning when the published database cannot be read.
+
+Versions are read from the local pacman database, so this runs on Arch or in an Arch container against a synced database. Only `core`, `extra` and `multilib` count: a Qt release sitting in testing or kde-unstable is not what the builder will link against, and rebuilding for it would ship a package built against the wrong ABI. The workflow points that database at `mirror.omarchy.org`, the mirror the x86_64 builder itself uses, because a mirror running ahead of the builder would record a version the build never linked against and nothing re-fires once the record matches.
+
+aarch64 is not covered. Those builds resolve Qt from Arch Linux ARM, which can lag Arch, so one record cannot describe both architectures. Only x86_64 is published today, so nothing currently ships from the untracked side; if ARM publishing starts, `rebuilt_against` has to become per-architecture before this can be trusted there.
 
 ### Other
 

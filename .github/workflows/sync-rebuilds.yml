@@ -24,9 +24,11 @@ jobs:
         with:
           persist-credentials: false
 
-      # Runs in an Arch container because the question being asked is what the
-      # build container will link against, and pacman's own view of core/extra is
-      # the only answer that matches.
+      # Runs in an Arch container against the mirror the x86_64 builder itself
+      # uses, because the question being asked is what that builder will link
+      # against and a different mirror can be hours ahead of it. Recording a
+      # version the build never saw is the one failure this command must not
+      # have: nothing re-fires once the record matches.
       - name: Bump pkgrel for packages whose dependencies moved
         run: |
           docker run --rm \
@@ -40,6 +42,7 @@ jobs:
             archlinux:base-devel bash -lc '
               set -euo pipefail
 
+              printf "Server = https://mirror.omarchy.org/\$repo/os/\$arch\n" > /etc/pacman.d/mirrorlist
               pacman -Syu --noconfirm jq
 
               groupadd -g "$HOST_GID" runner
