@@ -38,7 +38,7 @@ Commands:
   release beta|alpha [vX.Y.Z]    Same for beta/alpha channels
   release rc --commit <sha>      Untagged pre-release from a bare commit,
                                  auto-numbered past published edge + PKGBUILD
-  self-test                      Run version-normalization and ordering tests
+  self-test                      Run release and package-contract tests
 
 Options for release:
   --base <X.Y.Z>    (rc) Base version the RC leads up to (default: base of
@@ -589,6 +589,39 @@ cmd_release() {
 cmd_self_test() {
   local failures=0
 
+  pkgbuild_has_hard_dependency() {
+    local package="$1" dependency="$2"
+    (
+      cd "$BUILD_ROOT/pkgbuilds/$package"
+      source PKGBUILD
+      local declared
+      for declared in "${depends[@]}"; do
+        [[ "${declared%%[<>=]*}" == "$dependency" ]] && exit 0
+      done
+      exit 1
+    )
+  }
+
+  check_hard_dependency() {
+    local package="$1" dependency="$2"
+    if pkgbuild_has_hard_dependency "$package" "$dependency"; then
+      echo "  ok: $package hard-depends on $dependency"
+    else
+      echo "  FAIL: $package must hard-depend on $dependency"
+      failures=$((failures + 1))
+    fi
+  }
+
+  check_no_hard_dependency() {
+    local package="$1" dependency="$2"
+    if pkgbuild_has_hard_dependency "$package" "$dependency"; then
+      echo "  FAIL: $package must not hard-depend on $dependency"
+      failures=$((failures + 1))
+    else
+      echo "  ok: $package does not hard-depend on $dependency"
+    fi
+  }
+
   check_norm() {
     local input="$1" expected="$2" got
     got=$(normalize_tag "$input" 2>/dev/null) || got="<reject>"
@@ -652,6 +685,12 @@ cmd_self_test() {
   [[ $(version_base 4.0.0rc7) == 4.0.0 ]] && echo "  ok: version_base 4.0.0rc7 → 4.0.0" || { echo "  FAIL: version_base"; failures=$((failures + 1)); }
   version_is_rc 4.0.0rc1 && echo "  ok: 4.0.0rc1 is rc" || { echo "  FAIL: version_is_rc positive"; failures=$((failures + 1)); }
   version_is_rc 4.0.0 && { echo "  FAIL: version_is_rc negative"; failures=$((failures + 1)); } || echo "  ok: 4.0.0 is not rc"
+
+  echo "Target package contracts:"
+  check_hard_dependency omarchy zram-generator
+  check_hard_dependency omarchy-dev zram-generator
+  check_no_hard_dependency omarchy-settings zram-generator
+  check_no_hard_dependency omarchy-settings-dev zram-generator
 
   echo ""
   if [[ "$failures" -eq 0 ]]; then
