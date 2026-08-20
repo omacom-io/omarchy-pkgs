@@ -283,6 +283,34 @@ than downloading the artifacts — see `pkgbuilds/openai-codex-desktop/.omarchy/
 which reads OpenAI's Debian package index and never fetches the 750 MB of debs
 it describes.
 
+### Sync Rebuild Triggers
+
+```bash
+bin/sync-rebuilds                       # Bump every package whose dependencies moved
+bin/sync-rebuilds quickshell-git        # Update specific packages
+bin/sync-rebuilds --self-test           # Run the regression tests
+```
+
+Some packages have to be rebuilt when something they link against changes, even though nothing in their own source moved. A Qt private-API consumer is the usual case: `Qt_6_PRIVATE_API` symbols are not covered by the soname, so a qt6-base point release can leave an installed binary unable to resolve a symbol at startup, and pacman upgrades Qt out from under it because the dependency is unversioned. The package still builds from the same git commit, so nothing in the normal version check notices.
+
+A package names those dependencies in `.omarchy/package.json`:
+
+```json
+{ "source": "aur", "sync": false, "rebuild_on": ["qt6-base", "qt6-declarative", "qt6-wayland"] }
+```
+
+`bin/sync-rebuilds` reads each named package's version from the official repositories and compares it to `rebuilt_against`, the record of what the checked-in pkgrel was last bumped for. pkgrel is bumped unless every name in `rebuild_on` is recorded and still matches, so a name the record does not carry reads as changed rather than going unexamined forever. Opting a package in therefore buys one rebuild: what its published build actually linked against is not knowable from here, and a record written without a rebuild would certify a build nobody checked.
+
+The bump is the point of the command, and it has to land in git rather than in the builder. A rebuild that reuses the published version string produces a package pacman will never offer anyone, so merely unlocking the build gate would ship nothing. Bumping pkgrel needs no other change: `bin/check-versions` and the builder both already rebuild when pkgrel moves.
+
+For an AUR-synced package the bump is expressed as the dotted Omarchy pkgrel suffix in the metadata as well as in the PKGBUILD, because the next AUR sync replaces the PKGBUILD wholesale and would otherwise drop it.
+
+The bumped version is checked against the published one as well as the checked-in one, and refused when pacman would not order it higher. The checked-in version is not the floor; what a user already has is, and a checkout that has fallen behind the repository can otherwise be bumped to something that loses to the package it means to replace. That check is skipped with a warning when the published database cannot be read.
+
+Versions are read from the local pacman database, so this runs on Arch or in an Arch container against a synced database. Only `core`, `extra` and `multilib` count: a Qt release sitting in testing or kde-unstable is not what the builder will link against, and rebuilding for it would ship a package built against the wrong ABI. The workflow points that database at `mirror.omarchy.org`, the mirror the x86_64 builder itself uses, because a mirror running ahead of the builder would record a version the build never linked against and nothing re-fires once the record matches.
+
+aarch64 is not covered. Those builds resolve Qt from Arch Linux ARM, which can lag Arch, so one record cannot describe both architectures. Only x86_64 is published today, so nothing currently ships from the untracked side; if ARM publishing starts, `rebuilt_against` has to become per-architecture before this can be trusted there.
+
 ### Other
 
 ```bash
@@ -296,6 +324,7 @@ bin/add-package <package>            # Add an AUR/local package with metadata
 bin/package-worktree <package>       # Create upstream/patched/current scratch workspace
 bin/repo remove <package>            # Remove package
 bin/sync-upstream                    # Update packages that track a vendor release feed
+bin/sync-rebuilds                    # Bump pkgrel for packages whose dependencies moved
 bin/clean-docker                     # Clear Docker images/cache (forces fresh rebuild)
 ```
 
@@ -439,6 +468,8 @@ Fields:
 - `release_ring`: optional. `fast` means the package is built directly for stable as well as edge. Packages without a ring build in edge and reach stable through tested artifact promotion (`bin/repo migrate`).
 - `skip_build`: optional boolean; defaults to `false`. Set `true` to exclude a package from scheduled version checks and unscoped builds. The package can still be built explicitly with `bin/repo release --package <name>`.
 - `pkgrel`: optional Omarchy pkgrel suffix for a version-pinned rebuild bump. This emits `<aur pkgrel>.<suffix>` instead of replacing AUR's pkgrel. `offset` can be used only when preserving monotonic upgrades from old absolute pkgrel bumps. The metadata is removed automatically when AUR sync changes `pkgver`; the current package version is read from the checked-in PKGBUILD, so the version is not duplicated in JSON.
+- `rebuild_on`: optional array of package names this package links against closely enough that it must be rebuilt when they change, independent of its own source. Read by `bin/sync-rebuilds`.
+- `rebuilt_against`: written by `bin/sync-rebuilds`. Records the version of each `rebuild_on` package that the current pkgrel was bumped for.
 - `upstream_commit`: set by `bin/sync-aur` for AUR packages. Used by `bin/package-worktree` to recreate the exact raw AUR package that Omarchy last synced.
 
 ### Build Matrix
@@ -567,6 +598,8 @@ Packages are only rebuilt if:
 - PKGBUILD version is newer than repository version
 - Package doesn't exist in production
 
+Neither notices a package that has to be rebuilt because something underneath it changed. That case is handled by turning it into a version change: `bin/sync-rebuilds` bumps pkgrel when a dependency named in `rebuild_on` moves.
+
 ## Automated Releases
 
 The repository includes GitHub workflows and systemd services for automated releases.
@@ -577,6 +610,7 @@ The repository includes GitHub workflows and systemd services for automated rele
 
 1. **sync-aur.yml** (Every 6 hours): Syncs AUR packages according to `.omarchy/package.json` and opens a PR when changes are found.
 2. **sync-upstream.yml** (Every 6 hours): Runs `.omarchy/upstream.sh` for packages that track a vendor release feed and opens a PR when a newer version is out.
+3. **sync-rebuilds.yml** (Every 6 hours): Bumps pkgrel for packages whose `rebuild_on` dependencies have moved in the official repositories and opens a PR.
 
 #### Systemd Services
 

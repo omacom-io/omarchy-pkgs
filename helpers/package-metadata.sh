@@ -10,9 +10,11 @@
 #   { "source": "aur", "release_ring": "fast" }
 #   { "source": "aur", "skip_build": true }
 #   { "source": "aur", "pkgrel": { "suffix": 1, "offset": 1 } }
+#   { "source": "aur", "rebuild_on": ["qt6-base"] }
 #   { "source": "local" }
 #
-# bin/sync-aur also writes upstream_commit for AUR-backed packages.
+# bin/sync-aur also writes upstream_commit for AUR-backed packages, and
+# bin/sync-rebuilds writes rebuilt_against for packages declaring rebuild_on.
 
 if [[ -z "${PKGBUILDS_DIR:-}" ]]; then
   if [[ -n "${BUILD_ROOT:-}" ]]; then
@@ -143,6 +145,33 @@ package_has_upstream_hook() {
 packages_for_upstream_sync() {
   package_dirs | while IFS= read -r pkgdir; do
     if package_has_upstream_hook "$pkgdir"; then
+      basename "$pkgdir"
+    fi
+  done
+}
+
+# Packages that must be rebuilt when a dependency they link against changes,
+# even though nothing in their own source moved. `rebuild_on` names those
+# dependencies; `rebuilt_against` records the versions the checked-in pkgrel was
+# last bumped for.
+package_rebuild_triggers() {
+  local pkgdir="$1"
+  local metadata
+
+  metadata=$(metadata_file_for_dir "$pkgdir")
+  [[ -f "$metadata" ]] || return 0
+
+  jq -r '(.rebuild_on // [])[]' "$metadata"
+}
+
+package_has_rebuild_triggers() {
+  local pkgdir="$1"
+  [[ -n "$(package_rebuild_triggers "$pkgdir")" ]]
+}
+
+packages_for_rebuild_sync() {
+  package_dirs | while IFS= read -r pkgdir; do
+    if package_has_rebuild_triggers "$pkgdir"; then
       basename "$pkgdir"
     fi
   done
@@ -297,6 +326,21 @@ validate_package_metadata() {
 
   if ! jq -e '(.upstream_commit // "") | type == "string"' "$metadata" >/dev/null; then
     echo "invalid upstream_commit for $(basename "$pkgdir"): must be a string"
+    return 1
+  fi
+
+  if ! jq -e '(.rebuild_on // []) | type == "array" and all(type == "string" and length > 0)' "$metadata" >/dev/null; then
+    echo "invalid rebuild_on for $(basename "$pkgdir"): must be an array of package names"
+    return 1
+  fi
+
+  if ! jq -e '(.rebuilt_against // {}) | type == "object" and (to_entries | all(.value | type == "string" and length > 0))' "$metadata" >/dev/null; then
+    echo "invalid rebuilt_against for $(basename "$pkgdir"): must be an object mapping package names to versions"
+    return 1
+  fi
+
+  if ! jq -e '((.rebuilt_against // {}) | keys) - (.rebuild_on // []) | length == 0' "$metadata" >/dev/null; then
+    echo "invalid rebuilt_against for $(basename "$pkgdir"): records a package that rebuild_on does not name"
     return 1
   fi
 }
