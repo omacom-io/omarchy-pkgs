@@ -19,11 +19,7 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/package-metadata.sh"
-
-# Loaded in pacman's own resolution order, so the first repository carrying a name
-# is the one that answers for it.
-OUTRANKING_REPOS=(core)
-SHADOWED_REPOS=(extra multilib)
+source "$BUILD_ROOT/helpers/official-packages.sh"
 
 print_header "Shadowed Package Check"
 
@@ -34,34 +30,7 @@ for tool in pacman vercmp; do
   }
 done
 
-declare -A official_repo official_version
-
-load_repo() {
-  local repo="$1" listing name version rest
-
-  # Not `|| true`: a listing that fails after emitting some rows would leave a
-  # partial repository behind and check fewer names while reporting success.
-  if ! listing=$(pacman -Sl "$repo" 2>/dev/null); then
-    print_error "[$repo] could not be listed; enable it and sync the package databases first"
-    exit 1
-  fi
-
-  if [[ -z $listing ]]; then
-    print_error "[$repo] lists no packages; enable it and sync the package databases first"
-    exit 1
-  fi
-
-  while read -r _ name version rest; do
-    [[ -n $name ]] || continue
-    [[ -n ${official_repo[$name]:-} ]] && continue
-    official_repo[$name]="$repo"
-    official_version[$name]="$version"
-  done <<<"$listing"
-}
-
-for repo in "${OUTRANKING_REPOS[@]}" "${SHADOWED_REPOS[@]}"; do
-  load_repo "$repo"
-done
+load_official_packages || exit 1
 
 # The PKGBUILD is the only place pkgname and epoch are recorded, and makepkg
 # sources it too, so read it the same way rather than parsing it by hand. That
@@ -127,7 +96,7 @@ while IFS= read -r pkgdir; do
 
     theirs="${official_version[$name]}"
 
-    if [[ " ${OUTRANKING_REPOS[*]} " == *" $repo "* ]]; then
+    if repo_outranks_omarchy "$repo"; then
       print_info "$name also exists in $repo, which outranks [omarchy]; ours is unreachable"
       unreachable=$((unreachable + 1))
       continue
