@@ -169,6 +169,9 @@ package() {
   # memory pressure costs one app scope instead of the compositor session.
   # Thresholds live in etc/systemd/oomd.conf.d/10-omarchy.conf.
   install -Dm644 default/systemd/user/app.slice.d/10-oomd.conf "$pkgdir/usr/lib/systemd/user/app.slice.d/10-oomd.conf"
+  # Weights session.slice (compositor, shell, PipeWire, portals) 10:1 over
+  # app.slice so saturating builds in terminals cannot stall compositor input.
+  install -Dm644 default/systemd/user/session.slice.d/10-cpuweight.conf "$pkgdir/usr/lib/systemd/user/session.slice.d/10-cpuweight.conf"
   install -Dm644 default/systemd/zram-generator.conf.d/90-omarchy.conf "$pkgdir/usr/lib/systemd/zram-generator.conf.d/90-omarchy.conf"
 
   # Same for applications/** — used by omarchy-refresh-applications,
