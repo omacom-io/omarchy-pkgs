@@ -1,7 +1,7 @@
 # Maintainer: Tobi Lütke <tobi@lutke.com>
 
 pkgname=omasnap
-pkgver=1.16.0
+pkgver=1.17.1
 pkgrel=1
 pkgdesc="Native Wayland screenshot and annotation overlay for Hyprland"
 arch=('x86_64')
@@ -26,7 +26,7 @@ makedepends=(
 options=('!debug')
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('4a98d16d7c497408ef84ea5ae4a526b367264039f73649494fab118fb789fc48')
+sha256sums=('2ad60ec7f0b22bc868e3ac9c79ff3a283bf36a0d1f77f569d14b5282ac990165')
 
 build() {
   cmake -S "$pkgname-$pkgver" -B build -G Ninja \
