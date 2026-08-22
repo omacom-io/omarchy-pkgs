@@ -3,10 +3,10 @@
 # Source tag is cut on github.com/ryrobes/omarchy-quake.
 
 pkgname=omarchy-quake
-pkgver=1.6.2
+pkgver=1.6.3
 pkgrel=1
 pkgdesc="Quake 1 for Omarchy (vkQuake, shareware fetch, Tailscale deathmatch)"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://github.com/ryrobes/omarchy-quake"
 license=('MIT' 'GPL-2.0-or-later')
 options=('!debug')
@@ -38,14 +38,13 @@ optdepends=(
   'omarchy: menu stub, plugin enable, Hyprland session'
   'tailscale: deathmatch over a tailnet'
   '7zip: faster shareware extraction (bsdtar is the fallback)'
-  'qt6-multimedia-ffmpeg: animated video backdrop in the panel'
 )
 source=(
   "$pkgname-$pkgver.tar.gz::https://github.com/ryrobes/omarchy-quake/archive/refs/tags/v$pkgver.tar.gz"
   "vkQuake-1.35.0.tar.gz::https://github.com/Novum/vkQuake/archive/refs/tags/1.35.0.tar.gz"
 )
 sha256sums=(
-  '7b960b3dfe3ddb88291ffef049b60aad75655d456ad91b5a8059a92e962587c0'
+  '0cb3b685acc9ac4c14a5a0ae0f96b28dbe2e5260cf40e391801192f5e9a11eba'
   '9f3a2bbf7ef22224c26a1a0d574562573fdaae2dc9758a98068617062d49c584'
 )
 
