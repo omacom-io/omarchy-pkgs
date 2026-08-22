@@ -10,6 +10,14 @@ set -euo pipefail
 # arrangement upstream ships, and the only one that starts.
 export HERMES_DESKTOP_IGNORE_EXISTING=1
 
+# Reconcile every launch rather than trusting whatever installed us. A plain
+# `pacman -S hermes-desktop`, or an install interrupted partway, leaves any
+# Hermes the terminal agent had built still sitting there, and by then the
+# menu entry that would have tidied it up is disabled because we are present.
+if command -v omarchy-install-hermes-cli >/dev/null 2>&1; then
+  omarchy-install-hermes-cli >/dev/null 2>&1 || true
+fi
+
 # Chromium's own Ozone detection falls back to XWayland often enough to matter,
 # and the result is a blurry window on every scaled display. Ask for Wayland
 # directly, unless the user has already picked a platform themselves.
