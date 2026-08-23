@@ -6,9 +6,8 @@ pkgrel=1
 pkgdesc="Native Wayland screenshot and annotation overlay for Hyprland"
 arch=('x86_64')
 url="https://github.com/tobi/omasnap"
-license=('MIT')
+license=('MIT' 'OFL-1.1')
 depends=(
-  'grim'
   'hyprland'
   'layer-shell-qt'
   'qt6-base'
