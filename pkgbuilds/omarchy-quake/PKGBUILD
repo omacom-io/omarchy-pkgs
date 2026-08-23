@@ -17,6 +17,7 @@ depends=(
   libvorbis
   flac
   opus
+  opusfile
   libogg
   python
   libarchive
