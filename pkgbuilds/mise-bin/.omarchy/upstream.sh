@@ -4,10 +4,29 @@ set -euo pipefail
 repo="jdx/mise"
 release=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest")
 tag=$(jq -r '.tag_name // empty' <<<"$release")
+published_at=$(jq -r '.published_at // empty' <<<"$release")
 
 if [[ ! "$tag" =~ ^v([A-Za-z0-9._+]+)$ ]]; then
   echo "Latest mise release has an invalid tag: ${tag:-<empty>}" >&2
   exit 1
+fi
+
+if [[ -z "$published_at" ]] || ! published_epoch=$(date --date="$published_at" +%s); then
+  echo "Latest mise release has an invalid published_at: ${published_at:-<empty>}" >&2
+  exit 1
+fi
+
+# Keep a compromised mise release from reaching Omarchy before there has been
+# a full day for maintainers and the community to notice and pull it.
+minimum_release_age_seconds=$((24 * 60 * 60))
+now=$(date +%s)
+if (( now - published_epoch < minimum_release_age_seconds )); then
+  if [[ "${MISE_BIN_BYPASS_RELEASE_AGE:-}" == "1" ]]; then
+    echo "Bypassing mise release-age gate for $tag" >&2
+  else
+    echo '{}'
+    exit 0
+  fi
 fi
 
 pkgver=${BASH_REMATCH[1]}
