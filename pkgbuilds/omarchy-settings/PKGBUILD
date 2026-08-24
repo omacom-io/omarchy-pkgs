@@ -12,7 +12,7 @@
 pkgname='omarchy-settings'
 _tag=''
 _commit='0f4abeec8e0a5bb54e0f08d671a9e1b86fa62453'
-pkgver=4.0.1rc2
+pkgver=4.0.1rc3
 pkgrel=1
 pkgdesc='Omarchy user defaults, /etc/skel content, fonts, plymouth theme, and support helpers'
 arch=('any')
