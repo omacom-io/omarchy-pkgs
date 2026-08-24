@@ -31,6 +31,16 @@ the unsuffixed sha256sums array. An empty object ({}) reports no update.
 When the reported version is newer than the checked-in one, pkgver and the
 listed checksum arrays are rewritten and pkgrel is reset to 1.
 
+A package may declare "min_release_age" in .omarchy/package.json ("24h", "2d",
+or bare seconds) to quarantine fresh releases until maintainers have had time
+to pull a bad or compromised one. The window is exported to the hook as
+MIN_RELEASE_AGE_SECONDS so it can select the newest release that has already
+cleared it, and enforced here as a backstop: the hook must then report
+"published_at" (ISO 8601), and a release younger than the window is treated
+as no update. A maintainer shipping an emergency update inside the window
+runs: BYPASS_MIN_RELEASE_AGE=1 $0 <package>. Scheduled automation never sets
+the bypass, so the resulting change still goes through a reviewed PR.
+
 Arguments:
   PACKAGE    One or more package names to update (optional)
 
@@ -170,6 +180,7 @@ validate_release() {
     and (.sha256sums | to_entries | all(
       .value | type == "array" and length > 0 and all(test("\\A[0-9a-f]{64}\\z"))
     ))
+    and (if has("published_at") then (.published_at | type == "string" and length > 0) else true end)
   ' <<<"$release" >/dev/null
 }
 
@@ -304,10 +315,20 @@ sync_package() {
     return 0
   fi
 
+  local min_age
+  if ! min_age=$(package_min_release_age_seconds "$package_dir"); then
+    print_error "Invalid min_release_age in $package_dir/.omarchy/package.json"
+    ((++FAILED))
+    return 0
+  fi
+
   print_info "Checking $package for upstream releases..."
 
   local release
-  if ! release=$(cd "$package_dir" && PACKAGE_NAME="$package" bash .omarchy/upstream.sh); then
+  if ! release=$(cd "$package_dir" && PACKAGE_NAME="$package" \
+      MIN_RELEASE_AGE_SECONDS="$min_age" \
+      BYPASS_MIN_RELEASE_AGE="${BYPASS_MIN_RELEASE_AGE:-}" \
+      bash .omarchy/upstream.sh); then
     print_error "Upstream hook failed for $package"
     ((++FAILED))
     return 0
@@ -329,6 +350,24 @@ sync_package() {
     print_error "Upstream hook for $package reported a malformed release"
     ((++FAILED))
     return 0
+  fi
+
+  # Backstop for min_release_age: the hook already selects within the window,
+  # but a hook bug must not be able to ship a release younger than the policy.
+  if (( min_age > 0 )) && [[ "${BYPASS_MIN_RELEASE_AGE:-}" != "1" ]]; then
+    local published_at published_epoch age
+    published_at=$(jq -r '.published_at // empty' <<<"$release")
+    if [[ -z "$published_at" ]] || ! published_epoch=$(date --date="$published_at" +%s 2>/dev/null); then
+      print_error "min_release_age is set for $package but its hook reported no usable published_at; refusing an unverifiable release"
+      ((++FAILED))
+      return 0
+    fi
+    age=$(( $(date +%s) - published_epoch ))
+    if (( age < min_age )); then
+      print_warning "  Hook reported a release only $((age / 3600))h old, inside the ${min_age}s minimum age; leaving it alone"
+      ((++SKIPPED))
+      return 0
+    fi
   fi
 
   local pkgver current_pkgver

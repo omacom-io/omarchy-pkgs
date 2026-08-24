@@ -12,6 +12,7 @@
 #   { "source": "aur", "pkgrel": { "suffix": 1, "offset": 1 } }
 #   { "source": "aur", "rebuild_on": ["qt6-base"] }
 #   { "source": "local" }
+#   { "source": "local", "min_release_age": "24h" }
 #
 # bin/sync-aur also writes upstream_commit for AUR-backed packages, and
 # bin/sync-rebuilds writes rebuilt_against for packages declaring rebuild_on.
@@ -76,6 +77,27 @@ package_release_ring() {
 package_is_fast_ring() {
   local pkgdir="$1"
   [[ "$(package_release_ring "$pkgdir")" == "fast" ]]
+}
+
+# Quarantine window for upstream releases, in seconds. Accepts a bare number
+# of seconds or a number suffixed s/m/h/d ("24h", "2d"). Unset means 0 (no
+# hold); an unparseable value returns 1 so callers fail closed instead of
+# silently dropping the hold.
+package_min_release_age_seconds() {
+  local pkgdir="$1" raw
+  raw=$(package_metadata_value "$pkgdir" '.min_release_age' "")
+  if [[ -z "$raw" ]]; then
+    echo 0
+    return 0
+  fi
+  [[ "$raw" =~ ^([0-9]+)([smhd]?)$ ]] || return 1
+  local n=${BASH_REMATCH[1]}
+  case "${BASH_REMATCH[2]}" in
+    ""|s) echo "$n" ;;
+    m) echo $((n * 60)) ;;
+    h) echo $((n * 3600)) ;;
+    d) echo $((n * 86400)) ;;
+  esac
 }
 
 package_build_skipped() {
@@ -312,6 +334,11 @@ validate_package_metadata() {
     ""|fast) ;;
     *) echo "invalid release_ring for $(basename "$pkgdir"): $ring"; return 1 ;;
   esac
+
+  if ! package_min_release_age_seconds "$pkgdir" >/dev/null; then
+    echo "invalid min_release_age for $(basename "$pkgdir"): must be a number with optional s/m/h/d suffix"
+    return 1
+  fi
 
   pkgrel_type=$(jq -r 'if has("pkgrel") then .pkgrel | type else "missing" end' "$metadata")
   case "$pkgrel_type" in
