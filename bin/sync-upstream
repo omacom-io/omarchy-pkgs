@@ -5,6 +5,7 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/package-metadata.sh"
+source "$BUILD_ROOT/helpers/upstream-github.sh"
 
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
@@ -17,7 +18,10 @@ Usage: $0 [PACKAGE...]
 
 Update packages that track an upstream vendor release feed instead of the AUR.
 
-A package opts in by providing pkgbuilds/<package>/.omarchy/upstream.sh, a hook
+A package whose upstream ships tagged GitHub releases with a checksum manifest
+opts in declaratively, via "upstream" in .omarchy/package.json (see
+helpers/upstream-github.sh for the schema); no code needed. Anything with a
+bespoke feed provides pkgbuilds/<package>/.omarchy/upstream.sh instead, a hook
 that reports the newest upstream release as JSON on stdout:
 
   {
@@ -304,12 +308,21 @@ sync_package() {
     return 0
   fi
 
-  if [[ ! -f "$hook" ]]; then
+  local github_repo
+  github_repo=$(package_upstream_github_repo "$package_dir")
+
+  if [[ -n "$github_repo" && -f "$hook" ]]; then
+    print_error "Package $package declares both upstream.github and an upstream.sh hook; keep exactly one"
+    ((++FAILED))
+    return 0
+  fi
+
+  if [[ -z "$github_repo" && ! -f "$hook" ]]; then
     if [[ "$SPECIFIC_MODE" == true ]]; then
-      print_error "Package $package is missing .omarchy/upstream.sh"
+      print_error "Package $package has neither an upstream declaration nor .omarchy/upstream.sh"
       ((++FAILED))
     else
-      print_info "Skipping $package: no upstream hook"
+      print_info "Skipping $package: no upstream source"
       ((++SKIPPED))
     fi
     return 0
@@ -325,7 +338,13 @@ sync_package() {
   print_info "Checking $package for upstream releases..."
 
   local release
-  if ! release=$(cd "$package_dir" && PACKAGE_NAME="$package" \
+  if [[ -n "$github_repo" ]]; then
+    if ! release=$(github_upstream_release "$package_dir" "$min_age"); then
+      print_error "GitHub release provider failed for $package"
+      ((++FAILED))
+      return 0
+    fi
+  elif ! release=$(cd "$package_dir" && PACKAGE_NAME="$package" \
       MIN_RELEASE_AGE_SECONDS="$min_age" \
       BYPASS_MIN_RELEASE_AGE="${BYPASS_MIN_RELEASE_AGE:-}" \
       bash .omarchy/upstream.sh); then

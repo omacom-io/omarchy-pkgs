@@ -13,6 +13,7 @@
 #   { "source": "aur", "rebuild_on": ["qt6-base"] }
 #   { "source": "local" }
 #   { "source": "local", "min_release_age": "24h" }
+#   { "source": "local", "upstream": { "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "x86_64": "name-{tag}-x64.tar.xz" } } }
 #
 # bin/sync-aur also writes upstream_commit for AUR-backed packages, and
 # bin/sync-rebuilds writes rebuilt_against for packages declaring rebuild_on.
@@ -164,9 +165,14 @@ package_has_upstream_hook() {
   [[ -f "$pkgdir/.omarchy/upstream.sh" ]]
 }
 
+package_has_upstream_provider() {
+  local pkgdir="$1"
+  [[ -n "$(package_metadata_value "$pkgdir" '.upstream.github' "")" ]]
+}
+
 packages_for_upstream_sync() {
   package_dirs | while IFS= read -r pkgdir; do
-    if package_has_upstream_hook "$pkgdir"; then
+    if package_has_upstream_hook "$pkgdir" || package_has_upstream_provider "$pkgdir"; then
       basename "$pkgdir"
     fi
   done
@@ -337,6 +343,20 @@ validate_package_metadata() {
 
   if ! package_min_release_age_seconds "$pkgdir" >/dev/null; then
     echo "invalid min_release_age for $(basename "$pkgdir"): must be a number with optional s/m/h/d suffix"
+    return 1
+  fi
+
+  if ! jq -e '
+    (.upstream // {}) | type == "object"
+    and (if . == {} then true else
+      ((.github // "") | type == "string" and test("\\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\z"))
+      and ((.checksums // "") | type == "string" and length > 0)
+      and ((.assets // {}) | type == "object" and length > 0 and (to_entries | all(
+        (.key | test("\\A[a-z0-9_]+\\z")) and (.value | type == "string" and length > 0)
+      )))
+    end)
+  ' "$metadata" >/dev/null; then
+    echo "invalid upstream for $(basename "$pkgdir"): needs github owner/repo, checksums asset name, and an assets arch->name map"
     return 1
   fi
 
