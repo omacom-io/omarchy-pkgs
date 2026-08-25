@@ -29,8 +29,10 @@ package_upstream_github_repo() {
 # Fetches sit behind functions so the self-test can replace them with fixture
 # readers; everything below the fetch is deterministic and testable offline.
 # Only the 100 most recent releases are considered -- a bounded search, not
-# pagination. A feed whose entire first page is drafts, prereleases, or
-# quarantined releases reports no update and waits for the next run.
+# pagination. Quarantined releases report no update and wait for the next
+# run; a page with no stable release at all (drafts and prereleases only)
+# fails the sync instead, because a provider-tracked feed suddenly shipping
+# nothing stable is an anomaly worth a loud error, not a silent skip.
 github_fetch_releases() {
   local repo="$1"
   curl -fsSL "https://api.github.com/repos/$repo/releases?per_page=100"
