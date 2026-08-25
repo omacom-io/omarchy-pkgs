@@ -93,10 +93,14 @@ package_min_release_age_seconds() {
     echo 0
     return 0
   fi
+  # A present-but-empty value maps to "unparseable", not to "absent": only a
+  # missing key means no hold, so '"min_release_age": ""' cannot silently
+  # disable the quarantine.
   raw=$(jq -r '
-    if has("min_release_age") then
-      .min_release_age | if type == "string" or type == "number" then tostring else "unparseable" end
-    else "" end
+    if has("min_release_age") | not then ""
+    elif (.min_release_age | type) == "string" or (.min_release_age | type) == "number" then
+      .min_release_age | tostring | if . == "" then "unparseable" else . end
+    else "unparseable" end
   ' "$metadata")
   if [[ -z "$raw" ]]; then
     echo 0

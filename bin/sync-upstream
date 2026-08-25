@@ -592,6 +592,7 @@ EOF
   check_age '"abc"' "<reject>"
   check_age '"24hh"' "<reject>"
   check_age 'false' "<reject>"
+  check_age '""' "<reject>"
   check_age '"9999999999"' "<reject>"
 
   echo "Manifest validation:"
@@ -616,22 +617,28 @@ EOF
   mkdir -p "$e2e_root"
   cp -a "$BUILD_ROOT/pkgbuilds/mise-bin" "$e2e_root/mise-bin"
 
-  local mise_x64 mise_a64
+  # Fixture versions extend the checked-in pkgver so they stay newer no
+  # matter what version the real package is at when the test runs.
+  local mise_current mise_aged mise_fresh mise_x64 mise_a64
+  mise_current=$(grep -m1 '^pkgver=' "$e2e_root/mise-bin/PKGBUILD" | cut -d= -f2- | tr -d "\"'")
+  mise_aged="${mise_current}.90"
+  mise_fresh="${mise_current}.91"
   mise_x64=$(printf 'e%.0s' {1..64})
   mise_a64=$(printf 'f%.0s' {1..64})
-  FIXTURE_RELEASES=$(jq -n --arg young "$young" --arg old2 "$old2d" '[
-    {tag_name: "v2026.9.1", published_at: $young, draft: false, prerelease: false},
-    {tag_name: "v2026.9.0", published_at: $old2,  draft: false, prerelease: false}
+  FIXTURE_RELEASES=$(jq -n --arg young "$young" --arg old2 "$old2d" \
+    --arg aged "v$mise_aged" --arg fresh "v$mise_fresh" '[
+    {tag_name: $fresh, published_at: $young, draft: false, prerelease: false},
+    {tag_name: $aged,  published_at: $old2,  draft: false, prerelease: false}
   ]')
   FIXTURE_CHECKSUMS=$(printf '%s\n' \
-    "$mise_x64  ./mise-v2026.9.0-linux-x64.tar.xz" \
-    "$mise_a64  ./mise-v2026.9.0-linux-arm64.tar.xz")
+    "$mise_x64  ./mise-v$mise_aged-linux-x64.tar.xz" \
+    "$mise_a64  ./mise-v$mise_aged-linux-arm64.tar.xz")
 
   local prev_updated=$UPDATED prev_failed=$FAILED
   PKGBUILDS_DIR="$e2e_root" sync_package mise-bin >/dev/null 2>&1 || true
   check "sync_package updates without failures" "updated=1 failed=0" \
     "updated=$((UPDATED - prev_updated)) failed=$((FAILED - prev_failed))"
-  check "the 24h manifest policy holds v2026.9.1 and ships v2026.9.0" "2026.9.0" \
+  check "the 24h manifest policy holds v$mise_fresh and ships v$mise_aged" "$mise_aged" \
     "$(grep -m1 '^pkgver=' "$e2e_root/mise-bin/PKGBUILD" | cut -d= -f2-)"
   check "pkgrel resets to 1" "1" \
     "$(grep -m1 '^pkgrel=' "$e2e_root/mise-bin/PKGBUILD" | cut -d= -f2-)"
