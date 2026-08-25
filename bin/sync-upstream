@@ -328,8 +328,19 @@ sync_package() {
     return 0
   fi
 
-  local github_repo
+  local github_repo has_upstream=false
   github_repo=$(package_upstream_github_repo "$package_dir")
+  if package_has_upstream_provider "$package_dir"; then
+    has_upstream=true
+  fi
+
+  # A present-but-unusable declaration fails loudly; treating it like "no
+  # upstream source" would silently drop the package from scheduled runs.
+  if [[ "$has_upstream" == true && -z "$github_repo" ]]; then
+    print_error "Package $package has an unusable upstream declaration (needs a github owner/repo)"
+    ((++FAILED))
+    return 0
+  fi
 
   if [[ -n "$github_repo" && -f "$hook" ]]; then
     print_error "Package $package declares both upstream.github and an upstream.sh hook; keep exactly one"
@@ -595,6 +606,51 @@ EOF
   cp "$pkg/.omarchy/package.json" "$agepkg/.omarchy/package.json"
   vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
   check "the real declaration shape is accepted" "0" "$vst"
+
+  # End to end over the real mise-bin package: its checked-in metadata and
+  # PKGBUILD, the full sync_package path (selection, validation, backstop,
+  # rewrite, read-back verification), with only the two network fetches
+  # replaced by mise-shaped fixtures.
+  echo "End-to-end sync_package with the checked-in mise-bin metadata:"
+  local e2e_root="$TEMP_DIR/e2e-pkgbuilds"
+  mkdir -p "$e2e_root"
+  cp -a "$BUILD_ROOT/pkgbuilds/mise-bin" "$e2e_root/mise-bin"
+
+  local mise_x64 mise_a64
+  mise_x64=$(printf 'e%.0s' {1..64})
+  mise_a64=$(printf 'f%.0s' {1..64})
+  FIXTURE_RELEASES=$(jq -n --arg young "$young" --arg old2 "$old2d" '[
+    {tag_name: "v2026.9.1", published_at: $young, draft: false, prerelease: false},
+    {tag_name: "v2026.9.0", published_at: $old2,  draft: false, prerelease: false}
+  ]')
+  FIXTURE_CHECKSUMS=$(printf '%s\n' \
+    "$mise_x64  ./mise-v2026.9.0-linux-x64.tar.xz" \
+    "$mise_a64  ./mise-v2026.9.0-linux-arm64.tar.xz")
+
+  local prev_updated=$UPDATED prev_failed=$FAILED
+  PKGBUILDS_DIR="$e2e_root" sync_package mise-bin >/dev/null 2>&1 || true
+  check "sync_package updates without failures" "updated=1 failed=0" \
+    "updated=$((UPDATED - prev_updated)) failed=$((FAILED - prev_failed))"
+  check "the 24h manifest policy holds v2026.9.1 and ships v2026.9.0" "2026.9.0" \
+    "$(grep -m1 '^pkgver=' "$e2e_root/mise-bin/PKGBUILD" | cut -d= -f2-)"
+  check "pkgrel resets to 1" "1" \
+    "$(grep -m1 '^pkgrel=' "$e2e_root/mise-bin/PKGBUILD" | cut -d= -f2-)"
+  check "x86_64 checksum lands in the PKGBUILD" "sha256sums_x86_64=('$mise_x64')" \
+    "$(grep -m1 '^sha256sums_x86_64=' "$e2e_root/mise-bin/PKGBUILD")"
+  check "aarch64 checksum lands in the PKGBUILD" "sha256sums_aarch64=('$mise_a64')" \
+    "$(grep -m1 '^sha256sums_aarch64=' "$e2e_root/mise-bin/PKGBUILD")"
+
+  # A malformed declaration must fail the run loudly, and still be discovered.
+  local badpkg="$e2e_root/selftest-broken"
+  mkdir -p "$badpkg/.omarchy"
+  printf 'pkgver=1.0.0\npkgrel=1\n' > "$badpkg/PKGBUILD"
+  echo '{"source": "local", "upstream": false}' > "$badpkg/.omarchy/package.json"
+  check "malformed upstream stays discoverable for scheduled runs" "yes" \
+    "$(PKGBUILDS_DIR="$e2e_root" packages_for_upstream_sync | grep -qx selftest-broken && echo yes || echo no)"
+  prev_failed=$FAILED
+  PKGBUILDS_DIR="$e2e_root" sync_package selftest-broken >/dev/null 2>&1 || true
+  check "malformed upstream fails the sync instead of skipping" "1" "$((FAILED - prev_failed))"
+  FAILED=0
 
   echo ""
   if [[ "$failures" -eq 0 ]]; then

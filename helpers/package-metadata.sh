@@ -178,9 +178,12 @@ package_has_upstream_hook() {
 }
 
 package_has_upstream_provider() {
-  local pkgdir="$1"
-  # `objects` drops a non-object upstream value instead of erroring jq.
-  [[ -n "$(package_metadata_value "$pkgdir" '(.upstream? | objects | .github)' "")" ]]
+  local pkgdir="$1" metadata
+  metadata=$(metadata_file_for_dir "$pkgdir")
+  [[ -f "$metadata" ]] || return 1
+  # Any upstream key counts, valid or not: a malformed declaration must reach
+  # bin/sync-upstream and fail loudly there, not vanish from discovery.
+  jq -e 'has("upstream")' "$metadata" >/dev/null
 }
 
 packages_for_upstream_sync() {

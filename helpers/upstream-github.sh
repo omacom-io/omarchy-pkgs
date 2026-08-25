@@ -104,7 +104,10 @@ github_upstream_release() {
       best_pkgver=$pkgver
       best_published_at=$published_at
     fi
-  done < <(jq -r '.[] | select((.draft or .prerelease) | not) | [.tag_name // empty, .published_at // empty] | @tsv' <<<"$releases")
+  # `// ""` rather than `// empty`: empty would drop the field and shift the
+  # columns, so a malformed row could masquerade as a different one instead
+  # of tripping the per-field checks above.
+  done < <(jq -r '.[] | select((.draft or .prerelease) | not) | [.tag_name // "", .published_at // ""] | @tsv' <<<"$releases")
 
   if (( candidates == 0 )); then
     echo "no stable releases found in the feed for $repo" >&2
