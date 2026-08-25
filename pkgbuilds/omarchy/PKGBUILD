@@ -10,9 +10,9 @@
 #    provenance only (empty when cut from a bare commit). omarchy and
 #    omarchy-settings must always carry identical _tag/_commit/pkgver/sha256sums.
 pkgname='omarchy'
-_tag=''
+_tag='v4.0.1'
 _commit='13f18b2cb7286fb54f87daf571a031aa6af3d8f0'
-pkgver=4.0.1rc5
+pkgver=4.0.1
 pkgrel=1
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
