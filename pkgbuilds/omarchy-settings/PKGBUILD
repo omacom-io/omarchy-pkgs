@@ -150,6 +150,16 @@ package() {
   install -d "$pkgdir/etc/fonts/conf.d"
   ln -sfn /usr/share/fontconfig/conf.avail/50-omarchy.conf "$pkgdir/etc/fonts/conf.d/50-omarchy.conf"
   install -Dm644 default/xdg-terminal-exec/hyprland-xdg-terminals.list "$pkgdir/usr/share/xdg-terminal-exec/hyprland-xdg-terminals.list"
+  # polkit rules granting Omarchy's own actions. /usr/share/polkit-1/rules.d is
+  # the location for package-shipped rules (bolt, gvfs, networkmanager, systemd
+  # and upower all ship there); /etc/polkit-1/rules.d is left to the admin,
+  # whose files sort ahead of these. Not shipped via the etc/** copy below for
+  # that reason, and because that directory is 0750 root:polkitd -- owning it
+  # would drop it to 0755 root:root and let any user read the policy.
+  for rule in default/polkit-1/rules.d/*.rules; do
+    [[ -e $rule ]] || continue
+    install -Dm644 "$rule" "$pkgdir/usr/share/polkit-1/rules.d/$(basename "$rule")"
+  done
   install -Dm644 default/applications/mimeapps.list "$pkgdir/usr/share/applications/mimeapps.list"
   install -Dm644 default/systemd/user/bt-agent.service "$pkgdir/usr/lib/systemd/user/bt-agent.service"
   install -Dm644 default/systemd/user/omarchy-sleep-lock.service "$pkgdir/usr/lib/systemd/user/omarchy-sleep-lock.service"
