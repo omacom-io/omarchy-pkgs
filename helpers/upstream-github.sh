@@ -21,7 +21,24 @@
 
 package_upstream_github_repo() {
   local pkgdir="$1"
-  package_metadata_value "$pkgdir" '.upstream.github' ""
+  # `objects` drops a non-object upstream value (validation rejects those
+  # separately) instead of erroring the jq pipeline.
+  package_metadata_value "$pkgdir" '(.upstream? | objects | .github)' ""
+}
+
+# Fetches sit behind functions so the self-test can replace them with fixture
+# readers; everything below the fetch is deterministic and testable offline.
+# Only the 100 most recent releases are considered -- a bounded search, not
+# pagination. A feed whose entire first page is drafts, prereleases, or
+# quarantined releases reports no update and waits for the next run.
+github_fetch_releases() {
+  local repo="$1"
+  curl -fsSL "https://api.github.com/repos/$repo/releases?per_page=100"
+}
+
+github_fetch_checksums() {
+  local repo="$1" tag="$2" asset="$3"
+  curl -fsSL "https://github.com/$repo/releases/download/$tag/$asset"
 }
 
 # Emits the newest qualifying release as hook-contract JSON. min_release_age
@@ -35,18 +52,18 @@ github_upstream_release() {
   local metadata repo checksums_name
   metadata=$(metadata_file_for_dir "$package_dir")
 
-  repo=$(jq -r '.upstream.github // ""' "$metadata")
+  repo=$(jq -r '(.upstream? | objects | .github) // ""' "$metadata")
   if [[ ! "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
     echo "invalid upstream.github repository: '${repo:-<empty>}'" >&2
     return 1
   fi
-  checksums_name=$(jq -r '.upstream.checksums // ""' "$metadata")
+  checksums_name=$(jq -r '(.upstream? | objects | .checksums) // ""' "$metadata")
   if [[ -z "$checksums_name" ]]; then
     echo "upstream.checksums names the checksum manifest asset and is required" >&2
     return 1
   fi
   local arches
-  mapfile -t arches < <(jq -r '.upstream.assets // {} | keys[]' "$metadata")
+  mapfile -t arches < <(jq -r '(.upstream? | objects | .assets) // {} | keys[]' "$metadata")
   if [[ ${#arches[@]} -eq 0 ]]; then
     echo "upstream.assets must map at least one architecture to an asset name" >&2
     return 1
@@ -54,7 +71,7 @@ github_upstream_release() {
 
   local releases now
   now=$(date +%s)
-  if ! releases=$(curl -fsSL "https://api.github.com/repos/$repo/releases?per_page=20"); then
+  if ! releases=$(github_fetch_releases "$repo"); then
     echo "could not fetch the release feed for $repo" >&2
     return 1
   fi
@@ -108,7 +125,7 @@ github_upstream_release() {
   fi
 
   local checksums
-  if ! checksums=$(curl -fsSL "https://github.com/$repo/releases/download/$best_tag/$checksums_name"); then
+  if ! checksums=$(github_fetch_checksums "$repo" "$best_tag" "$checksums_name"); then
     echo "could not fetch $checksums_name for $repo $best_tag" >&2
     return 1
   fi

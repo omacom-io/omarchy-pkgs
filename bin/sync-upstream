@@ -48,8 +48,12 @@ the bypass, so the resulting change still goes through a reviewed PR.
 Arguments:
   PACKAGE    One or more package names to update (optional)
 
+Commands:
+  self-test  Run the offline fixture tests for release selection, the
+             quarantine backstop, and metadata parsing
+
 Examples:
-  $0                          # Update every package with an upstream hook
+  $0                          # Update every package with an upstream source
   $0 openai-codex-desktop     # Update specific packages
 EOF
 }
@@ -155,6 +159,22 @@ set_pkgbuild_array() {
   fi
 
   mv "$rewritten" "$pkgbuild"
+}
+
+# Backstop verdict for a reported release against min_release_age. Returns 0
+# when old enough (or no policy is set, or the bypass is deliberate), 1 when
+# the release is younger than the window, 2 when the report carries no usable
+# published_at and the age cannot be established at all.
+release_age_status() {
+  local release="$1" min_age="$2"
+  (( min_age > 0 )) || return 0
+  [[ "${BYPASS_MIN_RELEASE_AGE:-}" != "1" ]] || return 0
+  local published_at published_epoch
+  published_at=$(jq -r '.published_at // empty' <<<"$release")
+  if [[ -z "$published_at" ]] || ! published_epoch=$(date --date="$published_at" +%s 2>/dev/null); then
+    return 2
+  fi
+  (( $(date +%s) - published_epoch >= min_age )) || return 1
 }
 
 # pacman's own comparator, because nothing else agrees with it at the corners:
@@ -371,23 +391,23 @@ sync_package() {
     return 0
   fi
 
-  # Backstop for min_release_age: the hook already selects within the window,
-  # but a hook bug must not be able to ship a release younger than the policy.
-  if (( min_age > 0 )) && [[ "${BYPASS_MIN_RELEASE_AGE:-}" != "1" ]]; then
-    local published_at published_epoch age
-    published_at=$(jq -r '.published_at // empty' <<<"$release")
-    if [[ -z "$published_at" ]] || ! published_epoch=$(date --date="$published_at" +%s 2>/dev/null); then
-      print_error "min_release_age is set for $package but its hook reported no usable published_at; refusing an unverifiable release"
-      ((++FAILED))
-      return 0
-    fi
-    age=$(( $(date +%s) - published_epoch ))
-    if (( age < min_age )); then
-      print_warning "  Hook reported a release only $((age / 3600))h old, inside the ${min_age}s minimum age; leaving it alone"
+  # Backstop for min_release_age: the selection already honors the window,
+  # but a provider or hook bug must not be able to ship a release younger
+  # than the policy.
+  local age_status=0
+  release_age_status "$release" "$min_age" || age_status=$?
+  case "$age_status" in
+    1)
+      print_warning "  Reported release is inside the ${min_age}s minimum release age; leaving it alone"
       ((++SKIPPED))
       return 0
-    fi
-  fi
+      ;;
+    2)
+      print_error "min_release_age is set for $package but its source reported no usable published_at; refusing an unverifiable release"
+      ((++FAILED))
+      return 0
+      ;;
+  esac
 
   local pkgver current_pkgver
   pkgver=$(jq -r '.pkgver' <<<"$release")
@@ -420,6 +440,175 @@ sync_package() {
   print_success "  $current_pkgver -> $pkgver"
   ((++UPDATED))
 }
+
+# Offline fixture tests: the network fetches in helpers/upstream-github.sh
+# are swapped for fixture readers, everything else runs the production code
+# paths. Covers release selection (fallback past quarantined releases,
+# draft/prerelease filtering, bypass, unchanged version), failure paths
+# (unusable tags/timestamps, missing checksums), checksum template mapping
+# for both architectures, the min_release_age backstop, the duration parser,
+# and manifest validation.
+cmd_self_test() {
+  local failures=0
+
+  check() {
+    local desc="$1" expected="$2" got="$3"
+    if [[ "$expected" == "$got" ]]; then
+      echo "  ok: $desc"
+    else
+      echo "  FAIL: $desc (expected '$expected', got '$got')"
+      failures=$((failures + 1))
+    fi
+  }
+
+  local pkg="$TEMP_DIR/selftest-pkg"
+  mkdir -p "$pkg/.omarchy"
+  printf 'pkgver=1.0.0\npkgrel=1\n' > "$pkg/PKGBUILD"
+  cat > "$pkg/.omarchy/package.json" <<'EOF'
+{
+  "source": "local",
+  "min_release_age": "24h",
+  "upstream": {
+    "github": "example/tool",
+    "checksums": "SHASUMS256.txt",
+    "assets": {
+      "x86_64": "tool-{tag}-x64.tar.xz",
+      "aarch64": "tool-v{pkgver}-arm64.tar.xz"
+    }
+  }
+}
+EOF
+
+  local young old2d old3d
+  young=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+  old2d=$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)
+  old3d=$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+  # v2.0.0 is inside the 24h window; v1.9.9/v1.9.8 are a prerelease and a
+  # draft that would outrank v1.9.0 if the filters failed.
+  local sum_x19 sum_a19 sum_x20 sum_a20
+  sum_x19=$(printf 'a%.0s' {1..64})
+  sum_a19=$(printf 'b%.0s' {1..64})
+  sum_x20=$(printf 'c%.0s' {1..64})
+  sum_a20=$(printf 'd%.0s' {1..64})
+
+  FIXTURE_RELEASES=$(jq -n --arg young "$young" --arg old2 "$old2d" --arg old3 "$old3d" '[
+    {tag_name: "v2.0.0", published_at: $young, draft: false, prerelease: false},
+    {tag_name: "v1.9.9", published_at: $old2,  draft: false, prerelease: true},
+    {tag_name: "v1.9.8", published_at: $old2,  draft: true,  prerelease: false},
+    {tag_name: "v1.9.0", published_at: $old2,  draft: false, prerelease: false},
+    {tag_name: "v1.8.0", published_at: $old3,  draft: false, prerelease: false}
+  ]')
+  FIXTURE_CHECKSUMS=$(printf '%s\n' \
+    "$sum_x19  ./tool-v1.9.0-x64.tar.xz" \
+    "$sum_a19  tool-v1.9.0-arm64.tar.xz" \
+    "$sum_x20  *tool-v2.0.0-x64.tar.xz" \
+    "$sum_a20  tool-v2.0.0-arm64.tar.xz")
+
+  github_fetch_releases() { printf '%s' "$FIXTURE_RELEASES"; }
+  github_fetch_checksums() { printf '%s\n' "$FIXTURE_CHECKSUMS"; }
+
+  echo "Release selection:"
+  local out
+  out=$(github_upstream_release "$pkg" 86400 2>/dev/null) || out="<error>"
+  check "quarantine falls back past the young v2.0.0" "1.9.0" "$(jq -r '.pkgver // "<none>"' <<<"$out")"
+  check "selected release reports its published_at" "$old2d" "$(jq -r '.published_at // "<none>"' <<<"$out")"
+  check "x86_64 checksum via {tag} template and ./ prefix" "$sum_x19" "$(jq -r '.sha256sums.x86_64[0] // "<none>"' <<<"$out")"
+  check "aarch64 checksum via {pkgver} template" "$sum_a19" "$(jq -r '.sha256sums.aarch64[0] // "<none>"' <<<"$out")"
+
+  out=$(github_upstream_release "$pkg" 0 2>/dev/null) || out="<error>"
+  check "no policy selects the newest stable release" "2.0.0" "$(jq -r '.pkgver // "<none>"' <<<"$out")"
+  check "prerelease v1.9.9 and draft v1.9.8 are never selected" "" "$(jq -r 'select(.pkgver == "1.9.9" or .pkgver == "1.9.8") | .pkgver' <<<"$out")"
+
+  out=$(BYPASS_MIN_RELEASE_AGE=1 github_upstream_release "$pkg" 86400 2>/dev/null) || out="<error>"
+  check "bypass lifts the quarantine" "2.0.0" "$(jq -r '.pkgver // "<none>"' <<<"$out")"
+  check "x86_64 checksum via * binary-mode prefix" "$sum_x20" "$(jq -r '.sha256sums.x86_64[0] // "<none>"' <<<"$out")"
+
+  out=$(github_upstream_release "$pkg" 8640000 2>/dev/null) || out="<error>"
+  check "everything quarantined reports no update" "{}" "$(jq -c . <<<"$out")"
+
+  printf 'pkgver=1.9.0\npkgrel=1\n' > "$pkg/PKGBUILD"
+  out=$(github_upstream_release "$pkg" 86400 2>/dev/null) || out="<error>"
+  check "already checked in reports no update" "{}" "$(jq -c . <<<"$out")"
+  printf 'pkgver=1.0.0\npkgrel=1\n' > "$pkg/PKGBUILD"
+
+  echo "Failure paths:"
+  local rc
+  FIXTURE_RELEASES=$(jq -n '[{tag_name: "v1.9.0", published_at: "not-a-date", draft: false, prerelease: false}]')
+  rc=0; github_upstream_release "$pkg" 86400 >/dev/null 2>&1 || rc=$?
+  check "invalid published_at fails the sync" "1" "$rc"
+
+  FIXTURE_RELEASES=$(jq -n --arg old "$old2d" '[{tag_name: "release 1.9!", published_at: $old, draft: false, prerelease: false}]')
+  rc=0; github_upstream_release "$pkg" 86400 >/dev/null 2>&1 || rc=$?
+  check "unusable tag fails the sync" "1" "$rc"
+
+  FIXTURE_RELEASES=$(jq -n --arg old "$old2d" '[{tag_name: "v1.9.0", published_at: $old, draft: false, prerelease: false}]')
+  FIXTURE_CHECKSUMS="$sum_x19  ./tool-v1.9.0-x64.tar.xz"
+  rc=0; github_upstream_release "$pkg" 86400 >/dev/null 2>&1 || rc=$?
+  check "missing aarch64 checksum fails the sync" "1" "$rc"
+
+  echo "Quarantine backstop:"
+  local rel st
+  rel=$(jq -n --arg p "$old2d" '{pkgver: "1.9.0", published_at: $p, sha256sums: {}}')
+  st=0; release_age_status "$rel" 86400 || st=$?
+  check "old enough passes" "0" "$st"
+  rel=$(jq -n --arg p "$young" '{pkgver: "2.0.0", published_at: $p, sha256sums: {}}')
+  st=0; release_age_status "$rel" 86400 || st=$?
+  check "too young is held" "1" "$st"
+  st=0; release_age_status "$rel" 0 || st=$?
+  check "no policy passes anything" "0" "$st"
+  st=0; BYPASS_MIN_RELEASE_AGE=1 release_age_status "$rel" 86400 || st=$?
+  check "deliberate bypass passes" "0" "$st"
+  rel=$(jq -n '{pkgver: "2.0.0", sha256sums: {}}')
+  st=0; release_age_status "$rel" 86400 || st=$?
+  check "missing published_at is unprovable" "2" "$st"
+
+  echo "Duration parser:"
+  local agepkg="$TEMP_DIR/selftest-age"
+  mkdir -p "$agepkg/.omarchy"
+  check_age() {
+    local json_value="$1" expected="$2" got
+    jq -n "{source: \"local\", min_release_age: $json_value}" > "$agepkg/.omarchy/package.json"
+    got=$(package_min_release_age_seconds "$agepkg") || got="<reject>"
+    check "min_release_age $json_value" "$expected" "$got"
+  }
+  check_age '"24h"' 86400
+  check_age '"90m"' 5400
+  check_age '"2d"' 172800
+  check_age '3600' 3600
+  check_age '"600s"' 600
+  check_age '"010h"' 36000
+  check_age '"abc"' "<reject>"
+  check_age '"24hh"' "<reject>"
+  check_age 'false' "<reject>"
+  check_age '"9999999999"' "<reject>"
+
+  echo "Manifest validation:"
+  printf 'pkgver=1.0.0\n' > "$agepkg/PKGBUILD"
+  local vst
+  echo '{"source": "local", "upstream": false}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "upstream: false is rejected" "1" "$vst"
+  echo '{"source": "local", "upstream": {"github": "example/tool"}}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "upstream without checksums/assets is rejected" "1" "$vst"
+  cp "$pkg/.omarchy/package.json" "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "the real declaration shape is accepted" "0" "$vst"
+
+  echo ""
+  if [[ "$failures" -eq 0 ]]; then
+    print_success "Self-test passed"
+  else
+    print_error "$failures self-test failure(s)"
+    exit 1
+  fi
+}
+
+if [[ ${#SPECIFIC_PACKAGES[@]} -gt 0 && "${SPECIFIC_PACKAGES[0]}" == "self-test" ]]; then
+  cmd_self_test
+  exit 0
+fi
 
 if [[ ${#SPECIFIC_PACKAGES[@]} -gt 0 ]]; then
   SPECIFIC_MODE=true

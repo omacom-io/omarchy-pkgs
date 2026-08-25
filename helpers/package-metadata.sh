@@ -82,17 +82,29 @@ package_is_fast_ring() {
 
 # Quarantine window for upstream releases, in seconds. Accepts a bare number
 # of seconds or a number suffixed s/m/h/d ("24h", "2d"). Unset means 0 (no
-# hold); an unparseable value returns 1 so callers fail closed instead of
-# silently dropping the hold.
+# hold); an unparseable value -- including a non-string/non-number JSON type
+# like false -- returns 1 so callers fail closed instead of silently dropping
+# the hold. At most 9 digits: enough for three decades in seconds, and small
+# enough that no suffix multiplication can overflow 64-bit arithmetic.
 package_min_release_age_seconds() {
-  local pkgdir="$1" raw
-  raw=$(package_metadata_value "$pkgdir" '.min_release_age' "")
+  local pkgdir="$1" metadata raw
+  metadata=$(metadata_file_for_dir "$pkgdir")
+  if [[ ! -f "$metadata" ]]; then
+    echo 0
+    return 0
+  fi
+  raw=$(jq -r '
+    if has("min_release_age") then
+      .min_release_age | if type == "string" or type == "number" then tostring else "unparseable" end
+    else "" end
+  ' "$metadata")
   if [[ -z "$raw" ]]; then
     echo 0
     return 0
   fi
-  [[ "$raw" =~ ^([0-9]+)([smhd]?)$ ]] || return 1
-  local n=${BASH_REMATCH[1]}
+  [[ "$raw" =~ ^([0-9]{1,9})([smhd]?)$ ]] || return 1
+  # Forced base 10: bash arithmetic would otherwise read "010" as octal.
+  local n=$((10#${BASH_REMATCH[1]}))
   case "${BASH_REMATCH[2]}" in
     ""|s) echo "$n" ;;
     m) echo $((n * 60)) ;;
@@ -167,7 +179,8 @@ package_has_upstream_hook() {
 
 package_has_upstream_provider() {
   local pkgdir="$1"
-  [[ -n "$(package_metadata_value "$pkgdir" '.upstream.github' "")" ]]
+  # `objects` drops a non-object upstream value instead of erroring jq.
+  [[ -n "$(package_metadata_value "$pkgdir" '(.upstream? | objects | .github)' "")" ]]
 }
 
 packages_for_upstream_sync() {
@@ -346,15 +359,18 @@ validate_package_metadata() {
     return 1
   fi
 
+  # `has` rather than `// {}`: jq's // treats false as absent, which would
+  # let "upstream": false slip through as an empty declaration.
   if ! jq -e '
-    (.upstream // {}) | type == "object"
-    and (if . == {} then true else
+    if has("upstream") | not then true
+    elif (.upstream | type) != "object" then false
+    else .upstream |
       ((.github // "") | type == "string" and test("\\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\z"))
       and ((.checksums // "") | type == "string" and length > 0)
       and ((.assets // {}) | type == "object" and length > 0 and (to_entries | all(
         (.key | test("\\A[a-z0-9_]+\\z")) and (.value | type == "string" and length > 0)
       )))
-    end)
+    end
   ' "$metadata" >/dev/null; then
     echo "invalid upstream for $(basename "$pkgdir"): needs github owner/repo, checksums asset name, and an assets arch->name map"
     return 1

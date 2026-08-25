@@ -258,8 +258,41 @@ bin/sync-upstream openai-codex-desktop  # Update specific packages
 
 Some vendors publish a release feed of their own that is faster and more precise
 than the AUR packaging of it. Those packages are `source: local` — Omarchy owns
-the PKGBUILD — and provide `.omarchy/upstream.sh`, a hook that reports the newest
-upstream release as JSON on stdout:
+the PKGBUILD — and declare where releases come from in one of two ways.
+
+A vendor shipping tagged GitHub releases with a checksum manifest asset is pure
+data, declared as `upstream` in `.omarchy/package.json` with no code at all:
+
+```json
+"upstream": {
+  "github": "jdx/mise",
+  "checksums": "SHASUMS256.txt",
+  "assets": {
+    "x86_64": "mise-{tag}-linux-x64.tar.xz",
+    "aarch64": "mise-{tag}-linux-arm64.tar.xz"
+  }
+}
+```
+
+`{tag}` and `{pkgver}` interpolate into asset names; a leading `v` on the tag is
+stripped for `pkgver`; drafts and prereleases are ignored. Only the 100 most
+recent releases are considered. The provider fails closed on anything it cannot
+read — an unusable tag, timestamp, or checksum stops the sync rather than being
+skipped.
+
+A package may also declare `"min_release_age": "24h"` (`s`/`m`/`h`/`d` suffix or
+bare seconds) to quarantine fresh releases until maintainers have had time to
+pull a bad or compromised one. The newest release that has cleared the window
+ships, so a fast release cadence cannot starve updates. The window is enforced
+centrally: whatever reports the release must prove its age via `published_at`,
+or the sync fails. A maintainer deliberately shipping inside the window runs
+`BYPASS_MIN_RELEASE_AGE=1 bin/sync-upstream <package>` locally and merges the
+result through a normal PR; scheduled automation never sets the bypass.
+
+A vendor whose feed fits no convention (a Debian package index, a bare
+version.txt) instead provides `.omarchy/upstream.sh`, a hook that reports the
+newest upstream release as JSON on stdout — declaring both an `upstream` block
+and a hook is an error:
 
 ```json
 {
@@ -281,7 +314,11 @@ back cannot walk the repository backwards.
 Hooks should read checksums from whatever manifest the vendor publishes rather
 than downloading the artifacts — see `pkgbuilds/openai-codex-desktop/.omarchy/upstream.sh`,
 which reads OpenAI's Debian package index and never fetches the 750 MB of debs
-it describes.
+it describes. Hooks honoring `min_release_age` receive the window as
+`MIN_RELEASE_AGE_SECONDS` and report `published_at` alongside `pkgver`.
+
+`bin/sync-upstream self-test` runs offline fixture tests over the release
+selection, quarantine backstop, duration parsing, and manifest validation.
 
 ### Sync Rebuild Triggers
 
