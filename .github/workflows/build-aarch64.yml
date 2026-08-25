@@ -1,157 +1,179 @@
-name: Build aarch64 Packages
+name: aarch64 package repo
 
-# Builds the aarch64 half of the repository on GitHub's native ARM64 runners,
-# which are free for public repositories. The build system already supports
-# aarch64 end to end -- bin/build, bin/sign, bin/update-repo and bin/sync-repo
-# all take --arch -- but it has only ever been driven by hand, and the README
-# tells you to emulate ARM64 on an x86_64 host with QEMU. Running it on a
-# native runner removes the emulation entirely.
+# Builds the aarch64 [omarchy] repository natively on a GitHub-hosted arm64
+# runner and publishes it as a workflow artifact. Nothing here touches the
+# x86_64 path: the sync-* workflows and bin/repo's defaults are unchanged.
 #
-# This builds and uploads packages as artifacts; it deliberately does not
-# publish. Publishing needs the repository signing key and the pkgs.omarchy.org
-# credentials, so promoting these artifacts stays a maintainer step. Download
-# the artifact into build-output/<mirror>/aarch64, then, with <mirror> matching
-# the mirror the artifact was built against:
-#
-#   bin/repo sign    --arch aarch64 --mirror <mirror>
-#   bin/repo promote --arch aarch64 --mirror <mirror>
-#   bin/repo update  --arch aarch64 --mirror <mirror>
-#   bin/repo sync    --arch aarch64 --mirror <mirror>
-#
-# The update step is not optional. bin/promote-build moves package files into
-# the published tree but deliberately skips omarchy-build.db*, and bin/repo
-# update is the only thing that runs the repo-add that builds omarchy.db.
-# Without it bin/sync-repo uploads packages and no database, and pacman clients
-# pointed at the aarch64 tree resolve nothing. --mirror matters for the same
-# reason: helpers/paths.sh defaults MIRROR to edge, so omitting it while
-# promoting a stable artifact reads and writes the wrong tree.
-#
-# Packages whose PKGBUILD arch=() excludes aarch64 are skipped by
-# should_build_for_arch() in build/build.sh, so hardware-specific x86 packages
-# (nvidia, asusctl, intel-*) cost nothing here.
+# Three entry points:
+#   push               -- every change to the package set on the snapdragon
+#                         branch rebuilds what moved (the tree is cached).
+#   workflow_dispatch  -- build on demand from a branch of this repository.
+#   workflow_call      -- called by omarchy-iso's aarch64 ISO workflow so the
+#                         ISO build can consume the repo from the same run.
 
 on:
+  push:
+    branches: [snapdragon]
+    paths:
+      - "pkgbuilds/**"
+      - "bin/**"
+      - "build/**"
+      - "helpers/**"
+      - ".github/workflows/build-aarch64.yml"
   workflow_dispatch:
     inputs:
       packages:
-        description: 'Specific packages to build (space-separated, leave empty for all)'
-        required: false
-        default: ''
+        description: "Space-separated pkgbases to build (empty = the ISO set)"
+        type: string
+        default: ""
       mirror:
-        description: 'Mirror to build against'
-        required: false
+        description: "edge or stable"
+        type: string
         default: edge
-        type: choice
-        options:
-          - edge
-          - stable
+  workflow_call:
+    inputs:
+      pkgs_repository:
+        description: "owner/name of the omarchy-pkgs checkout to build"
+        type: string
+        required: true
+      pkgs_ref:
+        description: "branch, tag or SHA of that repository"
+        type: string
+        required: true
+      packages:
+        type: string
+        default: ""
+      mirror:
+        type: string
+        default: edge
+    outputs:
+      artifact:
+        description: "Name of the uploaded repository artifact"
+        value: ${{ jobs.build.outputs.artifact }}
 
 jobs:
   build:
     runs-on: ubuntu-24.04-arm
-    # A full unscoped build compiles every aarch64-capable package from source.
-    # GitHub caps a job at 6 hours. If the full set ever outgrows that, note
-    # that the packages input is not a general answer: build/build.sh builds
-    # only the names given and resolves inter-package dependencies solely
-    # within that set, and it configures the production [omarchy] repo only
-    # when a database already exists -- which on a clean runner it does not. So
-    # a batch has to be dependency-closed to succeed. pkgbuilds/omarchy, for
-    # instance, pins omarchy-settings=${pkgver} and fails at makepkg -s without
-    # it. The input is for targeted rebuilds; splitting a full build needs the
-    # batches chosen with that in mind.
     timeout-minutes: 360
     permissions:
       contents: read
-
+    outputs:
+      artifact: ${{ steps.meta.outputs.artifact }}
+    env:
+      ARCH: aarch64
+      INPUT_MIRROR: ${{ inputs.mirror }}
+      INPUT_PACKAGES: ${{ inputs.packages }}
+      # Everything the ISO installs from [omarchy] that has an aarch64 build
+      # (JimmayVV/omarchy-iso#6). quickshell-git is deliberately absent: the
+      # ISO substitutes Arch Linux ARM's quickshell for it.
+      ISO_PACKAGES: >-
+        omarchy-keyring ttf-jetbrains-mono-nerd-basic limine-mkinitcpio-hook limine-snapper-sync
+        linux-aarch64-pkgbase-shim qcom-firmware-extract
+        omarchy-settings omarchy omarchy-nvim
+        aether cliamp herdr localsend-bin mise-bin omacalc omacut omawrite omarchy-chromium-bin
+        ttfx yay tobi-try ttf-ia-writer ufw-docker xdg-terminal-exec yaru-icon-theme
+        tzupdate tensaku hyprland-preview-share-picker
     steps:
-      - name: Checkout repository
+      - name: Checkout omarchy-pkgs
         uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          repository: ${{ inputs.pkgs_repository || github.repository }}
+          ref: ${{ inputs.pkgs_ref || github.ref }}
 
-      - name: Confirm the runner is natively aarch64
-        # bin/build falls back to QEMU when it finds an x86_64 host. That still
-        # produces correct packages, but takes many times longer -- long enough
-        # to hit the job timeout. If this ever runs somewhere else, fail loudly
-        # rather than silently emulating.
+      - name: Resolve inputs
+        id: meta
         run: |
-          set -euo pipefail
-          arch=$(uname -m)
-          echo "Runner architecture: $arch"
-          if [[ $arch != "aarch64" ]]; then
-            echo "::error::Expected a native aarch64 runner, got $arch." \
-                 "Building aarch64 under emulation here would exceed the job timeout."
-            exit 1
-          fi
+          MIRROR="${INPUT_MIRROR:-edge}"
+          PACKAGES="${INPUT_PACKAGES:-$ISO_PACKAGES}"
+          case "$MIRROR" in edge|stable) ;; *) echo "invalid mirror: $MIRROR" >&2; exit 1 ;; esac
+          re='^[A-Za-z0-9._+ -]+$'
+          if ! [[ $PACKAGES =~ $re ]]; then echo "invalid package list" >&2; exit 1; fi
+          {
+            echo "MIRROR=$MIRROR"
+            echo "PACKAGES=$PACKAGES"
+            echo "REPO_DIR=pkgs.omarchy.org/$MIRROR/$ARCH"
+            echo "OUTPUT_DIR=build-output/$MIRROR/$ARCH"
+          } >> "$GITHUB_ENV"
+          echo "artifact=omarchy-repo-$ARCH-$MIRROR" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare the bind-mounted build directories
-        # bin/build bind-mounts build-output/ and pkgs.omarchy.org/ into the
-        # builder container, which works as the image's "builder" user (uid
-        # 1000, from the useradd in build/Dockerfile). A GitHub runner is uid
-        # 1001, and make_dir_writable() chowns these directories to the host
-        # user -- so the container cannot write its incremental
-        # omarchy-build.db, and pacman then fails to resolve any makedepends.
-        # This is invisible on a workstation where the developer is also uid
-        # 1000. chown preserves the mode, so opening the mode first leaves both
-        # users able to write.
-        env:
-          MIRROR: ${{ inputs.mirror }}
+      - name: Runner facts
         run: |
-          set -euo pipefail
-          echo "Runner uid: $(id -u)"
-          for dir in "build-output/$MIRROR/aarch64" "pkgs.omarchy.org/$MIRROR/aarch64"; do
-            mkdir -p "$dir"
-            chmod -R 777 "$dir"
-          done
+          set -x
+          uname -a
+          nproc
+          free -h
+          df -h / /mnt 2>/dev/null || df -h /
+          docker version
+          docker buildx version
+          docker info --format '{{.Driver}} {{.DockerRootDir}}'
+          id
+
+      # bin/repo build only rebuilds packages whose version moved relative to
+      # the omarchy.db already in the repository tree, so carry the tree across
+      # runs. The key is the PKGBUILD set; a partial hit still saves everything
+      # whose PKGBUILD did not change.
+      - name: Restore repository tree
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.REPO_DIR }}
+          key: omarchy-repo-${{ env.ARCH }}-${{ env.MIRROR }}-${{ hashFiles('pkgbuilds/**/PKGBUILD', 'pkgbuilds/**/.omarchy/**') }}
+          restore-keys: |
+            omarchy-repo-${{ env.ARCH }}-${{ env.MIRROR }}-
+
+      # The builder image runs makepkg as uid 1000; the runner is uid 1001.
+      # make_dir_writable chowns to the runner, so the directories must be
+      # world-writable before it runs or every package write fails.
+      - name: Prepare output directories
+        run: |
+          mkdir -p "$OUTPUT_DIR" "$REPO_DIR" src logs
+          chmod -R a+rwX build-output pkgs.omarchy.org src
+
+      - name: Build plan
+        run: bin/repo build --arch "$ARCH" --mirror "$MIRROR" --dry-run --package $PACKAGES
 
       - name: Build packages
-        env:
-          PACKAGES: ${{ inputs.packages }}
-          MIRROR: ${{ inputs.mirror }}
         run: |
-          set -euo pipefail
-          if [[ -n $PACKAGES ]]; then
-            bin/build --arch aarch64 --mirror "$MIRROR" --package "$PACKAGES"
-          else
-            bin/build --arch aarch64 --mirror "$MIRROR"
-          fi
+          start=$(date +%s)
+          bin/repo build --arch "$ARCH" --mirror "$MIRROR" --package $PACKAGES
+          echo "build wall-clock: $(( $(date +%s) - start ))s"
 
-      - name: Summarize what was built
-        if: always()
-        env:
-          MIRROR: ${{ inputs.mirror }}
+      # Replaces bin/repo sign + promote, which need the repository host's key.
+      - name: Publish into the repository tree and write omarchy.db
         run: |
-          set -euo pipefail
-          output="build-output/$MIRROR/aarch64"
-          {
-            echo "## aarch64 packages ($MIRROR)"
-            echo
-            if compgen -G "$output/*.pkg.tar.*" >/dev/null; then
-              echo '```'
-              (cd "$output" && ls -1 ./*.pkg.tar.*)
-              echo '```'
-            else
-              echo "No packages were produced."
-            fi
-          } >>"$GITHUB_STEP_SUMMARY"
+          shopt -s nullglob
+          files=("$OUTPUT_DIR"/*.pkg.tar.*)
+          echo "new package files: ${#files[@]}"
+          [[ ${#files[@]} -gt 0 ]] && cp -v "${files[@]}" "$REPO_DIR/"
+          chmod -R a+rwX pkgs.omarchy.org
+          bin/repo update --arch "$ARCH" --mirror "$MIRROR"
 
-      - name: Upload packages
+      - name: Verify repository
+        run: |
+          cd "$REPO_DIR"
+          ls -la
+          echo "== packages in omarchy.db =="
+          tar --use-compress-program=unzstd -tf omarchy.db.tar.zst | grep '/$' | sed 's|/$||' | sort
+          echo "== missing from the requested set =="
+          missing=0
+          for p in $PACKAGES; do
+            tar --use-compress-program=unzstd -tf omarchy.db.tar.zst | grep -q "^$p-[^-]*-[^-]*/$" || { echo "  $p"; missing=1; }
+          done
+          du -sh .
+          exit $missing
+
+      - name: Upload repository artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact }}
+          path: ${{ env.REPO_DIR }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: omarchy-aarch64-${{ inputs.mirror }}-${{ github.run_id }}
-          path: build-output/${{ inputs.mirror }}/aarch64
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Notify Basecamp on failure
-        if: failure() && env.BASECAMP_CHATBOT_URL != ''
-        env:
-          BASECAMP_CHATBOT_URL: ${{ secrets.BASECAMP_CHATBOT_URL }}
-        run: |
-          curl -s -o /dev/null \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n --arg content \
-              "🔴 <strong>aarch64 build failed</strong><br><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View run</a>" \
-              '{content: $content}')" \
-            "$BASECAMP_CHATBOT_URL"
+          name: build-logs-${{ env.ARCH }}-${{ env.MIRROR }}
+          path: logs/
+          if-no-files-found: ignore
+          retention-days: 7
