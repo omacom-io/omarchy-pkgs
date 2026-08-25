@@ -12,6 +12,8 @@
 #   { "source": "aur", "pkgrel": { "suffix": 1, "offset": 1 } }
 #   { "source": "aur", "rebuild_on": ["qt6-base"] }
 #   { "source": "local" }
+#   { "source": "local", "min_release_age": "24h" }
+#   { "source": "local", "upstream": { "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "x86_64": "name-{tag}-x64.tar.xz" } } }
 #
 # bin/sync-aur also writes upstream_commit for AUR-backed packages, and
 # bin/sync-rebuilds writes rebuilt_against for packages declaring rebuild_on.
@@ -78,6 +80,43 @@ package_is_fast_ring() {
   [[ "$(package_release_ring "$pkgdir")" == "fast" ]]
 }
 
+# Quarantine window for upstream releases, in seconds. Accepts a bare number
+# of seconds or a number suffixed s/m/h/d ("24h", "2d"). Unset means 0 (no
+# hold); an unparseable value -- including a non-string/non-number JSON type
+# like false -- returns 1 so callers fail closed instead of silently dropping
+# the hold. At most 9 digits: enough for three decades in seconds, and small
+# enough that no suffix multiplication can overflow 64-bit arithmetic.
+package_min_release_age_seconds() {
+  local pkgdir="$1" metadata raw
+  metadata=$(metadata_file_for_dir "$pkgdir")
+  if [[ ! -f "$metadata" ]]; then
+    echo 0
+    return 0
+  fi
+  # A present-but-empty value maps to "unparseable", not to "absent": only a
+  # missing key means no hold, so '"min_release_age": ""' cannot silently
+  # disable the quarantine.
+  raw=$(jq -r '
+    if has("min_release_age") | not then ""
+    elif (.min_release_age | type) == "string" or (.min_release_age | type) == "number" then
+      .min_release_age | tostring | if . == "" then "unparseable" else . end
+    else "unparseable" end
+  ' "$metadata")
+  if [[ -z "$raw" ]]; then
+    echo 0
+    return 0
+  fi
+  [[ "$raw" =~ ^([0-9]{1,9})([smhd]?)$ ]] || return 1
+  # Forced base 10: bash arithmetic would otherwise read "010" as octal.
+  local n=$((10#${BASH_REMATCH[1]}))
+  case "${BASH_REMATCH[2]}" in
+    ""|s) echo "$n" ;;
+    m) echo $((n * 60)) ;;
+    h) echo $((n * 3600)) ;;
+    d) echo $((n * 86400)) ;;
+  esac
+}
+
 package_build_skipped() {
   local pkgdir="$1"
   local metadata skip_build
@@ -142,9 +181,18 @@ package_has_upstream_hook() {
   [[ -f "$pkgdir/.omarchy/upstream.sh" ]]
 }
 
+package_has_upstream_provider() {
+  local pkgdir="$1" metadata
+  metadata=$(metadata_file_for_dir "$pkgdir")
+  [[ -f "$metadata" ]] || return 1
+  # Any upstream key counts, valid or not: a malformed declaration must reach
+  # bin/sync-upstream and fail loudly there, not vanish from discovery.
+  jq -e 'has("upstream")' "$metadata" >/dev/null
+}
+
 packages_for_upstream_sync() {
   package_dirs | while IFS= read -r pkgdir; do
-    if package_has_upstream_hook "$pkgdir"; then
+    if package_has_upstream_hook "$pkgdir" || package_has_upstream_provider "$pkgdir"; then
       basename "$pkgdir"
     fi
   done
@@ -312,6 +360,28 @@ validate_package_metadata() {
     ""|fast) ;;
     *) echo "invalid release_ring for $(basename "$pkgdir"): $ring"; return 1 ;;
   esac
+
+  if ! package_min_release_age_seconds "$pkgdir" >/dev/null; then
+    echo "invalid min_release_age for $(basename "$pkgdir"): must be a number with optional s/m/h/d suffix"
+    return 1
+  fi
+
+  # `has` rather than `// {}`: jq's // treats false as absent, which would
+  # let "upstream": false slip through as an empty declaration.
+  if ! jq -e '
+    if has("upstream") | not then true
+    elif (.upstream | type) != "object" then false
+    else .upstream |
+      ((.github // "") | type == "string" and test("\\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\z"))
+      and ((.checksums // "") | type == "string" and length > 0)
+      and ((.assets // {}) | type == "object" and length > 0 and (to_entries | all(
+        (.key | test("\\A[a-z0-9_]+\\z")) and (.value | type == "string" and length > 0)
+      )))
+    end
+  ' "$metadata" >/dev/null; then
+    echo "invalid upstream for $(basename "$pkgdir"): needs github owner/repo, checksums asset name, and an assets arch->name map"
+    return 1
+  fi
 
   pkgrel_type=$(jq -r 'if has("pkgrel") then .pkgrel | type else "missing" end' "$metadata")
   case "$pkgrel_type" in
