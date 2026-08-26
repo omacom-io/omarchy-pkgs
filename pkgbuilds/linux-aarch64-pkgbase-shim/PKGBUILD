@@ -13,7 +13,7 @@
 
 pkgname=linux-aarch64-pkgbase-shim
 pkgver=1
-pkgrel=1
+pkgrel=2
 pkgdesc="Writes usr/lib/modules/<ver>/{pkgbase,vmlinuz} for Arch Linux ARM kernels so mkinitcpio and Limine hooks find them"
 arch=('aarch64')
 url="https://github.com/omacom-io/omarchy-pkgs"
