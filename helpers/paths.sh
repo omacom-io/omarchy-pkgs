@@ -5,17 +5,39 @@
 ARCH=${ARCH:-x86_64}
 MIRROR=${MIRROR:-edge}
 
+# Valid package channels, in pipeline order: packages move edge -> rc -> stable
+VALID_MIRRORS="edge rc stable"
+
+validate_mirror() {
+  case "$1" in
+  edge | rc | stable) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+require_valid_mirror() {
+  if ! validate_mirror "$1"; then
+    echo "Invalid mirror: $1 (must be one of: $VALID_MIRRORS)" >&2
+    exit 1
+  fi
+}
+
 # Core directories (architecture-independent)
 BUILD_DIR="$BUILD_ROOT/build"
 SRC_DIR="$BUILD_ROOT/src"
 LOG_DIR="$BUILD_ROOT/logs"
 PKGBUILDS_DIR="$BUILD_ROOT/pkgbuilds"
 
+# The published repository tree. Secondary checkouts (like the rc branch
+# worktree on the build host) set OMARCHY_REPO_ROOT so every channel lives in
+# one shared tree regardless of which checkout ran the command.
+REPO_ROOT="${OMARCHY_REPO_ROOT:-$BUILD_ROOT/pkgs.omarchy.org}"
+
 # Function to update architecture and mirror-specific paths
 # Call this after changing ARCH or MIRROR variables
 update_arch_paths() {
-  BUILD_OUTPUT_DIR="$BUILD_ROOT/build-output/$MIRROR/$ARCH"        # Unsigned packages
-  REPO_DIR="$BUILD_ROOT/pkgs.omarchy.org/$MIRROR/$ARCH"            # Repository (signed packages)
+  BUILD_OUTPUT_DIR="$BUILD_ROOT/build-output/$MIRROR/$ARCH" # Unsigned packages
+  REPO_DIR="$REPO_ROOT/$MIRROR/$ARCH"                       # Repository (signed packages)
 }
 
 # Initialize architecture-specific directories with default ARCH and MIRROR

@@ -35,6 +35,7 @@ while [[ $# -gt 0 ]]; do
   --mirror)
     require_value "$@"
     MIRROR="$2"
+    require_valid_mirror "$MIRROR"
     update_arch_paths
     shift 2
     ;;
@@ -56,7 +57,7 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "Options:"
     echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
-    echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
+    echo "  --mirror <mirror>  Mirror to use (edge, rc, or stable, default: edge)"
     echo "  --remote <remote>  Rclone remote destination (default: $DEFAULT_REMOTE)"
     echo "  --skip-prod-check  Skip production sync confirmation"
     echo "  --prune            Also delete remote packages missing locally"

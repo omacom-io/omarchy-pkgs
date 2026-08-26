@@ -34,7 +34,7 @@ update_database() {
   docker run --rm --platform linux/amd64 \
     -e ARCH="$ARCH" \
     -e MIRROR="$MIRROR" \
-    -v "$BUILD_ROOT/pkgs.omarchy.org:/output" \
+    -v "$REPO_ROOT:/output" \
     -v "$BUILD_DIR:/build:ro" \
     omarchy-pkg-builder:latest-x86_64-$MIRROR /build/update-repo.sh
 }
@@ -53,6 +53,7 @@ main() {
       ;;
     --mirror)
       MIRROR="$2"
+      require_valid_mirror "$MIRROR"
       update_arch_paths
       shift 2
       ;;
@@ -61,7 +62,7 @@ main() {
       echo ""
       echo "Options:"
       echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
-      echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
+      echo "  --mirror <mirror>  Mirror to use (edge, rc, or stable, default: edge)"
       echo "  -h, --help         Show this help message"
       exit 0
       ;;

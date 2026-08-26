@@ -23,8 +23,8 @@ while [[ $# -gt 0 ]]; do
     ;;
   --mirror)
     MIRROR="$2"
-    if [[ "$MIRROR" != "edge" && "$MIRROR" != "stable" ]]; then
-      print_error "Invalid mirror: $MIRROR (must be 'edge' or 'stable')"
+    if ! validate_mirror "$MIRROR"; then
+      print_error "Invalid mirror: $MIRROR (must be one of: $VALID_MIRRORS)"
       exit 1
     fi
     update_arch_paths
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "Options:"
     echo "  --arch <arch>        Target architecture (x86_64 or aarch64, default: x86_64)"
-    echo "  --mirror <mirror>    Mirror to use (edge or stable, default: edge)"
+    echo "  --mirror <mirror>    Mirror to use (edge, rc, or stable, default: edge)"
     echo "  --package <names>    Build only the specified package(s) (space-separated)"
     echo "  --dry-run           Show what would build without running makepkg"
     echo "  -h, --help           Show this help message"
@@ -144,7 +144,7 @@ DOCKER_ARGS=(
   -e MIRROR="$MIRROR"
   -e PACKAGES="$PACKAGES"
   -v "$BUILD_ROOT/build-output:/build-output"
-  -v "$BUILD_ROOT/pkgs.omarchy.org:/pkgs.omarchy.org"
+  -v "$REPO_ROOT:/pkgs.omarchy.org"
   -v "$BUILD_DIR:/build:ro"
   -v "$BUILD_ROOT/helpers:/helpers:ro"
   -v "$BUILD_ROOT/pkgbuilds:/pkgbuilds:ro"

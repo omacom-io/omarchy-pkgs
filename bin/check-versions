@@ -19,7 +19,7 @@ print_header "Package Version Check"
 get_repo_version() {
   local pkg="$1"
   local mirror="$2"
-  local repo_db="$BUILD_ROOT/pkgs.omarchy.org/$mirror/$ARCH/omarchy.db.tar.zst"
+  local repo_db="$REPO_ROOT/$mirror/$ARCH/omarchy.db.tar.zst"
 
   [[ -f "$repo_db" ]] || return 0
 

@@ -13,12 +13,12 @@ STATE_DIR="${OMARCHY_STATE_DIR:-/root/.state}"
 
 if [[ -z "$MIRROR" ]]; then
   print_error "Usage: $0 <mirror>"
-  echo "  mirror: edge or stable"
+  echo "  mirror: edge, rc, or stable"
   exit 1
 fi
 
-if [[ "$MIRROR" != "edge" && "$MIRROR" != "stable" ]]; then
-  print_error "Invalid mirror: $MIRROR (must be 'edge' or 'stable')"
+if [[ "$MIRROR" != "edge" && "$MIRROR" != "rc" && "$MIRROR" != "stable" ]]; then
+  print_error "Invalid mirror: $MIRROR (must be 'edge', 'rc', or 'stable')"
   exit 1
 fi
 

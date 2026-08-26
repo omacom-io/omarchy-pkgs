@@ -39,6 +39,8 @@ RUN mkdir -p /etc/pacman.d && \
 RUN if [ "${TARGETARCH}" = "amd64" ]; then \
         if [ "${MIRROR}" = "stable" ]; then \
             printf 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
+        elif [ "${MIRROR}" = "rc" ]; then \
+            printf 'Server = https://rc-mirror.omarchy.org/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
         else \
             printf 'Server = https://mirror.omarchy.org/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
         fi; \

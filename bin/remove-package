@@ -19,6 +19,7 @@ while [[ $# -gt 0 ]]; do
     ;;
   --mirror)
     MIRROR="$2"
+    require_valid_mirror "$MIRROR"
     update_arch_paths
     shift 2
     ;;
@@ -27,7 +28,7 @@ while [[ $# -gt 0 ]]; do
     echo ""
     echo "Options:"
     echo "  --arch <arch>      Target architecture (x86_64 or aarch64, default: x86_64)"
-    echo "  --mirror <mirror>  Mirror to use (edge or stable, default: edge)"
+    echo "  --mirror <mirror>  Mirror to use (edge, rc, or stable, default: edge)"
     echo "  -h, --help         Show this help message"
     exit 0
     ;;
@@ -98,7 +99,7 @@ make_dir_writable "$REPO_DIR"
 docker run --rm --platform linux/amd64 \
   -e ARCH="$ARCH" \
   -e MIRROR="$MIRROR" \
-  -v "$BUILD_ROOT/pkgs.omarchy.org:/pkgs.omarchy.org" \
+  -v "$REPO_ROOT:/pkgs.omarchy.org" \
   -v "$BUILD_DIR:/build:ro" \
   omarchy-pkg-builder:latest-x86_64-$MIRROR /build/remove-package.sh "$PACKAGE_NAME"
 
