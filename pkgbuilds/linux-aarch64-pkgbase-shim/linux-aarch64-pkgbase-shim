@@ -86,6 +86,14 @@ for dir in /usr/lib/modules/*/; do
 	rm -f "$dir/pkgbase" "$dir/vmlinuz" && rmdir "$dir" && echo "$SELF: removed leftover $dir"
 done
 
+# Omarchy's installer defers boot-image builds by pointing this hook at
+# /dev/null and runs limine-update itself afterwards; honour that.
+deferred_hook=/etc/pacman.d/hooks/90-mkinitcpio-install.hook
+if ((rebuild)) && [[ -L $deferred_hook && $(readlink "$deferred_hook") == /dev/null ]]; then
+	echo "$SELF: $deferred_hook is masked, leaving the rebuild to limine-update"
+	rebuild=0
+fi
+
 if ((rebuild)); then
 	if [[ -x $LIMINE_INSTALL_SCRIPT ]]; then
 		echo rebuild | "$LIMINE_INSTALL_SCRIPT"
