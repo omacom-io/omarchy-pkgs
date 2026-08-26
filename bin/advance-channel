@@ -75,6 +75,10 @@ while [[ $# -gt 0 ]]; do
       shift
     done
     PACKAGES="${PACKAGES# }"
+    if [[ -z "$PACKAGES" ]]; then
+      print_error "--package requires at least one package name"
+      exit 1
+    fi
     ;;
   --fast-ring)
     FAST_RING_ONLY=true
@@ -263,8 +267,9 @@ fi
 if [[ ${#MISSING_SIGS[@]} -gt 0 ]]; then
   print_error "${#MISSING_SIGS[@]} package(s) have no detached signature in $FROM:"
   printf '  %s\n' "${MISSING_SIGS[@]}"
-  echo "Signatures must travel with their packages. Re-sign these in $FROM"
-  echo "(bin/repo sign) and re-run."
+  echo "Signatures must travel with their packages. Backfill them by copying the"
+  echo "files into build-output/$FROM/$ARCH, running bin/repo sign --mirror $FROM,"
+  echo "and moving the .sig files back beside the packages — then re-run."
   exit 1
 fi
 
