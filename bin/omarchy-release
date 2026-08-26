@@ -133,6 +133,19 @@ newest_release_branch() { # newest_release_branch [--untagged]
 
 open_train_branch() { newest_release_branch --untagged; }
 
+# Reads go over anonymous HTTPS; pushes go over SSH like every checkout the
+# operator owns. Pushing over HTTPS would drag in git's credential-helper
+# config, which breaks the moment a stale absolute gh path is baked into it.
+ssh_push_url() { # https://github.com/a/b.git -> git@github.com:a/b.git
+  local url="$1"
+  if [[ "$url" =~ ^https://github\.com/(.+)$ ]]; then
+    echo "git@github.com:${BASH_REMATCH[1]}"
+  else
+    echo "$url"
+  fi
+}
+UPSTREAM_PUSH_URL="${OMARCHY_UPSTREAM_PUSH_URL:-$(ssh_push_url "$UPSTREAM_URL")}"
+
 ensure_mirror_clone() {
   if [[ -d "$MIRROR_CLONE" ]]; then
     git -C "$MIRROR_CLONE" fetch --quiet origin
@@ -141,6 +154,7 @@ ensure_mirror_clone() {
     print_info "Cloning $UPSTREAM_URL (cached in $SRCDEST_DIR)..."
     git clone --mirror --quiet "$UPSTREAM_URL" "$MIRROR_CLONE"
   fi
+  git -C "$MIRROR_CLONE" remote set-url --push origin "$UPSTREAM_PUSH_URL"
 }
 
 ensure_work_clone() {
@@ -151,6 +165,7 @@ ensure_work_clone() {
     print_info "Cloning $UPSTREAM_URL working copy..."
     git clone --quiet "$UPSTREAM_URL" "$WORK_CLONE"
   fi
+  git -C "$WORK_CLONE" remote set-url --push origin "$UPSTREAM_PUSH_URL"
 }
 
 # --- published channel state -------------------------------------------------
