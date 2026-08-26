@@ -192,9 +192,41 @@ else
 fi
 echo ""
 
+# --- rc branch worktree -------------------------------------------------------
+
+# The rc channel builds from the standing `rc` branch (where the release
+# orchestrator commits RC PKGBUILD pins) in its own worktree, so rc builds
+# never contend with the master checkout. OMARCHY_REPO_ROOT in the rc service
+# points its published tree back at this checkout, so all three channels live
+# together.
+RC_WORKTREE="/root/omarchy-pkgs-rc"
+
+if [[ "$CHECK_ONLY" == true ]]; then
+  if [[ -d "$RC_WORKTREE" ]]; then
+    print_success "rc worktree present: $RC_WORKTREE"
+  else
+    print_warning "rc worktree would be created at $RC_WORKTREE"
+  fi
+elif [[ -d "$RC_WORKTREE" ]]; then
+  print_success "rc worktree present: $RC_WORKTREE"
+else
+  print_info "Creating rc branch worktree at $RC_WORKTREE..."
+  git -C "$BUILD_ROOT" fetch origin rc 2>/dev/null || true
+  if git -C "$BUILD_ROOT" show-ref --verify --quiet refs/heads/rc; then
+    git -C "$BUILD_ROOT" worktree add "$RC_WORKTREE" rc
+  elif git -C "$BUILD_ROOT" show-ref --verify --quiet refs/remotes/origin/rc; then
+    git -C "$BUILD_ROOT" worktree add --track -b rc "$RC_WORKTREE" origin/rc
+  else
+    print_warning "No rc branch exists yet — skipping worktree"
+    echo "    The release orchestrator creates the rc branch on the first RC cut;"
+    echo "    re-run bin/setup afterwards."
+  fi
+fi
+echo ""
+
 # --- release timers ----------------------------------------------------------
 
-TIMERS=(omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-stable)
+TIMERS=(omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-rc omarchy-auto-release-stable)
 
 if [[ "$SKIP_TIMERS" == true ]]; then
   print_info "Skipping release timers (--skip-timers)"

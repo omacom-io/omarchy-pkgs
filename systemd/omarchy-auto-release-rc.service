@@ -1,0 +1,17 @@
+[Unit]
+Description=Auto-release omarchy-pkgs for rc mirror
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The rc channel builds from the rc branch worktree, but publishes into the
+# primary checkout's channel tree via OMARCHY_REPO_ROOT.
+ExecStartPre=/usr/bin/git -C /root/omarchy-pkgs-rc pull --ff-only
+ExecStart=/bin/bash -c 'source /root/.omarchy/build-credentials && /root/omarchy-pkgs-rc/bin/auto-release rc'
+Environment=OMARCHY_STATE_DIR=/root/.state
+Environment=OMARCHY_REPO_ROOT=/root/omarchy-pkgs/pkgs.omarchy.org
+TimeoutStartSec=7200
+
+[Install]
+WantedBy=multi-user.target
