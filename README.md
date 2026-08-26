@@ -10,9 +10,14 @@ Each package lives directly under `pkgbuilds/<package>/` and carries Omarchy met
 
 The filesystem no longer encodes release policy. Instead:
 
-- all packages build for `edge`
-- packages with `"release_ring": "fast"` also build directly for `stable`
-- all other packages reach `stable` by promoting tested edge artifacts with `bin/repo migrate`
+- there are three channels forming a forward-only pipeline: `edge` → `rc` → `stable`
+- all packages build for `edge` unless their metadata pins `channels`
+- packages with `"release_ring": "fast"` also build directly for `stable`, and those
+  artifacts are replicated into `rc` in the same release run so rc and stable stay in parity
+- a release train opens by advancing edge into rc (`bin/repo advance --from edge --to rc`)
+  and ships by promoting rc into stable (`bin/repo advance --from rc --to stable`)
+- the release pair (`omarchy`, `omarchy-settings`) builds for `rc` from the standing `rc`
+  branch; the dev pair (`omarchy-dev`, `omarchy-settings-dev`) is pinned to `edge`
 - AUR sync behavior is controlled by `source`, `sync`, `aur`, patches, and hooks in `.omarchy/`
 - packages can opt out of unscoped builds with `skip_build`; explicit `--package` builds remain available
 - packages that follow a vendor release feed instead of the AUR carry an `.omarchy/upstream.sh` hook
@@ -37,11 +42,18 @@ docker run --rm --platform linux/arm64 alpine:latest uname -m
 
 ### Full release
 
-Promote packages from edge build, then sync stable:
+Ship the tested rc channel to stable (copies packages + signatures, then
+cleans, rebuilds the database, and syncs):
 
 ```
-bin/repo migrate
-bin/repo sync --mirror stable
+bin/repo advance --from rc --to stable
+```
+
+Open a release train that ships new edge packages by carrying edge into rc
+first:
+
+```
+bin/repo advance --from edge --to rc
 ```
 
 ### Complete Workflow
@@ -351,9 +363,11 @@ aarch64 is not covered. Those builds resolve Qt from Arch Linux ARM, which can l
 ### Other
 
 ```bash
-bin/repo migrate --arch x86_64       # Promote tested edge artifacts -> stable, then clean + update
-bin/repo migrate --package <name>    # Promote a single package -> stable
-bin/repo migrate --dry-run           # Preview migration and cleanup
+bin/repo advance --from rc --to stable            # Ship the tested rc channel to stable
+bin/repo advance --from edge --to rc              # Open a train: carry edge forward into rc
+bin/repo advance --from edge --to rc --package x  # Deliberate single-package advance
+bin/repo advance --from rc --to stable --dry-run  # Preview without changing files
+bin/repo bootstrap-rc                             # One-time initial rc seed from stable
 bin/repo list                        # List package metadata
 bin/repo deploy                      # Build locally, then publish from the host
 bin/repo push                        # Upload local builds to the host and publish
@@ -417,14 +431,16 @@ bin/omarchy-pkgs self-test               # Version normalization + ordering test
 
 ### Where releases land
 
-- **RCs build for edge only.** Stable never sees an rc version. Edge testers
-  upgrade rc1 → rc2 → final naturally.
-- **Finals build for edge first.** After the edge build completes and you have
-  verified it, promote the exact tested artifacts to stable:
+- **RCs build for the rc channel.** RC testers and RC ISO installs run the real
+  `omarchy` package against the package set stable users will actually get.
+  Stable never sees an rc version; rc testers upgrade rc1 → rc2 → final
+  naturally.
+- **Finals build into rc, then the whole channel promotes.** After testing, the
+  ship step promotes the exact tested artifacts (packages and signatures)
+  forward:
 
 ```bash
-bin/repo migrate --package omarchy && bin/repo migrate --package omarchy-settings
-bin/repo sync --mirror stable
+bin/repo advance --from rc --to stable
 ```
 
 Neither package is on the `fast` ring, and `bin/omarchy-pkgs` never touches
@@ -504,7 +520,8 @@ Fields:
 - `min_release_age`: optional quarantine for upstream releases (`"24h"`, `"2d"`, or bare seconds). The newest release older than the window ships; anything younger waits, and a release whose age cannot be proven fails the sync. Bypass deliberately with `BYPASS_MIN_RELEASE_AGE=1 bin/sync-upstream <package>`.
 - `sync`: optional for AUR packages; defaults to `true`. Set `false` for AUR-origin packages that Omarchy maintains manually.
 - `aur`: optional AUR package name when it differs from the local package directory, usually for split packages.
-- `release_ring`: optional. `fast` means the package is built directly for stable as well as edge. Packages without a ring build in edge and reach stable through tested artifact promotion (`bin/repo migrate`).
+- `release_ring`: optional. `fast` means the package is built directly for stable as well as edge, with the artifacts replicated into rc for parity. Packages without a ring build in edge and reach stable through the pipeline (`bin/repo advance`).
+- `channels`: optional array pinning where the package lives (`edge`, `rc`, `stable`). With the key present the package builds in each listed channel except `stable` (stable is only fed by promotion), and `bin/repo advance` refuses to carry it anywhere it isn't a member. Without the key a package is a member of every channel and follows the default build rules above.
 - `skip_build`: optional boolean; defaults to `false`. Set `true` to exclude a package from scheduled version checks and unscoped builds. The package can still be built explicitly with `bin/repo release --package <name>`.
 - `pkgrel`: optional Omarchy pkgrel suffix for a version-pinned rebuild bump. This emits `<aur pkgrel>.<suffix>` instead of replacing AUR's pkgrel. `offset` can be used only when preserving monotonic upgrades from old absolute pkgrel bumps. The metadata is removed automatically when AUR sync changes `pkgver`; the current package version is read from the checked-in PKGBUILD, so the version is not duplicated in JSON.
 - `rebuild_on`: optional array of package names this package links against closely enough that it must be rebuilt when they change, independent of its own source. Read by `bin/sync-rebuilds`.
@@ -513,10 +530,11 @@ Fields:
 
 ### Build Matrix
 
-- **Edge unscoped builds** (`--mirror edge`): packages in `pkgbuilds/*` unless `"skip_build": true`
-- **Stable unscoped builds** (`--mirror stable`): packages with `"release_ring": "fast"` unless `"skip_build": true`
+- **Edge unscoped builds** (`--mirror edge`): packages in `pkgbuilds/*` unless `"skip_build": true` or `channels` excludes edge
+- **Rc unscoped builds** (`--mirror rc`): packages whose `channels` include `rc` (the release pair, built from the `rc` branch worktree)
+- **Stable unscoped builds** (`--mirror stable`): packages with `"release_ring": "fast"` unless `"skip_build": true`; their artifacts replicate to rc in the same run
 - **Explicit builds** (`--package <name>`): the selected package, including packages with `"skip_build": true`, subject to mirror eligibility
-- **Stable promotion** (`bin/repo migrate`): copies tested edge artifacts into stable
+- **Channel moves** (`bin/repo advance`): copies current packages + signatures forward through edge → rc → stable, never rewriting a published filename
 
 ## Adding Packages
 
@@ -655,10 +673,16 @@ The repository includes GitHub workflows and systemd services for automated rele
 
 1. **check-versions** (Every 6 hours at :30): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
 2. **auto-release-edge** (Every 6 hours at +1:00): If state file exists, builds all edge packages that need updates
-3. **auto-release-stable** (Every 6 hours at +1:00): If state file exists, builds `release_ring=fast` packages for stable (runs in parallel with edge)
+3. **auto-release-rc** (Every 6 hours at +1:00): Retry backstop — rc builds are normally triggered immediately over SSH by the release orchestrator; the timer re-runs any build whose state file survived a failure. Builds from the `rc` branch worktree (`/root/omarchy-pkgs-rc`), publishing into the shared channel tree
+4. **auto-release-stable** (Every 6 hours at +1:00): If state file exists, builds `release_ring=fast` packages for stable and replicates them to rc (runs in parallel with edge)
+
+All channel-mutating runs share a host-wide release lock
+(`pkgs.omarchy.org/.release.lock`), so overlapping timers and manual runs
+serialize instead of interleaving.
 
 State files are stored in `/root/.state/`:
 - `.sync-needed-edge`
+- `.sync-needed-rc`
 - `.sync-needed-stable`
 
 ### Schedule (America/New_York)
