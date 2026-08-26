@@ -28,4 +28,5 @@ jobs:
               pacman -Syu --noconfirm jq
               ./bin/sync-upstream self-test
               ./bin/omarchy-pkgs self-test
+              ./bin/omarchy-release self-test
             '

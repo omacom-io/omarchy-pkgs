@@ -2,8 +2,12 @@
 # Omarchy release management for the omarchy + omarchy-settings package pair.
 #
 # Cuts a release by rewriting both PKGBUILDs in lockstep (same _tag/_commit/
-# pkgver/sha256sums), committing, pushing to master, and poking the build host.
-# RCs publish to edge only; stable receives finals via `bin/repo migrate`.
+# pkgver/sha256sums), committing, pushing, and poking the build host.
+#
+# This is the pin ENGINE. The release front door is bin/omarchy-release, which
+# drives it against the rc channel (OMARCHY_EDGE_DB_URL points at the rc db,
+# pins commit to the rc branch) as part of the edge → rc → stable pipeline.
+# Direct invocations work as before and target the current branch + edge.
 #
 # Versioning convention (see the PKGBUILD header comments):
 #   finals  X.Y.Z      from upstream tag vX.Y.Z

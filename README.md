@@ -40,6 +40,27 @@ docker run --rm --platform linux/arm64 alpine:latest uname -m
 
 ## Quick Start
 
+### Cutting an Omarchy release
+
+`bin/omarchy-release` is the front door. A release train has three human
+moments, each one command — and bare `omarchy-release` observes reality
+(branches, pins, published channels, tags) and walks you to the next one:
+
+```bash
+bin/omarchy-release              # shepherd: status + guided next step
+bin/omarchy-release start 4.0.2  # open the train: branch v4-0-2 + staging PR
+bin/omarchy-release pick         # choose merged PRs to cherry-pick (multi-select)
+bin/omarchy-release rc           # publish the next 4.0.2rcN to the rc channel
+bin/omarchy-release ship         # final pins, promote rc → stable, tag,
+                                 # GitHub release, ISO, website — one swoop
+bin/omarchy-release doctor       # verify credentials/connections up front
+```
+
+Versions are inferred from branch names (`v4-0-2` ⇒ `4.0.2rcN` ⇒ tag
+`v4.0.2`); `start` is the only place a version is typed. Every command is
+idempotent — re-runs skip whatever is already done. `ship` refuses to promote
+a commit no RC was cut from.
+
 ### Full release
 
 Ship the tested rc channel to stable (copies packages + signatures, then
