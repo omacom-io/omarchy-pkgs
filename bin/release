@@ -85,6 +85,11 @@ print_info "Target architecture: $ARCH"
 print_info "Mirror: $MIRROR"
 print_info "Build workspace: $BUILD_OUTPUT_DIR"
 
+# One lock for all six steps. Taking it per step would leave gaps where another
+# run could build against a half-published repository — which is how two
+# releases 42 seconds apart both rebuilt omarchy 4.0.0rc2.
+[[ "$DRY_RUN" == true ]] || acquire_repo_lock "release --mirror $MIRROR --arch $ARCH"
+
 # Step 1: Build
 echo ""
 if [[ "$DRY_RUN" == true ]]; then

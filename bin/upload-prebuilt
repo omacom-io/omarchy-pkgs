@@ -4,6 +4,10 @@
 set -e
 
 SCRIPT_DIR=$(realpath "${BASH_SOURCE[0]%/*}")
+BUILD_ROOT=$(realpath "$SCRIPT_DIR/..")
+
+source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/lock-helpers.sh"
 
 # Only sync understands the publishing flags; sign, promote and update reject
 # unknown options outright, so they cannot be forwarded blindly.
@@ -25,6 +29,10 @@ while [[ $# -gt 0 ]]; do
     ;;
   esac
 done
+
+# Hold one lock across all four steps. Letting bin/repo take and release its own
+# lock per step would leave gaps where a release could promote between them.
+acquire_repo_lock "upload-prebuilt"
 
 "$SCRIPT_DIR/repo" sign "${COMMON_ARGS[@]}"
 "$SCRIPT_DIR/repo" promote "${COMMON_ARGS[@]}"

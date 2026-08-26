@@ -46,6 +46,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Moving artifacts into the published repository is the least reversible step in
+# the pipeline. A dry run only lists them, so it stays lock-free.
+[[ "$DRY_RUN" == true ]] || acquire_repo_lock "promote --mirror $MIRROR --arch $ARCH"
+
 print_info "Mirror: $MIRROR"
 print_info "Build output: $BUILD_OUTPUT_DIR"
 print_info "Final output: $REPO_DIR"
