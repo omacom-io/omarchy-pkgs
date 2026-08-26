@@ -5,6 +5,7 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/docker-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/lock-helpers.sh"
 
 print_header "Remove Package"
 
@@ -89,6 +90,8 @@ fi
 
 # Build/update the Docker image (always use x86_64 for removal - it's architecture independent)
 build_docker_image "$BUILD_DIR" "x86_64" "$MIRROR"
+
+acquire_release_lock || exit 1
 
 print_info "Removing package..."
 

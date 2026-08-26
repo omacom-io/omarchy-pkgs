@@ -201,6 +201,11 @@ package_eligible() {
 
   if [[ "$FAST_RING_ONLY" == true ]]; then
     package_is_fast_ring "$pkgdir" || return 1
+  elif [[ "$FROM" == "edge" && "$TO" == "rc" ]]; then
+    # Fast-ring packages reach rc by replication of the STABLE build (same
+    # bytes stable users get). Carrying the independently built edge artifact
+    # forward would race it under the same filename.
+    package_is_fast_ring "$pkgdir" && return 1
   fi
 
   package_moves_to_channel "$pkgdir" "$TO"
@@ -237,6 +242,17 @@ while IFS=$'\t' read -r name base filename; do
 
   if [[ -f "$dest" ]]; then
     if cmp -s "$src" "$dest"; then
+      # A crash between the package and signature copies leaves an unsigned
+      # package behind; the bytes are identical, so the source signature is
+      # valid for it. Package + signature resume as one unit.
+      if [[ ! -f "$dest.sig" ]]; then
+        if [[ "$DRY_RUN" == true ]]; then
+          echo "  would restore missing signature: $filename.sig"
+        else
+          cp -p "$sig" "$dest.sig"
+          echo "  restored missing signature: $filename.sig"
+        fi
+      fi
       PRESENT=$((PRESENT + 1))
     else
       DIFFERING+=("$filename")
@@ -274,10 +290,13 @@ if [[ ${#MISSING_SIGS[@]} -gt 0 ]]; then
 fi
 
 if [[ ${#DIFFERING[@]} -gt 0 ]]; then
-  print_warning "${#DIFFERING[@]} file(s) already published in $TO with different bytes (kept as-is):"
+  print_error "${#DIFFERING[@]} file(s) already published in $TO with DIFFERENT bytes:"
   printf '  %s\n' "${DIFFERING[@]}"
-  echo "Published filenames are never rewritten. The destination copy stays"
-  echo "authoritative; a genuinely new build needs a new pkgver/pkgrel."
+  echo "Published filenames are never rewritten, and two artifacts fighting over"
+  echo "one name means something built twice from different inputs. Resolve it"
+  echo "deliberately: bump pkgrel and rebuild so the new artifact gets a new"
+  echo "filename, or remove the source copy if the destination is correct."
+  exit 1
 fi
 
 if [[ "$DRY_RUN" == true ]]; then

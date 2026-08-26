@@ -111,19 +111,27 @@ resolve_tag_commit() {
   echo "${peeled:-$sha}"
 }
 
-# Newest v*-*-* release branch whose final tag does not exist yet. Shipping
-# creates the tag, so "tag exists" is what closes a train.
-open_train_branch() {
+# Newest v*-*-* release branch, optionally only untagged ones. Shipping tags
+# the version, so "tag exists" is what closes a train — but ship itself also
+# needs to find a tagged train whose remaining steps (release, ISO, website)
+# didn't finish, so it can resume.
+newest_release_branch() { # newest_release_branch [--untagged]
+  local untagged_only=false
+  [[ "${1:-}" == "--untagged" ]] && untagged_only=true
   local branch best_ver="" best_branch="" ver
   while IFS= read -r branch; do
     ver=$(branch_to_version "$branch") || continue
-    tag_exists "v$ver" && continue
+    if [[ "$untagged_only" == true ]] && tag_exists "v$ver"; then
+      continue
+    fi
     if [[ -z "$best_ver" ]] || [[ $(vercmp "$ver" "$best_ver") -gt 0 ]]; then
       best_ver="$ver" best_branch="$branch"
     fi
   done < <(ls_remote 'refs/heads/v*' | awk -F/ '{print $3}')
   [[ -n "$best_branch" ]] && echo "$best_branch"
 }
+
+open_train_branch() { newest_release_branch --untagged; }
 
 ensure_mirror_clone() {
   if [[ -d "$MIRROR_CLONE" ]]; then
@@ -201,12 +209,27 @@ host_or_print() { # prints the host, or prints manual instructions and fails
   return 1
 }
 
+# Creates the rc worktree on first use (a host set up before the rc branch
+# existed has none), then syncs it and kicks the service.
+RC_TRIGGER_SCRIPT='
+set -e
+git -C /root/omarchy-pkgs fetch origin rc
+if [ ! -d /root/omarchy-pkgs-rc ]; then
+  git -C /root/omarchy-pkgs worktree add /root/omarchy-pkgs-rc rc 2>/dev/null ||
+    git -C /root/omarchy-pkgs worktree add --track -b rc /root/omarchy-pkgs-rc origin/rc
+fi
+git -C /root/omarchy-pkgs-rc fetch origin rc
+git -C /root/omarchy-pkgs-rc reset --hard origin/rc
+mkdir -p /root/.state
+touch /root/.state/.sync-needed-rc
+systemctl start --no-block omarchy-auto-release-rc.service
+'
+
 trigger_rc_build() {
   local host
-  host=$(host_or_print "build the rc channel" \
-    "git -C /root/omarchy-pkgs-rc fetch origin rc && git -C /root/omarchy-pkgs-rc reset --hard origin/rc && touch /root/.state/.sync-needed-rc && systemctl start --no-block omarchy-auto-release-rc.service") || return 1
+  host=$(host_or_print "build the rc channel" "$RC_TRIGGER_SCRIPT") || return 1
   print_info "Triggering rc build on $host..."
-  ssh "$host" 'git -C /root/omarchy-pkgs-rc fetch origin rc && git -C /root/omarchy-pkgs-rc reset --hard origin/rc && mkdir -p /root/.state && touch /root/.state/.sync-needed-rc && systemctl start --no-block omarchy-auto-release-rc.service'
+  ssh "$host" "$RC_TRIGGER_SCRIPT"
 }
 
 host_advance() { # host_advance <from> <to> [extra args...]
@@ -408,9 +431,15 @@ cmd_start() {
   fi
 
   # Minor/major trains ship new edge packages: carry edge forward into rc so
-  # RC testing runs against the set stable users will get.
+  # RC testing runs against the set stable users will get. A failed advance
+  # must not pass silently — RCs would test against the previous rc set.
   if [[ "$kind" != "patch" ]]; then
-    host_advance edge rc || true
+    if ! host_advance edge rc; then
+      print_error "edge → rc advance did not complete — the train is NOT fully open"
+      echo "Fix the advance (it is idempotent), then re-run: omarchy-release start $version"
+      echo "start is idempotent too — the branch and PR above are kept."
+      exit 1
+    fi
   else
     print_info "Patch train: rc already mirrors stable — nothing to advance"
   fi
@@ -577,10 +606,25 @@ cmd_ship() {
   local branch version
   branch=$(open_train_branch) || true
   if [[ -z "$branch" ]]; then
-    print_error "No open release train — nothing to ship"
-    exit 1
+    # A tagged train whose later steps (release, ISO, website) failed is
+    # invisible to open_train_branch — find it so a re-run can resume.
+    branch=$(newest_release_branch) || true
+    if [[ -z "$branch" ]]; then
+      print_error "No release train found — nothing to ship"
+      exit 1
+    fi
+    version=$(branch_to_version "$branch")
+    local stable_now
+    stable_now=$(published_version stable 2>/dev/null) || stable_now=""
+    if [[ "${stable_now%-*}" == "$version" ]] &&
+      gh release view "v$version" --repo "$UPSTREAM_REPO" >/dev/null 2>&1; then
+      print_success "Nothing to ship — $version is tagged, released, and live on stable"
+      exit 0
+    fi
+    print_info "Resuming tagged-but-incomplete train $version"
+  else
+    version=$(branch_to_version "$branch")
   fi
-  version=$(branch_to_version "$branch")
   print_header "Ship $version"
 
   local head pin pin_ver pin_commit
@@ -589,19 +633,30 @@ cmd_ship() {
   pin_ver="${pin%% *}"
   pin_commit="${pin##* }"
 
-  # The ship guard: only a commit an RC was actually cut from may ship.
-  if [[ "$pin_ver" != "$version" ]]; then
-    if [[ -z "$pin" || ! "$pin_ver" =~ ^${version//./\\.}rc[0-9]+$ ]]; then
-      print_error "No RC has been cut for $version — run: omarchy-release rc"
+  # The ship guard: only the exact commit an RC was cut from may ship. There
+  # is no override — a moved branch means an untested tree; cut another rc.
+  if [[ -z "$pin" ]]; then
+    print_error "No RC has been cut for $version — run: omarchy-release rc"
+    exit 1
+  fi
+  if [[ "$pin_ver" == "$version" ]]; then
+    # Final already pinned (resume path). The artifacts come from pin_commit;
+    # a branch that moved afterwards changes nothing already built or tagged.
+    if [[ -n "$head" && "$head" != "$pin_commit" ]]; then
+      print_warning "$branch moved after the final was pinned — shipping the pinned ${pin_commit:0:12}; newer commits need the next patch train"
+    fi
+  else
+    if [[ ! "$pin_ver" =~ ^${version//./\\.}rc[0-9]+$ ]]; then
+      print_error "No RC has been cut for $version (rc branch pins $pin_ver) — run: omarchy-release rc"
       exit 1
     fi
     if [[ "$pin_commit" != "$head" ]]; then
       local behind
       behind=$(git -C "$WORK_CLONE" rev-list --count "$pin_commit..origin/$branch" 2>/dev/null || echo "?")
       print_error "$branch has moved since $pin_ver was cut ($behind commit(s) untested)"
-      echo "Cut another candidate first: omarchy-release rc"
-      [[ "$ASSUME_YES" == true ]] && exit 1
-      confirm "Ship anyway from ${head:0:12} WITHOUT an RC of it? (not recommended)" || exit 1
+      echo "Only a commit an RC was cut from can ship. Cut another candidate:"
+      echo "  omarchy-release rc"
+      exit 1
     fi
     local pub
     pub=$(published_version rc 2>/dev/null) || pub=""
@@ -614,7 +669,7 @@ cmd_ship() {
 
   echo ""
   print_info "This will, in order (steps already done are skipped):"
-  echo "  1. Pin the final $version from $branch@${head:0:12} and publish it to rc"
+  echo "  1. Pin the final $version from $branch@${pin_commit:0:12} and publish it to rc"
   echo "  2. Promote the rc channel to stable (packages + signatures + db)"
   echo "  3. Tag v$version on $UPSTREAM_REPO"
   echo "  4. Merge the final pins to master (edge overlap + record)"
@@ -632,7 +687,7 @@ cmd_ship() {
   else
     if [[ "$pin_ver" != "$version" ]]; then
       print_info "1/7 Pinning final $version..."
-      cut_pins "v$version" --commit "$head"
+      cut_pins "v$version" --commit "$pin_commit"
     else
       print_info "1/7 Final $version pinned — re-triggering build"
     fi
@@ -654,13 +709,14 @@ cmd_ship() {
     print_success "2/7 Promoted to stable: omarchy $stable_pub"
   fi
 
-  # 3. Tag
+  # 3. Tag — at the pinned commit the artifacts were built from, never the
+  # branch head (they can differ on a resumed ship).
   if tag_exists "v$version"; then
     print_success "3/7 Tag v$version already exists"
   else
     ensure_mirror_clone
-    git -C "$MIRROR_CLONE" push --quiet origin "$head:refs/tags/v$version"
-    print_success "3/7 Tagged v$version at ${head:0:12}"
+    git -C "$MIRROR_CLONE" push --quiet origin "$pin_commit:refs/tags/v$version"
+    print_success "3/7 Tagged v$version at ${pin_commit:0:12}"
   fi
 
   # 4. Final pins onto master (keeps edge overlap publishing and the repo record)
@@ -735,6 +791,17 @@ gather_status() {
 
 next_step() { # prints "<command>|<description>"
   if [[ -z "$TRAIN" ]]; then
+    # A tagged train may still have unfinished ship steps (release/ISO/site).
+    local last last_ver
+    last=$(newest_release_branch 2>/dev/null) || last=""
+    if [[ -n "$last" && "$STABLE_VER" != "<unreachable>" ]]; then
+      last_ver=$(branch_to_version "$last")
+      if [[ "${STABLE_VER%-*}" != "$last_ver" ]] ||
+        { command -v gh >/dev/null && ! gh release view "v$last_ver" --repo "$UPSTREAM_REPO" >/dev/null 2>&1; }; then
+        echo "ship|$last_ver is tagged but not fully shipped — resume ship"
+        return
+      fi
+    fi
     echo "start|No open train — start the next release"
     return
   fi

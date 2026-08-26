@@ -6,6 +6,7 @@ set -e
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/lock-helpers.sh"
 
 print_header "Promote Build to Production"
 
@@ -46,6 +47,10 @@ while [[ $# -gt 0 ]]; do
     ;;
   esac
 done
+
+if [[ "$DRY_RUN" != true ]]; then
+  acquire_release_lock || exit 1
+fi
 
 print_info "Mirror: $MIRROR"
 print_info "Build output: $BUILD_OUTPUT_DIR"

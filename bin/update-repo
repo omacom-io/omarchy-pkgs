@@ -9,6 +9,7 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/docker-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/lock-helpers.sh"
 
 # Function to update repository database using Docker
 update_database() {
@@ -76,6 +77,8 @@ main() {
   print_info "Target architecture: $ARCH"
   print_info "Mirror: $MIRROR"
   print_info "Output directory: $REPO_DIR"
+
+  acquire_release_lock || exit 1
 
   update_database
 

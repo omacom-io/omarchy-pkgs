@@ -4,6 +4,7 @@
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
+source "$BUILD_ROOT/helpers/lock-helpers.sh"
 
 # Default remote (production)
 DEFAULT_REMOTE="pkgs.omarchy.org:omarchy-pkgs"
@@ -99,6 +100,8 @@ if [[ "$REMOTE" == "$DEFAULT_REMOTE" ]] && [[ "$SKIP_PROD_CHECK" != true ]]; the
     exit 0
   fi
 fi
+
+acquire_release_lock || exit 1
 
 print_info "Syncing to: $REMOTE/$DESTINATION_DIRECTORY"
 
