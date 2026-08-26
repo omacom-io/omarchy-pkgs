@@ -54,7 +54,9 @@ show_usage() {
   echo "  promote     Promote build to production (build-output → pkgs.omarchy.org)"
   echo "  update      Update repository database"
   echo "  clean       Clean old package versions"
-  echo "  migrate     Migrate edge packages into stable (no overwrite), then clean + update"
+  echo "  advance     Move packages forward through the pipeline (edge → rc → stable)"
+  echo "  bootstrap-rc  One-time seed of the rc channel from stable"
+  echo "  migrate     DEPRECATED alias for 'advance --from edge --to stable'"
   echo "  list        List source package metadata (use --repo for published repo)"
   echo "  remove      Remove a specific package"
   echo "  sync        Sync repository to remote"
@@ -112,8 +114,17 @@ clean)
   "$SCRIPT_DIR/clean-repo" "$@" 2>&1 | tee "$LOG_FILE"
   exit ${PIPESTATUS[0]}
   ;;
+advance)
+  "$SCRIPT_DIR/advance-channel" "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
+  ;;
+bootstrap-rc)
+  "$SCRIPT_DIR/advance-channel" --from stable --to rc --bootstrap "$@" 2>&1 | tee "$LOG_FILE"
+  exit ${PIPESTATUS[0]}
+  ;;
 migrate)
-  "$SCRIPT_DIR/migrate-edge-to-stable" "$@" 2>&1 | tee "$LOG_FILE"
+  print_warning "'migrate' is deprecated; releases now flow edge → rc → stable (bin/repo advance)"
+  "$SCRIPT_DIR/advance-channel" --from edge --to stable "$@" 2>&1 | tee "$LOG_FILE"
   exit ${PIPESTATUS[0]}
   ;;
 list)
