@@ -462,6 +462,28 @@ cmd_pick() {
   ensure_work_clone
   git -C "$WORK_CLONE" checkout --quiet -B "$branch" "origin/$branch"
 
+  # Changes usually reach a release branch as BACKPORTS — cherry-picks with
+  # new SHAs — so ancestry of the original quattro merge commit proves nothing
+  # on a patch branch. Detect equivalence the way it is actually recorded:
+  # the branch's own commit messages since it left quattro name the PR
+  # ("backport of #N", squash titles "(#N)") or the source commit
+  # ("cherry picked from commit <sha>", which pick -x writes).
+  local base_commit branch_log
+  base_commit=$(git -C "$WORK_CLONE" merge-base "origin/$branch" "origin/$DEV_BRANCH" 2>/dev/null) || base_commit=""
+  branch_log=$(git -C "$WORK_CLONE" log --format='%s %b' "origin/$branch" ${base_commit:+--not "$base_commit"} 2>/dev/null)
+
+  already_on_branch() { # already_on_branch <merge-sha> <pr-number-or-empty>
+    local sha="$1" number="$2"
+    if [[ -n "$sha" ]]; then
+      git -C "$WORK_CLONE" merge-base --is-ancestor "$sha" "origin/$branch" 2>/dev/null && return 0
+      grep -q "cherry picked from commit $sha" <<<"$branch_log" && return 0
+    fi
+    if [[ -n "$number" ]]; then
+      grep -qE "#$number([^0-9]|$)" <<<"$branch_log" && return 0
+    fi
+    return 1
+  }
+
   local -a shas=() labels=()
   if [[ $# -gt 0 ]]; then
     local arg sha title
@@ -473,23 +495,32 @@ cmd_pick() {
           print_error "PR #$arg has no merge commit (not merged?)"
           exit 1
         fi
+        if already_on_branch "$sha" "$arg"; then
+          print_info "PR #$arg is already on $branch — skipping"
+          continue
+        fi
         shas+=("$sha") labels+=("PR #$arg: $title")
       else
+        if already_on_branch "$arg" ""; then
+          print_info "commit $arg is already on $branch — skipping"
+          continue
+        fi
         shas+=("$arg") labels+=("commit $arg")
       fi
     done
   else
-    # Interactive: merged dev-branch PRs whose merge commits are not on the
-    # release branch yet, oldest first so picks apply in merge order.
+    # Interactive: merged dev-branch PRs not already on the release branch
+    # (by ancestry, backport reference, or cherry-pick trailer), oldest first
+    # so picks apply in merge order.
     print_info "Loading merged $DEV_BRANCH PRs not yet on $branch..."
     local list
     list=$(gh pr list --repo "$UPSTREAM_REPO" --state merged --base "$DEV_BRANCH" \
       --limit 30 --json number,title,mergeCommit,mergedAt \
-      --jq 'sort_by(.mergedAt) | .[] | "\(.mergeCommit.oid)\t#\(.number) \(.title)"')
+      --jq 'sort_by(.mergedAt) | .[] | "\(.mergeCommit.oid)\t\(.number)\t#\(.number) \(.title)"')
     local -a cand_shas=() cand_labels=()
-    while IFS=$'\t' read -r sha label; do
+    while IFS=$'\t' read -r sha number label; do
       [[ -z "$sha" || "$sha" == "null" ]] && continue
-      git -C "$WORK_CLONE" merge-base --is-ancestor "$sha" "origin/$branch" 2>/dev/null && continue
+      already_on_branch "$sha" "$number" && continue
       cand_shas+=("$sha") cand_labels+=("$label")
     done <<<"$list"
     if [[ ${#cand_shas[@]} -eq 0 ]]; then
