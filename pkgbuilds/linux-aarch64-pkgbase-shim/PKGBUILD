@@ -1,0 +1,35 @@
+# Maintainer: Jimmy Van Veen
+
+# Arch Linux ARM's kernel packages install the kernel as /boot/Image and ship
+# no usr/lib/modules/<ver>/{pkgbase,vmlinuz}, the two files mkinitcpio and
+# limine-entry-tool find kernels through. Without them an installed aarch64
+# Omarchy never gets an initramfs, a UKI or a Limine entry for a new kernel.
+# This package is a pacman hook that writes both files before mkinitcpio's
+# 90-mkinitcpio-install hook runs. It does nothing when pkgbase exists.
+#
+# RETIRE when Arch Linux ARM's linux-aarch64 ships pkgbase and vmlinuz itself
+# (archlinuxarm/PKGBUILDs#2215 or its successor), together with
+# limine-mkinitcpio-hook's 0002-accept-pkgbase-in-package-owned-kernel-dir.patch.
+
+pkgname=linux-aarch64-pkgbase-shim
+pkgver=1
+pkgrel=1
+pkgdesc="Writes usr/lib/modules/<ver>/{pkgbase,vmlinuz} for Arch Linux ARM kernels so mkinitcpio and Limine hooks find them"
+arch=('aarch64')
+url="https://github.com/omacom-io/omarchy-pkgs"
+license=('MIT')
+depends=('bash' 'pacman')
+optdepends=('limine-mkinitcpio-hook: rebuild the UKI and Limine entry when the shim is installed after the kernel')
+options=('!debug')
+source=(
+  '85-linux-aarch64-pkgbase-shim.hook'
+  'linux-aarch64-pkgbase-shim'
+  'README.package.md'
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -Dm644 85-linux-aarch64-pkgbase-shim.hook "${pkgdir}/usr/share/libalpm/hooks/85-linux-aarch64-pkgbase-shim.hook"
+  install -Dm755 linux-aarch64-pkgbase-shim "${pkgdir}/usr/share/libalpm/scripts/linux-aarch64-pkgbase-shim"
+  install -Dm644 README.package.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}
