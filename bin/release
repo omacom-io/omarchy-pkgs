@@ -229,8 +229,14 @@ if ((BUILT_COUNT > 0)); then
   summary+="<br><br>Live at https://pkgs.omarchy.org/$MIRROR/$ARCH/"
   notify_success "Release published: $MIRROR" "$summary"
 else
-  # Deliberately silent in chat: a run that published nothing is not news, and
-  # at a 5-minute cadence those messages would bury the ones that matter. The
-  # log and `bin/repo timers` still show the run happened.
-  print_info "Nothing was published — the channel was already current"
+  # Rare by construction: a release only runs when the version check queued
+  # work, so publishing nothing means the check and the builder disagreed
+  # about what needs building. Worth reporting for exactly that reason — if
+  # these start recurring, something is flagging a package that never builds.
+  summary+="<br>No packages needed building — the version check and the"
+  summary+=" builder disagree about what is out of date."
+  if [[ -n "$QUEUED_PACKAGES" && "$QUEUED_PACKAGES" != "0" ]]; then
+    summary+="<br>Queued but not built: $(head -25 "$QUEUE_FILE" | tr '\n' ' ' | basecamp_html_escape)"
+  fi
+  notify_info "Release ran with nothing to publish: $MIRROR" "$summary"
 fi
