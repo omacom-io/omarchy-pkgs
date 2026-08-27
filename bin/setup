@@ -280,9 +280,11 @@ if [[ -f "$CREDENTIALS" ]]; then
   if grep -q 'OMARCHY_RELEASE_CHATBOT_URL' "$CREDENTIALS"; then
     print_success "Release reports go to the dedicated release chat"
   elif grep -q 'BASECAMP_CHATBOT_URL' "$CREDENTIALS"; then
-    print_warning "Release reports fall back to BASECAMP_CHATBOT_URL (the repository chat)"
-    echo "    Export OMARCHY_RELEASE_CHATBOT_URL in $CREDENTIALS to send them"
-    echo "    to their own chat instead."
+    # A working setup, not a problem: one chat receives everything. Splitting
+    # them is a preference, so this states the fact rather than nagging.
+    print_success "Release reports go to BASECAMP_CHATBOT_URL (shared with the sync workflows)"
+    echo "    To give releases their own Basecamp chat, create one, add a chatbot"
+    echo "    to it, and export its lines URL as OMARCHY_RELEASE_CHATBOT_URL here."
   else
     print_warning "No chatbot URL in $CREDENTIALS — build reports are disabled"
     echo "    Export OMARCHY_RELEASE_CHATBOT_URL to receive start/publish/failure"

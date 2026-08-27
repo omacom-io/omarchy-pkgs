@@ -776,17 +776,20 @@ runs when the version check queued work, so building nothing means the check
 and the builder disagree about what is out of date. It names the packages that
 were queued but not built, which is where to start looking.
 
-Release traffic gets its own chat so it does not drown the repository chat
-that the AUR/upstream sync workflows post to. Export the destination in
-`/root/.omarchy/build-credentials`:
+By default everything posts to `BASECAMP_CHATBOT_URL`, the same chat the
+AUR/upstream sync workflows use — one variable, nothing extra to configure.
+
+If release traffic starts drowning that chat, give it its own: create a second
+Basecamp chat, add a chatbot integration to it, and export its lines URL
+alongside the existing one in `/root/.omarchy/build-credentials`:
 
 ```bash
 export OMARCHY_RELEASE_CHATBOT_URL="https://3.basecamp.com/<account>/integrations/<key>/buckets/<project>/chats/<chat>/lines"
 ```
 
-Without it, release reports fall back to `BASECAMP_CHATBOT_URL`; with neither
-set they are silently skipped. `bin/setup` reports which of the three cases
-applies.
+Release reports then go there while the sync workflows keep posting to
+`BASECAMP_CHATBOT_URL`. With neither set, reports are silently skipped.
+`bin/setup` reports which of the three cases applies.
 
 Check on all of it with `bin/repo timers` — schedule, each unit's last run and
 whether it succeeded, what is queued, whether a release is running right now,
