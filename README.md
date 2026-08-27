@@ -469,12 +469,19 @@ stable — promotion is always this explicit step.
 
 ### Build trigger and the build host
 
-Release commands run from anywhere. When the machine you are on **is** the
-build host (detected by the published database living in this checkout), host
-operations — build triggers, `advance`, promotion — execute locally. From any
-other machine they go over ssh to the configured host; without a configured
-host, the exact commands to run are printed and the 6-hourly auto-release
-timer serves as the backstop.
+Release commands run from anywhere. `bin/repo` is a **remote control**: with a
+repository host configured, every command that operates on the published tree
+(`release`, `build`, `sign`, `promote`, `update`, `clean`, `advance`,
+`bootstrap-rc`, `remove`, `sync`, `migrate`) executes ON the host over ssh —
+the exact same code, run where the tree lives, so ssh'ing in and running the
+same commands by hand behaves identically. Pass `--local` to force execution
+on the current machine. `list`, `push`, `deploy`, and `setup` never forward
+(`push`/`deploy` exist precisely to move local builds *to* the host).
+
+Without a configured host, commands run locally — which on the build host
+itself (no `.repo-host` there) is exactly right, and elsewhere the exact
+commands to run are printed by the orchestrator, with the 6-hourly
+auto-release timer as the backstop.
 
 The host setting is any destination `ssh` accepts, resolved in this order:
 

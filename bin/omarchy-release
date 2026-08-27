@@ -261,20 +261,16 @@ trigger_rc_build() {
 host_advance() { # host_advance <from> <to> [extra args...]
   local from="$1" to="$2"
   shift 2
-  local host
-  if host=$(repo_host); then
-    print_info "Advancing $from -> $to on $host..."
-    ssh "$host" "cd /root/omarchy-pkgs && git pull --ff-only && bin/repo advance --from $from --to $to --skip-prod-check $*"
-  elif on_repo_host; then
-    # This checkout holds the published tree — advance right here, from this
-    # checkout's tooling (no pull: the operator controls their working copy).
-    print_info "Advancing $from -> $to locally (this is the build host)..."
-    "$BUILD_ROOT/bin/repo" advance --from "$from" --to "$to" --skip-prod-check "$@"
-  else
+  # bin/repo is the remote control: with a host configured it forwards this
+  # over ssh itself; on the host it runs locally. Only the "neither" case —
+  # a workstation with no host — must be refused here, because running it
+  # against this machine's (likely stale) local tree would be wrong.
+  if ! resolve_repo_host "$REPO_HOST_OVERRIDE" >/dev/null && ! on_repo_host; then
     print_no_host_help "advance $from -> $to" \
       "  cd /root/omarchy-pkgs && bin/repo advance --from $from --to $to --skip-prod-check $*"
     return 1
   fi
+  "$BUILD_ROOT/bin/repo" advance --from "$from" --to "$to" --skip-prod-check "$@"
 }
 
 wait_for_published() { # wait_for_published <channel> <version> [timeout-seconds]
@@ -1026,7 +1022,11 @@ ARGS=()
 while [[ $# -gt 0 ]]; do
   case $1 in
   --yes) ASSUME_YES=true; shift ;;
-  --host) REPO_HOST_OVERRIDE="$2"; shift 2 ;;
+  --host)
+    REPO_HOST_OVERRIDE="$2"
+    export OMARCHY_REPO_HOST="$2" # child bin/repo invocations forward to it too
+    shift 2
+    ;;
   --iso) ISO_MODE="yes"; shift ;;
   --no-iso) ISO_MODE="no"; shift ;;
   --no-wait) WAIT=false; shift ;;
