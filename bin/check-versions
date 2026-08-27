@@ -131,6 +131,17 @@ check_package() {
     return 1
   fi
 
+  # Different is not the same as newer. A checkout behind the published state
+  # — a stale branch, an un-pulled host — otherwise queues a REBUILD OF AN
+  # OLDER VERSION every cycle: the builder produces it, and promotion refuses
+  # it because that exact filename is already published with different bytes.
+  # If the artifact for this version already exists in the channel, there is
+  # nothing to build regardless of which direction the versions differ.
+  if compgen -G "$REPO_ROOT/$mirror/$ARCH/${pkg}-${pkgbuild_version}-*.pkg.tar."[!s]* >/dev/null 2>&1; then
+    print_warning "$pkg $pkgbuild_version is already published — this checkout is behind the channel; not queueing"
+    return 1
+  fi
+
   return 0
 }
 

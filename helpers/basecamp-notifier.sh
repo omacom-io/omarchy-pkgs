@@ -17,17 +17,21 @@ release_chatbot_url() {
 
 notify_basecamp() {
   local content="$1"
-  local BASECAMP_CHATBOT_URL
-  BASECAMP_CHATBOT_URL=$(release_chatbot_url)
+  # NOT named BASECAMP_CHATBOT_URL: bash locals are visible to called
+  # functions, so declaring that name here would shadow the global that
+  # release_chatbot_url falls back to — and every notification would silently
+  # go nowhere for anyone who has only the legacy variable set.
+  local url
+  url=$(release_chatbot_url)
 
-  if [[ -z "${BASECAMP_CHATBOT_URL:-}" ]]; then
+  if [[ -z "$url" ]]; then
     return 0
   fi
 
   curl -s -o /dev/null \
     -H "Content-Type: application/json" \
     -d "$(jq -n --arg content "$content" '{content: $content}')" \
-    "$BASECAMP_CHATBOT_URL" 2>/dev/null || true
+    "$url" 2>/dev/null || true
 }
 
 basecamp_html_escape() {
