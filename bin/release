@@ -198,6 +198,26 @@ fi
   exit 1
 }
 
+duration=$(format_duration $(($(date +%s) - RELEASE_STARTED_AT)))
+summary="$RELEASE_CONTEXT<br>Duration: $duration"
+if ((BUILT_COUNT > 0)); then
+  summary+="<br><br><strong>$BUILT_COUNT package(s) published:</strong>"
+  summary+="$(format_package_list_html "$BUILT_FILES")"
+  summary+="<br><br>Live at https://pkgs.omarchy.org/$MIRROR/$ARCH/"
+  notify_success "Release published: $MIRROR" "$summary"
+else
+  # Rare by construction: a release only runs when the version check queued
+  # work, so publishing nothing means the check and the builder disagreed
+  # about what needs building. Worth reporting for exactly that reason — if
+  # these start recurring, something is flagging a package that never builds.
+  summary+="<br>No packages needed building — the version check and the"
+  summary+=" builder disagree about what is out of date."
+  if [[ -n "$QUEUED_PACKAGES" && "$QUEUED_PACKAGES" != "0" ]]; then
+    summary+="<br>Queued but not built: $(head -25 "$QUEUE_FILE" | tr '\n' ' ' | basecamp_html_escape)"
+  fi
+  notify_info "Release ran with nothing to publish: $MIRROR" "$summary"
+fi
+
 # Step 7 (stable only): fast-ring packages publish to rc and stable together,
 # so rc never falls behind what stable users actually run. Skipped until the
 # rc channel has been bootstrapped.
@@ -220,23 +240,3 @@ fi
 
 echo ""
 print_success "Release workflow completed successfully!"
-
-duration=$(format_duration $(($(date +%s) - RELEASE_STARTED_AT)))
-summary="$RELEASE_CONTEXT<br>Duration: $duration"
-if ((BUILT_COUNT > 0)); then
-  summary+="<br><br><strong>$BUILT_COUNT package(s) published:</strong>"
-  summary+="$(format_package_list_html "$BUILT_FILES")"
-  summary+="<br><br>Live at https://pkgs.omarchy.org/$MIRROR/$ARCH/"
-  notify_success "Release published: $MIRROR" "$summary"
-else
-  # Rare by construction: a release only runs when the version check queued
-  # work, so publishing nothing means the check and the builder disagreed
-  # about what needs building. Worth reporting for exactly that reason — if
-  # these start recurring, something is flagging a package that never builds.
-  summary+="<br>No packages needed building — the version check and the"
-  summary+=" builder disagree about what is out of date."
-  if [[ -n "$QUEUED_PACKAGES" && "$QUEUED_PACKAGES" != "0" ]]; then
-    summary+="<br>Queued but not built: $(head -25 "$QUEUE_FILE" | tr '\n' ' ' | basecamp_html_escape)"
-  fi
-  notify_info "Release ran with nothing to publish: $MIRROR" "$summary"
-fi

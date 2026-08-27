@@ -346,10 +346,16 @@ if ((COPIED > 0)); then
   done <<<"$COPIED_FILES"
   ((COPIED > shown)) && moved+="<br>• …and $((COPIED - shown)) more"
 
-  label="Promoted $FROM → $TO"
-  [[ "$BOOTSTRAP" == true ]] && label="Bootstrapped the $TO channel from $FROM"
-  [[ "$FAST_RING_ONLY" == true ]] && label="Replicated fast-ring $FROM → $TO"
-
-  notify_info "$label" \
-    "Arch: $ARCH · $(hostname -s 2>/dev/null || echo host)<br><strong>$COPIED package(s) moved:</strong>$moved<br><br>Live at https://pkgs.omarchy.org/$TO/$ARCH/"
+  if [[ "$FAST_RING_ONLY" == true ]]; then
+    # Parity replication rides along with a stable release, which has already
+    # reported these exact packages. Repeating the list would double every
+    # fast-ring release in chat, so this is a one-liner.
+    notify_info "Kept $TO in parity: $COPIED fast-ring package(s) from $FROM" \
+      "Arch: $ARCH · the same artifacts just published to $FROM"
+  else
+    label="Promoted $FROM → $TO"
+    [[ "$BOOTSTRAP" == true ]] && label="Bootstrapped the $TO channel from $FROM"
+    notify_info "$label" \
+      "Arch: $ARCH · $(hostname -s 2>/dev/null || echo host)<br><strong>$COPIED package(s) moved:</strong>$moved<br><br>Live at https://pkgs.omarchy.org/$TO/$ARCH/"
+  fi
 fi
