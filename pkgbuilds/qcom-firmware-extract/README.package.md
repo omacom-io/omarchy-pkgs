@@ -6,8 +6,8 @@ installation on the same machine into `/usr/lib/firmware/updates/`.
 
 Omarchy ships no vendor-signed firmware: the live ISO and every package carry
 only files from linux-firmware. The files this tool copies never leave the
-machine and are never downloaded. It is a temporary measure until the laptop
-vendors contribute the files to linux-firmware, as Lenovo and Dell have.
+machine and are never downloaded. It is a temporary measure until laptop
+vendors contribute complete firmware sets to linux-firmware.
 
 ## How it works
 
@@ -15,7 +15,10 @@ The device tree names every firmware file the kernel will ask for
 (`firmware-name` properties). The tool keeps the names that are missing under
 `/usr/lib/firmware{,/updates}`, finds each one by file name in
 `Windows/System32/DriverStore/FileRepository` on any NTFS partition it can
-mount read-only (newest copy wins), and installs it under
+mount read-only. If Windows carries several variants and linux-firmware has a
+companion image from the same device-tree node, the sibling image's hash
+selects the compatible variant; otherwise the newest copy wins. The result is
+installed under
 `/usr/lib/firmware/updates/<name>`. The GPU zap shader is added to the
 initramfs through `/etc/mkinitcpio.conf.d/qcom-firmware.conf`; the DSP images
 are loaded from the root filesystem. What was installed, from where, and its

@@ -13,17 +13,17 @@
 # the x86_64 ISO build too, and the tool exits immediately on a machine
 # without a device tree.
 #
-# RETIRE when linux-firmware ships the vendor directories for the supported
-# laptops (it already does for Lenovo's and Dell's); see the script header.
+# RETIRE when linux-firmware ships complete vendor directories for the
+# supported laptops; see the script header.
 
 pkgname=qcom-firmware-extract
 pkgver=1
-pkgrel=1
+pkgrel=2
 pkgdesc="Copy vendor-signed Qualcomm Snapdragon firmware from the machine's Windows installation"
 arch=('any')
 url="https://github.com/omacom-io/omarchy-pkgs"
 license=('GPL-2.0-or-later')
-depends=('bash' 'coreutils' 'findutils' 'util-linux')
+depends=('bash' 'coreutils' 'findutils' 'gzip' 'util-linux' 'xz' 'zstd')
 optdepends=('limine-mkinitcpio-hook: rebuild the boot image after installing firmware')
 options=('!debug')
 source=(

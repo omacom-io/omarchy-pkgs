@@ -157,7 +157,8 @@ declare -a sources=()   # directories to search, best first
 declare -a mounts=()    # temporary mounts to undo
 cleanup() {
   local m
-  for m in "${mounts[@]}"; do
+  for m in "${mounts[@]-}"; do
+    [[ -n $m ]] || continue
     umount "$m" 2>/dev/null || true
     rmdir "$m" 2>/dev/null || true
   done
@@ -201,11 +202,104 @@ scan_windows_partitions() {
   return 0
 }
 
-# Newest copy of a file name anywhere under the sources.
+# Resolve a packaged firmware file, including the compression formats used by
+# linux-firmware packages.
+firmware_file() {
+  local name=$1 dir ext
+  for dir in "$FW_ROOT/updates" "$FW_ROOT"; do
+    for ext in '' .zst .xz .gz; do
+      if [[ -f "$dir/$name$ext" ]]; then
+        printf '%s\n' "$dir/$name$ext"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+firmware_sha256() {
+  local file=$1
+  case "$file" in
+    *.zst) zstd -qdc -- "$file" ;;
+    *.xz) xz -dc -- "$file" ;;
+    *.gz) gzip -dc -- "$file" ;;
+    *) cat -- "$file" ;;
+  esac | sha256sum | cut -d' ' -f1
+}
+
+# When Windows carries several versions of a board-specific DTB, select the
+# one beside the same DSP image linux-firmware already installed. The Yoga
+# Slim 7x driver store contains multiple cdsp_dtbs.elf files, and loading a
+# DTB signed for a different companion image prevents the CDSP from starting.
+matching_companion_candidate() {
+  local node=$1
+  shift
+  local -a candidates=("$@")
+  local dt_node dt_name installed installed_hash candidate sibling
+  local companion_seen=0
+
+  while read -r dt_node dt_name; do
+    [[ $dt_node == "$node" ]] || continue
+    installed=$(firmware_file "$dt_name") || continue
+    companion_seen=1
+    installed_hash=$(firmware_sha256 "$installed")
+
+    for candidate in "${candidates[@]}"; do
+      sibling=$(find "${candidate%/*}" -maxdepth 1 -type f \
+        -iname "$(basename "$dt_name")" -print -quit 2>/dev/null)
+      [[ -n $sibling ]] || continue
+      if [[ $(sha256sum "$sibling" | cut -d' ' -f1) == "$installed_hash" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
+  done < <(dt_firmware_names)
+
+  ((companion_seen)) && return 1
+  return 2
+}
+
+# Newest copy of an unambiguous file name anywhere under the sources. When
+# several variants exist and an installed sibling identifies the right one,
+# require that match instead of guessing by modification time.
 find_in_sources() {
-  local base=$1
-  find "${sources[@]}" -type f -iname "$base" -printf '%T@ %p\n' 2>/dev/null |
-    sort -rn | head -n1 | cut -d' ' -f2-
+  local base=$1 node=$2 selected result candidate newest newest_mtime mtime
+  local -a candidates=()
+  while IFS= read -r -d '' candidate; do
+    candidates+=("$candidate")
+  done < <(find "${sources[@]}" -type f -iname "$base" -print0 2>/dev/null)
+
+  ((${#candidates[@]})) || return 1
+  if ((${#candidates[@]} == 1)); then
+    printf '%s\n' "${candidates[0]}"
+    return 0
+  fi
+
+  if selected=$(matching_companion_candidate "$node" "${candidates[@]}"); then
+    printf '%s\n' "$selected"
+    return 0
+  else
+    result=$?
+  fi
+
+  if ((result == 1)); then
+    warn "refusing ambiguous $base: no variant matches its installed companion firmware"
+    return 1
+  fi
+
+  # No installed companion exists to distinguish driver versions (common on
+  # machines whose entire vendor firmware set is absent). Preserve the prior
+  # behavior there and take Windows' newest copy.
+  newest=${candidates[0]}
+  newest_mtime=$(stat -c %Y "$newest" 2>/dev/null || stat -f %m "$newest")
+  for candidate in "${candidates[@]:1}"; do
+    mtime=$(stat -c %Y "$candidate" 2>/dev/null || stat -f %m "$candidate")
+    if ((mtime > newest_mtime)); then
+      newest=$candidate
+      newest_mtime=$mtime
+    fi
+  done
+  printf '%s\n' "$newest"
 }
 
 # ---------------------------------------------------------------------------
@@ -222,9 +316,10 @@ if [[ $mode == stage ]]; then
   staged=0
   : >"$stage_dir/manifest.partial"
   for i in "${!missing_names[@]}"; do
+    node=${missing_nodes[$i]}
     name=${missing_names[$i]}
     src=""
-    ((${#sources[@]})) && src=$(find_in_sources "$(basename "$name")")
+    ((${#sources[@]})) && src=$(find_in_sources "$(basename "$name")" "$node")
     if [[ -z $src ]]; then
       warn "not found in the driver store: $name"
       continue
@@ -256,9 +351,10 @@ mkdir -p "$STATE_DIR"
 touch "$MANIFEST"
 installed=0
 for i in "${!missing_names[@]}"; do
+  node=${missing_nodes[$i]}
   name=${missing_names[$i]}
   src=""
-  ((${#sources[@]})) && src=$(find_in_sources "$(basename "$name")")
+  ((${#sources[@]})) && src=$(find_in_sources "$(basename "$name")" "$node")
   if [[ -z $src ]]; then
     warn "not found: $name"
     continue
