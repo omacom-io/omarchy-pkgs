@@ -7,7 +7,7 @@ pkgname=github-copilot-cli
 _pkgexec=copilot
 
 pkgver=1.0.80
-pkgrel=1
+pkgrel=1.1
 
 pkgdesc="GitHub Copilot CLI brings the power of Copilot coding agent directly to your terminal."
 
@@ -50,6 +50,7 @@ package() {
 		aarch64) _arch="arm64" ;;
 		*)       error "Unsupported architecture: $CARCH"; exit 1 ;;
 	esac
+	_moddir="${_moddir}/node_modules/@github/copilot-linux-${_arch}"
 
 	msg2 "Cleaning non-native prebuilds for ${_arch}"
 	if [ -d "${_moddir}/prebuilds" ]; then

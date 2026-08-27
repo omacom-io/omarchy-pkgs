@@ -1,0 +1,6 @@
+diff --git a/PKGBUILD b/PKGBUILD
+index 9194cc8..b38f3e9 100644
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -52,0 +53 @@ package() {
++	_moddir="${_moddir}/node_modules/@github/copilot-linux-${_arch}"
