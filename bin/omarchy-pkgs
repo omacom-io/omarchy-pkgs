@@ -19,6 +19,7 @@ set -e
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/host-helpers.sh"
 
 UPSTREAM_URL="${OMARCHY_UPSTREAM_URL:-https://github.com/basecamp/omarchy.git}"
@@ -322,8 +323,19 @@ regenerate_checksums() {
 
 trigger_build_host() {
   local host
+  if on_repo_host; then
+    print_info "Triggering edge build locally (this is the build host)..."
+    if mkdir -p "${OMARCHY_STATE_DIR:-/root/.state}" &&
+      touch "${OMARCHY_STATE_DIR:-/root/.state}/.sync-needed-edge" &&
+      systemctl start --no-block omarchy-auto-release-edge.service; then
+      print_success "Edge build triggered"
+    else
+      print_warning "Could not start the edge release service — the 6-hourly timer will pick it up"
+    fi
+    return 0
+  fi
   if ! host=$(resolve_repo_host "${REPO_HOST_OVERRIDE:-}"); then
-    print_info "No repository host configured (set OMARCHY_REPO_HOST or $BUILD_ROOT/.repo-host)."
+    print_info "No repository host configured (set OMARCHY_REPO_HOST or $BUILD_ROOT/.repo-host — any ssh destination, e.g. root@<host> or an ssh-config alias)."
     print_info "The 6-hourly auto-release timer will pick this up, or trigger manually:"
     echo "  ssh <build-host> 'git -C /root/omarchy-pkgs pull --ff-only && touch /root/.state/.sync-needed-edge && systemctl start omarchy-auto-release-edge.service'"
     return 0

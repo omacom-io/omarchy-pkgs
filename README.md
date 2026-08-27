@@ -467,12 +467,31 @@ bin/repo advance --from rc --to stable
 Neither package is on the `fast` ring, and `bin/omarchy-pkgs` never touches
 stable — promotion is always this explicit step.
 
-### Build trigger
+### Build trigger and the build host
 
-After pushing, the command triggers the build host over ssh when
-`OMARCHY_REPO_HOST` is set (env var, or a hostname in the git-ignored
-`.repo-host` file). Without it, the 6-hourly auto-release timer picks up the
-change on its own.
+Release commands run from anywhere. When the machine you are on **is** the
+build host (detected by the published database living in this checkout), host
+operations — build triggers, `advance`, promotion — execute locally. From any
+other machine they go over ssh to the configured host; without a configured
+host, the exact commands to run are printed and the 6-hourly auto-release
+timer serves as the backstop.
+
+The host setting is any destination `ssh` accepts, resolved in this order:
+
+1. `--host <dest>` on the command
+2. `OMARCHY_REPO_HOST` environment variable
+3. the git-ignored `.repo-host` file (one line; `#` comments allowed)
+
+The server layout lives under `/root`, so the value is `root@<ip>`,
+`root@<hostname>`, or — nicest — a `Host` alias from `~/.ssh/config` that
+carries the user, key, and port:
+
+```
+# .repo-host
+root@pkgs.example.com
+```
+
+All connections are plain ssh; nothing else is used to reach the host.
 
 ## Directory Structure
 

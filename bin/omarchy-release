@@ -18,6 +18,7 @@ set -e
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/host-helpers.sh"
 
 UPSTREAM_URL="${OMARCHY_UPSTREAM_URL:-https://github.com/basecamp/omarchy.git}"
@@ -209,19 +210,19 @@ rc_branch_pin() { # prints "pkgver commit", empty when no rc branch
 }
 
 # --- build host --------------------------------------------------------------
+#
+# Every command runs from anywhere: when this machine IS the build host
+# (on_repo_host — the published database lives here), host operations execute
+# locally; otherwise they go over ssh to the configured destination. The
+# destination is anything ssh accepts — root@<ip>, root@<hostname>, or an
+# ~/.ssh/config Host alias — from --host, $OMARCHY_REPO_HOST, or .repo-host.
 
 repo_host() { resolve_repo_host "$REPO_HOST_OVERRIDE"; }
 
-host_or_print() { # prints the host, or prints manual instructions and fails
-  local host what="$1" cmd="$2"
-  if host=$(repo_host); then
-    echo "$host"
-    return 0
-  fi
-  print_warning "No build host configured (set OMARCHY_REPO_HOST, --host, or $BUILD_ROOT/.repo-host)"
-  echo "Run this on the build host to $what:" >&2
-  echo "  $cmd" >&2
-  return 1
+print_no_host_help() { # print_no_host_help <what> <script>
+  print_warning "Not on the build host, and none configured (--host, OMARCHY_REPO_HOST, or $BUILD_ROOT/.repo-host — any ssh destination, e.g. root@<host> or an ssh-config alias)"
+  echo "Run this on the build host to $1:" >&2
+  echo "$2" >&2
 }
 
 # Creates the rc worktree on first use (a host set up before the rc branch
@@ -242,19 +243,35 @@ systemctl start --no-block omarchy-auto-release-rc.service
 
 trigger_rc_build() {
   local host
-  host=$(host_or_print "build the rc channel" "$RC_TRIGGER_SCRIPT") || return 1
-  print_info "Triggering rc build on $host..."
-  ssh "$host" "$RC_TRIGGER_SCRIPT"
+  if on_repo_host; then
+    print_info "Triggering rc build locally (this is the build host)..."
+    bash -c "$RC_TRIGGER_SCRIPT"
+  elif host=$(repo_host); then
+    print_info "Triggering rc build on $host..."
+    ssh "$host" "$RC_TRIGGER_SCRIPT"
+  else
+    print_no_host_help "build the rc channel" "$RC_TRIGGER_SCRIPT"
+    return 1
+  fi
 }
 
 host_advance() { # host_advance <from> <to> [extra args...]
   local from="$1" to="$2"
   shift 2
   local host
-  host=$(host_or_print "advance $from -> $to" \
-    "cd /root/omarchy-pkgs && bin/repo advance --from $from --to $to --skip-prod-check $*") || return 1
-  print_info "Advancing $from -> $to on $host..."
-  ssh "$host" "cd /root/omarchy-pkgs && git pull --ff-only && bin/repo advance --from $from --to $to --skip-prod-check $*"
+  if on_repo_host; then
+    # This checkout holds the published tree — advance right here, from this
+    # checkout's tooling (no pull: the operator controls their working copy).
+    print_info "Advancing $from -> $to locally (this is the build host)..."
+    "$BUILD_ROOT/bin/repo" advance --from "$from" --to "$to" --skip-prod-check "$@"
+  elif host=$(repo_host); then
+    print_info "Advancing $from -> $to on $host..."
+    ssh "$host" "cd /root/omarchy-pkgs && git pull --ff-only && bin/repo advance --from $from --to $to --skip-prod-check $*"
+  else
+    print_no_host_help "advance $from -> $to" \
+      "  cd /root/omarchy-pkgs && bin/repo advance --from $from --to $to --skip-prod-check $*"
+    return 1
+  fi
 }
 
 wait_for_published() { # wait_for_published <channel> <version> [timeout-seconds]
@@ -943,10 +960,12 @@ cmd_doctor() {
     print_warning "rc channel db not readable — bootstrap it first: bin/repo bootstrap-rc (on the build host)"
   fi
   local host
-  if host=$(repo_host); then
+  if on_repo_host; then
+    print_success "this machine IS the build host — host operations run locally"
+  elif host=$(repo_host); then
     check "build host ssh ($host)" ssh -o ConnectTimeout=10 "$host" true
   else
-    print_warning "no build host configured (OMARCHY_REPO_HOST / .repo-host) — builds trigger on the 6h timer only"
+    print_warning "no build host configured — set OMARCHY_REPO_HOST, --host, or write an ssh destination (root@<host> or an ssh-config alias) to $BUILD_ROOT/.repo-host; until then builds trigger on the 6h timer only"
   fi
   if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
     print_success "docker available (ISO builds possible here)"
