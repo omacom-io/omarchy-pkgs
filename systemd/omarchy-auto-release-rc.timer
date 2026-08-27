@@ -1,12 +1,10 @@
 [Unit]
-Description=Retry pending rc releases every 6 hours
+Description=Release queued rc builds every 5 minutes
 
 [Timer]
-# Backstop only: rc builds are normally triggered immediately over SSH by the
-# release orchestrator (touch .sync-needed-rc + systemctl start). This timer
-# retries builds whose state file survived a failure.
-OnCalendar=*-*-* 01,07,13,19:00:00 America/New_York
+OnCalendar=*:2/5
 Persistent=true
+RandomizedDelaySec=20
 
 [Install]
 WantedBy=timers.target

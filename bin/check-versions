@@ -8,13 +8,32 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/package-metadata.sh"
+source "$BUILD_ROOT/helpers/lock-helpers.sh"
 
 STATE_DIR="${OMARCHY_STATE_DIR:-/root/.state}"
 ARCH="${ARCH:-x86_64}"
+PULL=false
+
+[[ "${1:-}" == "--pull" ]] && PULL=true
 
 mkdir -p "$STATE_DIR"
 
+# Runs on a tight schedule, so it must never disturb a build in progress:
+# comparing versions reads the PKGBUILDs a running build is reading, and
+# --pull would swap them underneath it. Take the lock non-blocking and skip
+# the tick when a release owns it — the queue is unchanged, so the next tick
+# picks up exactly where this one left off.
+if ! try_release_lock; then
+  exit 0
+fi
+
 print_header "Package Version Check"
+
+# The scheduled run pulls; a manual run leaves the operator's tree alone.
+if [[ "$PULL" == true ]]; then
+  print_info "Updating repository..."
+  git -C "$BUILD_ROOT" pull --ff-only || print_warning "git pull failed — checking the current tree"
+fi
 
 get_repo_version() {
   local pkg="$1"

@@ -728,14 +728,33 @@ The repository includes GitHub workflows and systemd services for automated rele
 
 #### Systemd Services
 
-1. **check-versions** (Every 6 hours at :30): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
-2. **auto-release-edge** (Every 6 hours at +1:00): If state file exists, builds all edge packages that need updates
-3. **auto-release-rc** (Every 6 hours at +1:00): Retry backstop — rc builds are normally triggered immediately over SSH by the release orchestrator; the timer re-runs any build whose state file survived a failure. Builds from the `rc` branch worktree (`/root/omarchy-pkgs-rc`), publishing into the shared channel tree
-4. **auto-release-stable** (Every 6 hours at +1:00): If state file exists, builds `release_ring=fast` packages for stable and replicates them to rc (runs in parallel with edge)
+All four units run **every 5 minutes**, staggered by a minute each, so a push
+reaches the mirror in minutes rather than hours:
 
-All channel-mutating runs share a host-wide release lock
-(`pkgs.omarchy.org/.release.lock`), so overlapping timers and manual runs
-serialize instead of interleaving.
+1. **check-versions** (`*:0/5`): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
+2. **auto-release-edge** (`*:1/5`): If a state file exists, builds all edge packages that need updates
+3. **auto-release-rc** (`*:2/5`): Builds the rc channel from the `rc` branch worktree (`/root/omarchy-pkgs-rc`), publishing into the shared channel tree. The orchestrator also triggers this immediately over ssh when cutting an RC
+4. **auto-release-stable** (`*:3/5`): If a state file exists, builds `release_ring=fast` packages for stable and replicates them to rc
+
+That cadence is only safe because of three guards:
+
+- **No overlap.** Every channel-mutating run takes a host-wide lock
+  (`pkgs.omarchy.org/.release.lock`). Scheduled runs take it
+  **non-blocking**: if a build is already going, the tick exits immediately
+  instead of queuing. Waiting would stack one stalled process per tick behind
+  a long build and stampede when it finished. Manual commands still wait, as
+  an operator expects. `check-versions` takes it too — its `git pull` would
+  otherwise swap PKGBUILDs out from under a running build.
+- **Backoff on failure.** A failed release records the attempt in
+  `.build-failed-<channel>` and backs off exponentially — 10m, 20m, 40m, up to
+  a 6h ceiling — instead of rebuilding the same broken tree every 5 minutes.
+  **Any new commit clears the backoff immediately**, since a push is the most
+  likely fix. Clear it by hand with `rm /root/.state/.build-failed-<channel>`.
+- **Quiet when idle.** With nothing queued a tick exits without output, so the
+  journal shows the runs that mattered rather than 288 no-ops a day.
+
+`bin/repo timers` reports all of this: schedules, last results, what is
+queued, what is failing and when it will retry, and whether the lock is held.
 
 Check on all of it with `bin/repo timers` — schedule, each unit's last run and
 whether it succeeded, what is queued, whether a release is running right now,
@@ -748,16 +767,21 @@ bin/repo timers --local   # inspect this machine instead
 ```
 
 State files are stored in `/root/.state/`:
-- `.sync-needed-edge`
-- `.sync-needed-rc`
-- `.sync-needed-stable`
+- `.sync-needed-<channel>` — a build is queued for that channel
+- `.build-failed-<channel>` — consecutive failure count, timestamp, and the
+  commit it failed on (drives the backoff; removing it forces a retry)
 
 ### Schedule (America/New_York)
 
-| Time | Action |
+| Minute of every hour | Action |
 |------|--------|
-| 00:30, 06:30, 12:30, 18:30 | check-versions (git pull + creates state files) |
-| 01:00, 07:00, 13:00, 19:00 | auto-release-edge + auto-release-stable (parallel) |
+| :00, :05, :10, … | check-versions (git pull + creates state files) |
+| :01, :06, :11, … | auto-release-edge |
+| :02, :07, :12, … | auto-release-rc |
+| :03, :08, :13, … | auto-release-stable |
+
+Each unit is a no-op unless its channel has queued work, another run holds the
+lock, or the channel is in failure backoff.
 
 ### Installation
 
