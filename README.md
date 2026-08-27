@@ -737,6 +737,16 @@ All channel-mutating runs share a host-wide release lock
 (`pkgs.omarchy.org/.release.lock`), so overlapping timers and manual runs
 serialize instead of interleaving.
 
+Check on all of it with `bin/repo timers` — schedule, each unit's last run and
+whether it succeeded, what is queued, whether a release is running right now,
+and any failed units. Like the other host commands it forwards over ssh, so
+the build box's state is one command away from any machine:
+
+```bash
+bin/repo timers           # runs on the repository host when one is configured
+bin/repo timers --local   # inspect this machine instead
+```
+
 State files are stored in `/root/.state/`:
 - `.sync-needed-edge`
 - `.sync-needed-rc`
