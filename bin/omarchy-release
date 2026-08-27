@@ -241,14 +241,17 @@ touch /root/.state/.sync-needed-rc
 systemctl start --no-block omarchy-auto-release-rc.service
 '
 
+# An explicitly configured destination outranks the local-host inference: a
+# workstation that once ran a full local release carries the published-db
+# marker too, and its .repo-host must still win.
 trigger_rc_build() {
   local host
-  if on_repo_host; then
-    print_info "Triggering rc build locally (this is the build host)..."
-    bash -c "$RC_TRIGGER_SCRIPT"
-  elif host=$(repo_host); then
+  if host=$(repo_host); then
     print_info "Triggering rc build on $host..."
     ssh "$host" "$RC_TRIGGER_SCRIPT"
+  elif on_repo_host; then
+    print_info "Triggering rc build locally (this is the build host)..."
+    bash -c "$RC_TRIGGER_SCRIPT"
   else
     print_no_host_help "build the rc channel" "$RC_TRIGGER_SCRIPT"
     return 1
@@ -259,14 +262,14 @@ host_advance() { # host_advance <from> <to> [extra args...]
   local from="$1" to="$2"
   shift 2
   local host
-  if on_repo_host; then
+  if host=$(repo_host); then
+    print_info "Advancing $from -> $to on $host..."
+    ssh "$host" "cd /root/omarchy-pkgs && git pull --ff-only && bin/repo advance --from $from --to $to --skip-prod-check $*"
+  elif on_repo_host; then
     # This checkout holds the published tree — advance right here, from this
     # checkout's tooling (no pull: the operator controls their working copy).
     print_info "Advancing $from -> $to locally (this is the build host)..."
     "$BUILD_ROOT/bin/repo" advance --from "$from" --to "$to" --skip-prod-check "$@"
-  elif host=$(repo_host); then
-    print_info "Advancing $from -> $to on $host..."
-    ssh "$host" "cd /root/omarchy-pkgs && git pull --ff-only && bin/repo advance --from $from --to $to --skip-prod-check $*"
   else
     print_no_host_help "advance $from -> $to" \
       "  cd /root/omarchy-pkgs && bin/repo advance --from $from --to $to --skip-prod-check $*"
@@ -960,10 +963,10 @@ cmd_doctor() {
     print_warning "rc channel db not readable — bootstrap it first: bin/repo bootstrap-rc (on the build host)"
   fi
   local host
-  if on_repo_host; then
-    print_success "this machine IS the build host — host operations run locally"
-  elif host=$(repo_host); then
+  if host=$(repo_host); then
     check "build host ssh ($host)" ssh -o ConnectTimeout=10 "$host" true
+  elif on_repo_host; then
+    print_success "this machine IS the build host — host operations run locally"
   else
     print_warning "no build host configured — set OMARCHY_REPO_HOST, --host, or write an ssh destination (root@<host> or an ssh-config alias) to $BUILD_ROOT/.repo-host; until then builds trigger on the 6h timer only"
   fi

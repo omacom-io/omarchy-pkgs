@@ -323,7 +323,9 @@ regenerate_checksums() {
 
 trigger_build_host() {
   local host
-  if on_repo_host; then
+  # Explicit host configuration outranks the local-host inference (a
+  # workstation that ran a full local release carries the db marker too).
+  if ! resolve_repo_host "${REPO_HOST_OVERRIDE:-}" >/dev/null && on_repo_host; then
     print_info "Triggering edge build locally (this is the build host)..."
     if mkdir -p "${OMARCHY_STATE_DIR:-/root/.state}" &&
       touch "${OMARCHY_STATE_DIR:-/root/.state}/.sync-needed-edge" &&

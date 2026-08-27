@@ -493,6 +493,16 @@ root@pkgs.example.com
 
 All connections are plain ssh; nothing else is used to reach the host.
 
+**How "this machine is the build host" is detected — and its one caveat.**
+The marker is the published database living in this checkout
+(`pkgs.omarchy.org/<channel>/<arch>/omarchy.db*`), the same convention the
+rest of `bin/` uses. A workstation that once ran a full local
+`bin/repo release` carries that marker too and would infer it is the host.
+An explicitly configured destination always outranks the inference — `--host`,
+`OMARCHY_REPO_HOST`, and `.repo-host` are checked first, and only when none is
+set does local detection apply. So if a machine ever misidentifies itself,
+writing the real host into `.repo-host` is the fix.
+
 ## Directory Structure
 
 ```
