@@ -201,11 +201,23 @@ echo ""
 # together.
 RC_WORKTREE="/root/omarchy-pkgs-rc"
 
+# Read-only: --check must not fetch. Local refs first, then a network peek.
+rc_branch_exists() {
+  git -C "$BUILD_ROOT" show-ref --verify --quiet refs/heads/rc && return 0
+  git -C "$BUILD_ROOT" show-ref --verify --quiet refs/remotes/origin/rc && return 0
+  git -C "$BUILD_ROOT" ls-remote --exit-code --heads origin rc >/dev/null 2>&1
+}
+
 if [[ "$CHECK_ONLY" == true ]]; then
   if [[ -d "$RC_WORKTREE" ]]; then
     print_success "rc worktree present: $RC_WORKTREE"
-  else
+  elif rc_branch_exists; then
     print_warning "rc worktree would be created at $RC_WORKTREE"
+  else
+    # Expected before the first RC: nothing to create, and nothing to do —
+    # omarchy-release creates the branch and the rc build trigger creates the
+    # worktree on demand, so this resolves itself.
+    print_info "rc worktree not needed yet (no rc branch — created on the first RC cut)"
   fi
 elif [[ -d "$RC_WORKTREE" ]]; then
   print_success "rc worktree present: $RC_WORKTREE"
@@ -217,9 +229,8 @@ else
   elif git -C "$BUILD_ROOT" show-ref --verify --quiet refs/remotes/origin/rc; then
     git -C "$BUILD_ROOT" worktree add --track -b rc "$RC_WORKTREE" origin/rc
   else
-    print_warning "No rc branch exists yet — skipping worktree"
-    echo "    The release orchestrator creates the rc branch on the first RC cut;"
-    echo "    re-run bin/setup afterwards."
+    print_info "No rc branch yet — the first RC cut creates it, and the rc build"
+    echo "    trigger creates this worktree on demand. Nothing to do."
   fi
 fi
 echo ""
