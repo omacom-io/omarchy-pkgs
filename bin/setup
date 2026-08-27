@@ -229,8 +229,8 @@ else
   elif git -C "$BUILD_ROOT" show-ref --verify --quiet refs/remotes/origin/rc; then
     git -C "$BUILD_ROOT" worktree add --track -b rc "$RC_WORKTREE" origin/rc
   else
-    print_info "No rc branch yet — the first RC cut creates it, and the rc build"
-    echo "    trigger creates this worktree on demand. Nothing to do."
+    print_info "No rc branch yet — the first RC cut creates it, and the rc"
+    echo "    release unit creates this worktree on demand. Nothing to do."
   fi
 fi
 echo ""

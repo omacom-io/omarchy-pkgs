@@ -733,7 +733,7 @@ reaches the mirror in minutes rather than hours:
 
 1. **check-versions** (`*:0/5`): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
 2. **auto-release-edge** (`*:1/5`): If a state file exists, builds all edge packages that need updates
-3. **auto-release-rc** (`*:2/5`): Builds the rc channel from the `rc` branch worktree (`/root/omarchy-pkgs-rc`), publishing into the shared channel tree. The orchestrator also triggers this immediately over ssh when cutting an RC
+3. **auto-release-rc** (`*:2/5`): Builds the rc channel from the `rc` branch worktree (`/root/omarchy-pkgs-rc`), publishing into the shared channel tree. It runs from the main checkout and creates that worktree on demand, so a host with no rc branch yet is a no-op rather than a failing unit. The orchestrator also triggers this immediately over ssh when cutting an RC
 4. **auto-release-stable** (`*:3/5`): If a state file exists, builds `release_ring=fast` packages for stable and replicates them to rc
 
 That cadence is only safe because of three guards:
