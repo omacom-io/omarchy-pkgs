@@ -274,6 +274,22 @@ else
   echo "    services source it before signing."
 fi
 
+# Release reporting is optional, but silence is indistinguishable from a
+# broken hook, so say which chat (if any) will receive build reports.
+if [[ -f "$CREDENTIALS" ]]; then
+  if grep -q 'OMARCHY_RELEASE_CHATBOT_URL' "$CREDENTIALS"; then
+    print_success "Release reports go to the dedicated release chat"
+  elif grep -q 'BASECAMP_CHATBOT_URL' "$CREDENTIALS"; then
+    print_warning "Release reports fall back to BASECAMP_CHATBOT_URL (the repository chat)"
+    echo "    Export OMARCHY_RELEASE_CHATBOT_URL in $CREDENTIALS to send them"
+    echo "    to their own chat instead."
+  else
+    print_warning "No chatbot URL in $CREDENTIALS — build reports are disabled"
+    echo "    Export OMARCHY_RELEASE_CHATBOT_URL to receive start/publish/failure"
+    echo "    reports in Basecamp."
+  fi
+fi
+
 if rclone listremotes 2>/dev/null | grep -q '^pkgs.omarchy.org:'; then
   print_success "rclone remote 'pkgs.omarchy.org' configured"
 else

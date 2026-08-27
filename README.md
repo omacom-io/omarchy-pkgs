@@ -756,6 +756,31 @@ That cadence is only safe because of three guards:
 `bin/repo timers` reports all of this: schedules, last results, what is
 queued, what is failing and when it will retry, and whether the lock is held.
 
+### Build reports
+
+Every release run reports to Basecamp Campfire — not just failures, so a push
+can be followed all the way to the mirror without watching the host:
+
+| Event | Message |
+|---|---|
+| 🔨 Started | channel, arch, host, and the commit being built |
+| ✅ Published | the packages and versions that went out, duration, and the channel URL |
+| 📦 Promoted | what `advance` moved between channels (including the rc bootstrap and fast-ring replication) |
+| 📦 No changes | the run found nothing to build |
+| 🔴 Failed | which step failed, the commit, and the last 25 log lines |
+
+Release traffic gets its own chat so it does not drown the repository chat
+that the AUR/upstream sync workflows post to. Export the destination in
+`/root/.omarchy/build-credentials`:
+
+```bash
+export OMARCHY_RELEASE_CHATBOT_URL="https://3.basecamp.com/<account>/integrations/<key>/buckets/<project>/chats/<chat>/lines"
+```
+
+Without it, release reports fall back to `BASECAMP_CHATBOT_URL`; with neither
+set they are silently skipped. `bin/setup` reports which of the three cases
+applies.
+
 Check on all of it with `bin/repo timers` — schedule, each unit's last run and
 whether it succeeded, what is queued, whether a release is running right now,
 and any failed units. Like the other host commands it forwards over ssh, so

@@ -15,6 +15,7 @@ source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/lock-helpers.sh"
 source "$BUILD_ROOT/helpers/package-metadata.sh"
+source "$BUILD_ROOT/helpers/basecamp-notifier.sh"
 
 FROM=""
 TO=""
@@ -223,6 +224,7 @@ package_eligible() {
 mkdir -p "$TARGET_DIR"
 
 COPIED=0
+COPIED_FILES=""
 PRESENT=0
 SKIPPED=0
 MISSING_FILES=()
@@ -277,6 +279,7 @@ while IFS=$'\t' read -r name base filename; do
     echo "  copied: $filename (+ .sig)"
   fi
   COPIED=$((COPIED + 1))
+  COPIED_FILES+="$filename"$'\n'
 done < <(read_manifest)
 
 echo ""
@@ -330,3 +333,23 @@ SYNC_ARGS=("--mirror" "$TO" "--arch" "$ARCH")
 }
 
 print_success "Advance complete: $FROM -> $TO"
+
+# A promotion is how something reaches users, so say what moved and where.
+if ((COPIED > 0)); then
+  moved=""
+  shown=0
+  while IFS= read -r moved_file; do
+    [[ -z "$moved_file" ]] && continue
+    ((shown >= 25)) && break
+    moved+="<br>• $(package_file_label "$moved_file" | basecamp_html_escape)"
+    shown=$((shown + 1))
+  done <<<"$COPIED_FILES"
+  ((COPIED > shown)) && moved+="<br>• …and $((COPIED - shown)) more"
+
+  label="Promoted $FROM → $TO"
+  [[ "$BOOTSTRAP" == true ]] && label="Bootstrapped the $TO channel from $FROM"
+  [[ "$FAST_RING_ONLY" == true ]] && label="Replicated fast-ring $FROM → $TO"
+
+  notify_info "$label" \
+    "Arch: $ARCH · $(hostname -s 2>/dev/null || echo host)<br><strong>$COPIED package(s) moved:</strong>$moved<br><br>Live at https://pkgs.omarchy.org/$TO/$ARCH/"
+fi

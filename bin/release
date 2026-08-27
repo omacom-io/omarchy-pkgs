@@ -92,6 +92,24 @@ if [[ "$DRY_RUN" != true ]]; then
   acquire_release_lock || exit 1
 fi
 
+# --- reporting ---------------------------------------------------------------
+
+RELEASE_STARTED_AT=$(date +%s)
+RELEASE_COMMIT=$(git -C "$BUILD_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+RELEASE_COMMIT_SUBJECT=$(git -C "$BUILD_ROOT" log -1 --pretty=%s 2>/dev/null || echo "")
+RELEASE_CONTEXT="Channel: <strong>$MIRROR</strong> · Arch: $ARCH · $(hostname -s 2>/dev/null || echo host)"
+if [[ "$RELEASE_COMMIT" != "unknown" ]]; then
+  RELEASE_CONTEXT+="<br>Commit: <code>$RELEASE_COMMIT</code> $(basecamp_html_escape <<<"$RELEASE_COMMIT_SUBJECT")"
+fi
+
+# Captured after the build step: promote MOVES these files out of build-output,
+# so the list has to be taken while they are still there.
+BUILT_FILES=""
+
+if [[ "$DRY_RUN" != true ]]; then
+  notify_start "Release started: $MIRROR" "$RELEASE_CONTEXT"
+fi
+
 # Step 1: Build
 echo ""
 if [[ "$DRY_RUN" == true ]]; then
@@ -101,7 +119,7 @@ else
 fi
 "$BUILD_ROOT/bin/build" "${BUILD_ARGS[@]}" || {
   print_error "Build failed"
-  notify_error "Release failed: Build step failed" "Mirror: $MIRROR | Arch: $ARCH"
+  notify_error "Release failed: Build step failed" "$RELEASE_CONTEXT"
   exit 1
 }
 
@@ -111,12 +129,17 @@ if [[ "$DRY_RUN" == true ]]; then
   exit 0
 fi
 
+BUILT_FILES=$(built_package_files "$BUILD_OUTPUT_DIR")
+BUILT_COUNT=$(grep -c '' <<<"$BUILT_FILES")
+[[ -z "$BUILT_FILES" ]] && BUILT_COUNT=0
+print_info "Built $BUILT_COUNT package(s) this run"
+
 # Step 2: Sign
 echo ""
 print_info "Step 2/6: Signing packages..."
 "$BUILD_ROOT/bin/sign" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Signing failed"
-  notify_error "Release failed: Signing step failed" "Mirror: $MIRROR | Arch: $ARCH"
+  notify_error "Release failed: Signing step failed" "$RELEASE_CONTEXT"
   exit 1
 }
 
@@ -125,7 +148,7 @@ echo ""
 print_info "Step 3/6: Promoting to production..."
 "$BUILD_ROOT/bin/promote-build" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Promotion failed"
-  notify_error "Release failed: Promotion step failed" "Mirror: $MIRROR | Arch: $ARCH"
+  notify_error "Release failed: Promotion step failed" "$RELEASE_CONTEXT"
   exit 1
 }
 
@@ -134,7 +157,7 @@ echo ""
 print_info "Step 4/6: Cleaning old versions..."
 "$BUILD_ROOT/bin/clean-repo" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Cleaning failed"
-  notify_error "Release failed: Clean step failed" "Mirror: $MIRROR | Arch: $ARCH"
+  notify_error "Release failed: Clean step failed" "$RELEASE_CONTEXT"
   exit 1
 }
 
@@ -143,7 +166,7 @@ echo ""
 print_info "Step 5/6: Updating repository database..."
 "$BUILD_ROOT/bin/update-repo" --arch "$ARCH" --mirror "$MIRROR" || {
   print_error "Database update failed"
-  notify_error "Release failed: Database update step failed" "Mirror: $MIRROR | Arch: $ARCH"
+  notify_error "Release failed: Database update step failed" "$RELEASE_CONTEXT"
   exit 1
 }
 
@@ -159,7 +182,7 @@ if [[ "$SKIP_PROD_CHECK" == true ]]; then
 fi
 "$BUILD_ROOT/bin/sync-repo" "${SYNC_ARGS[@]}" || {
   print_error "Sync failed"
-  notify_error "Release failed: Sync step failed" "Mirror: $MIRROR | Arch: $ARCH"
+  notify_error "Release failed: Sync step failed" "$RELEASE_CONTEXT"
   exit 1
 }
 
@@ -175,7 +198,7 @@ if [[ "$MIRROR" == "stable" ]]; then
     [[ "$SKIP_PROD_CHECK" == true ]] && REPLICATE_ARGS+=(--skip-prod-check)
     "$BUILD_ROOT/bin/advance-channel" "${REPLICATE_ARGS[@]}" || {
       print_error "Fast-ring replication to rc failed"
-      notify_error "Release failed: rc parity replication failed" "Mirror: $MIRROR | Arch: $ARCH"
+      notify_error "Release failed: rc parity replication failed" "$RELEASE_CONTEXT"
       exit 1
     }
   else
@@ -185,3 +208,17 @@ fi
 
 echo ""
 print_success "Release workflow completed successfully!"
+
+duration=$(format_duration $(($(date +%s) - RELEASE_STARTED_AT)))
+summary="$RELEASE_CONTEXT<br>Duration: $duration"
+if ((BUILT_COUNT > 0)); then
+  summary+="<br><br><strong>$BUILT_COUNT package(s) published:</strong>"
+  summary+="$(format_package_list_html "$BUILT_FILES")"
+  summary+="<br><br>Live at https://pkgs.omarchy.org/$MIRROR/$ARCH/"
+  notify_success "Release published: $MIRROR" "$summary"
+else
+  # Nothing to build usually means a queued run raced another that already did
+  # the work. Worth saying, but not worth dressing up as a publish.
+  summary+="<br>No packages needed building — the channel was already current."
+  notify_info "Release complete (no changes): $MIRROR" "$summary"
+fi
