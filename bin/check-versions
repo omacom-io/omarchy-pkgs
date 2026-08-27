@@ -153,7 +153,10 @@ check_mirror() {
   echo ""
 
   if [[ "$needs_build" == true ]]; then
-    touch "$state_file"
+    # Record WHAT is queued, not just THAT something is: the release run reads
+    # this to name the packages in its start report, which is the difference
+    # between "a build is running" and "your package is in this build".
+    printf '%s\n' "${packages[@]}" >"$state_file"
     print_success "${mirror^} needs building (${#packages[@]} packages)"
     print_info "Packages: ${packages[*]}"
     print_info "State file created: $state_file"

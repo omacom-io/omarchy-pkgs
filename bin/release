@@ -106,8 +106,20 @@ fi
 # so the list has to be taken while they are still there.
 BUILT_FILES=""
 
+# What the scheduled version check queued, when it was the one that asked for
+# this run. Absent for a manual run, which is fine — the report just omits it.
+QUEUED_PACKAGES=""
+QUEUE_FILE="${OMARCHY_STATE_DIR:-/root/.state}/.sync-needed-$MIRROR"
+[[ -s "$QUEUE_FILE" ]] && QUEUED_PACKAGES=$(grep -c '' "$QUEUE_FILE")
+
 if [[ "$DRY_RUN" != true ]]; then
-  notify_start "Release started: $MIRROR" "$RELEASE_CONTEXT"
+  start_details="$RELEASE_CONTEXT"
+  if [[ -n "$QUEUED_PACKAGES" && "$QUEUED_PACKAGES" != "0" ]]; then
+    start_details+="<br><br><strong>$QUEUED_PACKAGES package(s) queued:</strong><br>"
+    start_details+="$(head -25 "$QUEUE_FILE" | tr '\n' ' ' | basecamp_html_escape)"
+    ((QUEUED_PACKAGES > 25)) && start_details+=" …and $((QUEUED_PACKAGES - 25)) more"
+  fi
+  notify_start "Release started: $MIRROR" "$start_details"
 fi
 
 # Step 1: Build
@@ -217,8 +229,8 @@ if ((BUILT_COUNT > 0)); then
   summary+="<br><br>Live at https://pkgs.omarchy.org/$MIRROR/$ARCH/"
   notify_success "Release published: $MIRROR" "$summary"
 else
-  # Nothing to build usually means a queued run raced another that already did
-  # the work. Worth saying, but not worth dressing up as a publish.
-  summary+="<br>No packages needed building — the channel was already current."
-  notify_info "Release complete (no changes): $MIRROR" "$summary"
+  # Deliberately silent in chat: a run that published nothing is not news, and
+  # at a 5-minute cadence those messages would bury the ones that matter. The
+  # log and `bin/repo timers` still show the run happened.
+  print_info "Nothing was published — the channel was already current"
 fi
