@@ -208,6 +208,15 @@ package_eligible() {
     package_is_fast_ring "$pkgdir" && return 1
   fi
 
+  # The bootstrap seeds an empty rc from stable, so parity is the whole point:
+  # membership in the destination is enough. Nothing is built in rc yet, so
+  # there is no native artifact to race — and the release pair MUST come along
+  # or rc cannot serve omarchy/omarchy-settings until the first RC is cut.
+  if [[ "$BOOTSTRAP" == true ]]; then
+    package_in_channel "$pkgdir" "$TO"
+    return
+  fi
+
   package_moves_to_channel "$pkgdir" "$TO"
 }
 
