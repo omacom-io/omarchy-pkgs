@@ -637,10 +637,11 @@ cmd_self_test() {
   }
 
   check_strict_patch_application() {
-    local fixture_root exact_patch fuzzy_patch
+    local fixture_root exact_patch fuzzy_patch missing_root
     fixture_root=$(mktemp -d)
     exact_patch="$fixture_root/exact.patch"
     fuzzy_patch="$fixture_root/fuzzy.patch"
+    missing_root="$fixture_root/missing"
 
     printf '%s\n' alpha beta gamma > "$fixture_root/example.txt"
     printf '%s\n' \
@@ -680,6 +681,17 @@ cmd_self_test() {
       fi
     else
       echo "  FAIL: fuzz fixture no longer demonstrates permissive patch behavior"
+      failures=$((failures + 1))
+    fi
+
+    printf '%s\n' alpha beta gamma > "$fixture_root/example.txt"
+    if apply_patch_strict "$missing_root" "$exact_patch" >/dev/null 2>&1; then
+      echo "  FAIL: missing package directory was accepted"
+      failures=$((failures + 1))
+    elif [[ "$(cat "$fixture_root/example.txt")" == $'alpha\nbeta\ngamma' ]]; then
+      echo "  ok: missing package directory stops before patch"
+    else
+      echo "  FAIL: patch ran outside the missing package directory"
       failures=$((failures + 1))
     fi
 
