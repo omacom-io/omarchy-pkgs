@@ -4,26 +4,14 @@ name: aarch64 package repo
 # runner and publishes it as a workflow artifact. Nothing here touches the
 # x86_64 path: the sync-* workflows and bin/repo's defaults are unchanged.
 #
-# Three entry points:
-#   push               -- every change to the package set on the snapdragon
-#                         branch rebuilds what moved (the tree is cached).
-#   workflow_dispatch  -- build on demand from a branch of this repository.
-#   workflow_call      -- called by omarchy-iso's aarch64 ISO workflow so the
-#                         ISO build can consume the repo from the same run.
+# Two entry points: build on demand, or let an ISO workflow call this one and
+# consume the complete repository artifact in the same run.
 
 on:
-  push:
-    branches: [snapdragon]
-    paths:
-      - "pkgbuilds/**"
-      - "bin/**"
-      - "build/**"
-      - "helpers/**"
-      - ".github/workflows/build-aarch64.yml"
   workflow_dispatch:
     inputs:
       packages:
-        description: "Space-separated pkgbases to build (empty = the ISO set)"
+        description: "Space-separated pkgbases to build (empty = every eligible package)"
         type: string
         default: ""
       mirror:
@@ -63,16 +51,6 @@ jobs:
       ARCH: aarch64
       INPUT_MIRROR: ${{ inputs.mirror }}
       INPUT_PACKAGES: ${{ inputs.packages }}
-      # Everything the ISO installs from [omarchy] that has an aarch64 build
-      # (JimmayVV/omarchy-iso#6). quickshell-git is deliberately absent: the
-      # ISO substitutes Arch Linux ARM's quickshell for it.
-      ISO_PACKAGES: >-
-        omarchy-keyring ttf-jetbrains-mono-nerd-basic limine-mkinitcpio-hook limine-snapper-sync
-        linux-aarch64-pkgbase-shim qcom-firmware-extract
-        omarchy-settings omarchy omarchy-nvim
-        aether cliamp herdr localsend-bin mise-bin omacalc omacut omawrite omarchy-chromium-bin
-        ttfx yay tobi-try ttf-ia-writer ufw-docker xdg-terminal-exec yaru-icon-theme
-        tzupdate tensaku hyprland-preview-share-picker
     steps:
       - name: Checkout omarchy-pkgs
         uses: actions/checkout@v4
@@ -84,7 +62,7 @@ jobs:
         id: meta
         run: |
           MIRROR="${INPUT_MIRROR:-edge}"
-          PACKAGES="${INPUT_PACKAGES:-$ISO_PACKAGES}"
+          PACKAGES="$INPUT_PACKAGES"
           case "$MIRROR" in edge|stable) ;; *) echo "invalid mirror: $MIRROR" >&2; exit 1 ;; esac
           re='^[A-Za-z0-9._+ -]+$'
           if ! [[ $PACKAGES =~ $re ]]; then echo "invalid package list" >&2; exit 1; fi
