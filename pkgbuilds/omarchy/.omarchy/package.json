@@ -1,1 +1,5 @@
-{ "source": "local", "channels": ["edge", "rc", "stable"] }
+{
+  "source": "local",
+  "channels": ["edge", "rc", "stable"],
+  "pinned": true
+}

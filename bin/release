@@ -218,25 +218,5 @@ else
   notify_info "Release ran with nothing to publish: $MIRROR" "$summary"
 fi
 
-# Step 7 (stable only): fast-ring packages publish to rc and stable together,
-# so rc never falls behind what stable users actually run. Skipped until the
-# rc channel has been bootstrapped.
-if [[ "$MIRROR" == "stable" ]]; then
-  echo ""
-  if [[ -f "$REPO_ROOT/rc/$ARCH/omarchy.db.tar.zst" ]]; then
-    print_info "Step 7: Replicating fast-ring packages to rc (parity)..."
-    REPLICATE_ARGS=(--from stable --to rc --fast-ring --arch "$ARCH")
-    [[ -n "$SYNC_REMOTE" ]] && REPLICATE_ARGS+=(--sync-remote "$SYNC_REMOTE")
-    [[ "$SKIP_PROD_CHECK" == true ]] && REPLICATE_ARGS+=(--skip-prod-check)
-    "$BUILD_ROOT/bin/advance-channel" "${REPLICATE_ARGS[@]}" || {
-      print_error "Fast-ring replication to rc failed"
-      notify_error "Release failed: rc parity replication failed" "$RELEASE_CONTEXT"
-      exit 1
-    }
-  else
-    print_info "rc channel not bootstrapped; skipping fast-ring replication"
-  fi
-fi
-
 echo ""
 print_success "Release workflow completed successfully!"

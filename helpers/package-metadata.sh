@@ -162,6 +162,18 @@ package_in_channel() {
   package_channels "$pkgdir" | grep -qx "$channel"
 }
 
+# A pinned package's version is set per release by the orchestrator on the rc
+# branch, not by whatever the current checkout happens to say. Only a build
+# running from that branch's worktree (OMARCHY_RC_PINS=1) may build it for rc;
+# otherwise master's shipped pins would try to overwrite an in-flight RC with
+# an older version.
+package_is_pinned() {
+  local pkgdir="$1" metadata
+  metadata=$(metadata_file_for_dir "$pkgdir")
+  [[ -f "$metadata" ]] || return 1
+  [[ "$(jq -r 'if has("pinned") then .pinned else false end' "$metadata")" == "true" ]]
+}
+
 package_builds_for_mirror() {
   local pkgdir="$1"
   local mirror="$2"
@@ -169,28 +181,26 @@ package_builds_for_mirror() {
   package_has_pkgbuild "$pkgdir" || return 1
   package_has_metadata "$pkgdir" || return 1
 
-  # An explicit `channels` key pins where a package is BUILT: it builds in
-  # each listed channel except stable, which is only ever fed by promotion.
-  # Without the key, the defaults hold: everything builds for edge, and
-  # fast-ring packages also build directly for stable (bin/release then
-  # replicates those artifacts into rc to keep rc and stable in parity).
-  if package_has_channels "$pkgdir"; then
-    case "$mirror" in
-      edge | rc)
-        package_in_channel "$pkgdir" "$mirror"
-        return
-        ;;
-      *)
-        return 1
-        ;;
-    esac
+  # An explicit `channels` key is the outer bound on where a package may be
+  # built at all.
+  if package_has_channels "$pkgdir" && ! package_in_channel "$pkgdir" "$mirror"; then
+    return 1
   fi
 
   case "$mirror" in
     edge)
       return 0
       ;;
+    rc)
+      # Fast-ring packages build for rc natively rather than being copied from
+      # stable: the rc channel's Arch base can be sitting anywhere between
+      # stable's snapshot and edge's, so an artifact linked against stable's
+      # libraries is not necessarily correct for rc.
+      package_is_pinned "$pkgdir" && { [[ -n "${OMARCHY_RC_PINS:-}" ]]; return; }
+      package_is_fast_ring "$pkgdir"
+      ;;
     stable)
+      package_is_pinned "$pkgdir" && return 1
       package_is_fast_ring "$pkgdir"
       ;;
     *)
@@ -411,6 +421,11 @@ validate_package_metadata() {
     ""|fast) ;;
     *) echo "invalid release_ring for $(basename "$pkgdir"): $ring"; return 1 ;;
   esac
+
+  if ! jq -e 'if has("pinned") | not then true else (.pinned | type) == "boolean" end' "$metadata" >/dev/null; then
+    echo "invalid pinned for $(basename "$pkgdir"): must be boolean"
+    return 1
+  fi
 
   if ! jq -e '
     if has("channels") | not then true

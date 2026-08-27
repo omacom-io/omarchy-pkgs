@@ -12,12 +12,17 @@ The filesystem no longer encodes release policy. Instead:
 
 - there are three channels forming a forward-only pipeline: `edge` → `rc` → `stable`
 - all packages build for `edge` unless their metadata pins `channels`
-- packages with `"release_ring": "fast"` also build directly for `stable`, and those
-  artifacts are replicated into `rc` in the same release run so rc and stable stay in parity
+- packages with `"release_ring": "fast"` build natively for **all three** channels —
+  each in its own image against its own base mirror, because rc's Arch snapshot may sit
+  anywhere between stable's and edge's, so an artifact linked against stable's libraries
+  is not necessarily correct for rc
 - a release train opens by advancing edge into rc (`bin/repo advance --from edge --to rc`)
   and ships by promoting rc into stable (`bin/repo advance --from rc --to stable`)
-- the release pair (`omarchy`, `omarchy-settings`) builds for `rc` from the standing `rc`
-  branch; the dev pair (`omarchy-dev`, `omarchy-settings-dev`) is pinned to `edge`
+- the release pair (`omarchy`, `omarchy-settings`) is marked `"pinned": true`: its version
+  is set per release on the standing `rc` branch, so only a build from that branch's worktree
+  (`OMARCHY_RC_PINS=1`, which `omarchy-release rc` sets) may build it for rc — master's
+  shipped pins can never overwrite an in-flight RC. The dev pair
+  (`omarchy-dev`, `omarchy-settings-dev`) is pinned to `edge`
 - AUR sync behavior is controlled by `source`, `sync`, `aur`, patches, and hooks in `.omarchy/`
 - packages can opt out of unscoped builds with `skip_build`; explicit `--package` builds remain available
 - packages that follow a vendor release feed instead of the AUR carry an `.omarchy/upstream.sh` hook
@@ -586,7 +591,8 @@ Fields:
 - `sync`: optional for AUR packages; defaults to `true`. Set `false` for AUR-origin packages that Omarchy maintains manually.
 - `aur`: optional AUR package name when it differs from the local package directory, usually for split packages.
 - `release_ring`: optional. `fast` means the package is built directly for stable as well as edge, with the artifacts replicated into rc for parity. Packages without a ring build in edge and reach stable through the pipeline (`bin/repo advance`).
-- `channels`: optional array pinning where the package lives (`edge`, `rc`, `stable`). With the key present the package builds in each listed channel except `stable` (stable is only fed by promotion), and `bin/repo advance` refuses to carry it anywhere it isn't a member. Without the key a package is a member of every channel and follows the default build rules above.
+- `channels`: optional array bounding where the package may be built (`edge`, `rc`, `stable`). Without the key a package is a member of every channel and follows the default build rules above; `bin/repo advance` refuses to carry a package anywhere it isn't a member.
+- `pinned`: optional boolean. A pinned package's version is set per release by `omarchy-release` on the `rc` branch, so it is never built for stable (promotion only) and is built for rc only from that branch's worktree (`OMARCHY_RC_PINS=1`). Used by `omarchy` and `omarchy-settings`.
 - `skip_build`: optional boolean; defaults to `false`. Set `true` to exclude a package from scheduled version checks and unscoped builds. The package can still be built explicitly with `bin/repo release --package <name>`.
 - `pkgrel`: optional Omarchy pkgrel suffix for a version-pinned rebuild bump. This emits `<aur pkgrel>.<suffix>` instead of replacing AUR's pkgrel. `offset` can be used only when preserving monotonic upgrades from old absolute pkgrel bumps. The metadata is removed automatically when AUR sync changes `pkgver`; the current package version is read from the checked-in PKGBUILD, so the version is not duplicated in JSON.
 - `rebuild_on`: optional array of package names this package links against closely enough that it must be rebuilt when they change, independent of its own source. Read by `bin/sync-rebuilds`.
@@ -596,8 +602,8 @@ Fields:
 ### Build Matrix
 
 - **Edge unscoped builds** (`--mirror edge`): packages in `pkgbuilds/*` unless `"skip_build": true` or `channels` excludes edge
-- **Rc unscoped builds** (`--mirror rc`): packages whose `channels` include `rc` (the release pair, built from the `rc` branch worktree)
-- **Stable unscoped builds** (`--mirror stable`): packages with `"release_ring": "fast"` unless `"skip_build": true`; their artifacts replicate to rc in the same run
+- **Rc unscoped builds** (`--mirror rc`): `"release_ring": "fast"` packages, built natively in the rc image. The pinned release pair joins them only when `OMARCHY_RC_PINS=1` (the `rc` branch worktree, set by `omarchy-release rc`)
+- **Stable unscoped builds** (`--mirror stable`): packages with `"release_ring": "fast"` unless `"skip_build": true`
 - **Explicit builds** (`--package <name>`): the selected package, including packages with `"skip_build": true`, subject to mirror eligibility
 - **Channel moves** (`bin/repo advance`): copies current packages + signatures forward through edge → rc → stable, never rewriting a published filename
 
@@ -741,7 +747,7 @@ reaches the mirror in minutes rather than hours:
 
 1. **check-versions** (`*:0/5`): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
 2. **auto-release-edge** (`*:1/5`): If a state file exists, builds all edge packages that need updates
-3. **auto-release-rc** (`*:2/5`): Builds the rc channel from the `rc` branch worktree (`/root/omarchy-pkgs-rc`), publishing into the shared channel tree. It runs from the main checkout and creates that worktree on demand, so a host with no rc branch yet is a no-op rather than a failing unit. The orchestrator also triggers this immediately over ssh when cutting an RC
+3. **auto-release-rc** (`*:2/5`): Builds fast-ring packages for rc, from the main checkout like the other two — natively in the rc image, not copied from another channel. The pinned release pair is built separately by `omarchy-release rc` in the `rc` branch worktree
 4. **auto-release-stable** (`*:3/5`): If a state file exists, builds `release_ring=fast` packages for stable and replicates them to rc
 
 That cadence is only safe because of three guards:

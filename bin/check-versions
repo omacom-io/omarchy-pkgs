@@ -179,6 +179,7 @@ check_mirror() {
 }
 
 check_mirror edge
+check_mirror rc
 check_mirror stable
 
 print_success "Version check complete!"

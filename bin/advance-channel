@@ -202,11 +202,6 @@ package_eligible() {
 
   if [[ "$FAST_RING_ONLY" == true ]]; then
     package_is_fast_ring "$pkgdir" || return 1
-  elif [[ "$FROM" == "edge" && "$TO" == "rc" ]]; then
-    # Fast-ring packages reach rc by replication of the STABLE build (same
-    # bytes stable users get). Carrying the independently built edge artifact
-    # forward would race it under the same filename.
-    package_is_fast_ring "$pkgdir" && return 1
   fi
 
   # The bootstrap seeds an empty rc from stable, so parity is the whole point:
