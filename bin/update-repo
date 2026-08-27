@@ -28,16 +28,17 @@ update_database() {
   # Make output directory writable for container
   make_dir_writable "$REPO_DIR"
 
-  # Build Docker image (always use x86_64 for repo update - it's architecture independent)
-  build_docker_image "$BUILD_DIR" "x86_64" "$MIRROR"
+  # repo-add is architecture- and mirror-independent, so always use the edge
+  # x86_64 image. This also lets bootstrap-rc build the rc database before the
+  # rc channel exists remotely (an rc image can only build after it does).
+  build_docker_image "$BUILD_DIR" "x86_64" "edge"
 
-  # Run repo-add in Docker container (always use x86_64 image)
   docker run --rm --platform linux/amd64 \
     -e ARCH="$ARCH" \
     -e MIRROR="$MIRROR" \
     -v "$REPO_ROOT:/output" \
     -v "$BUILD_DIR:/build:ro" \
-    omarchy-pkg-builder:latest-x86_64-$MIRROR /build/update-repo.sh
+    omarchy-pkg-builder:latest-x86_64-edge /build/update-repo.sh
 }
 
 # Main execution

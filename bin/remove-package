@@ -89,7 +89,8 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # Build/update the Docker image (always use x86_64 for removal - it's architecture independent)
-build_docker_image "$BUILD_DIR" "x86_64" "$MIRROR"
+# repo-remove is mirror-independent — always use the edge x86_64 image
+build_docker_image "$BUILD_DIR" "x86_64" "edge"
 
 acquire_release_lock || exit 1
 
@@ -104,7 +105,7 @@ docker run --rm --platform linux/amd64 \
   -e MIRROR="$MIRROR" \
   -v "$REPO_ROOT:/pkgs.omarchy.org" \
   -v "$BUILD_DIR:/build:ro" \
-  omarchy-pkg-builder:latest-x86_64-$MIRROR /build/remove-package.sh "$PACKAGE_NAME"
+  omarchy-pkg-builder:latest-x86_64-edge /build/remove-package.sh "$PACKAGE_NAME"
 
 RESULT=$?
 

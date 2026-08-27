@@ -106,10 +106,13 @@ RUN ln -sf /usr/lib/os-release /etc/os-release && \
     fi
 
 # Setup Omarchy keyring manually before adding repo (avoids keyserver trust issues)
-# Note: Repository is removed at the end since build scripts add it dynamically
+# Note: Repository is removed at the end since build scripts add it dynamically.
+# The keyring comes from this image's own channel (the bare /$arch path is a
+# stale legacy layout); %s keeps pacman's $arch literal while MIRROR expands.
+ARG MIRROR=edge
 RUN pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org && \
     pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 && \
-    printf '\n[omarchy]\nSigLevel = Optional\nServer = https://pkgs.omarchy.org/$arch\n' >> /etc/pacman.conf && \
+    printf '\n[omarchy]\nSigLevel = Optional\nServer = https://pkgs.omarchy.org/%s/$arch\n' "${MIRROR}" >> /etc/pacman.conf && \
     pacman -Sy --noconfirm && \
     pacman -S --noconfirm omarchy-keyring && \
     pacman-key --populate omarchy && \
