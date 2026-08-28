@@ -499,19 +499,33 @@ cmd_pick() {
   # on a patch branch. Detect equivalence the way it is actually recorded:
   # the branch's own commit messages since it left quattro name the PR
   # ("backport of #N", squash titles "(#N)") or the source commit
-  # ("cherry picked from commit <sha>", which pick -x writes).
-  local base_commit branch_log
+  # ("cherry picked from commit <sha>", which pick -x writes) — or, failing
+  # both, repeat its title verbatim.
+  local base_commit base_date branch_log
   base_commit=$(git -C "$WORK_CLONE" merge-base "origin/$branch" "origin/$DEV_BRANCH" 2>/dev/null) || base_commit=""
+  base_date=""
+  if [[ -n "$base_commit" ]]; then
+    base_date=$(TZ=UTC git -C "$WORK_CLONE" log -1 --format=%cd \
+      --date=format-local:'%Y-%m-%dT%H:%M:%SZ' "$base_commit" 2>/dev/null) || base_date=""
+  fi
   branch_log=$(git -C "$WORK_CLONE" log --format='%s %b' "origin/$branch" ${base_commit:+--not "$base_commit"} 2>/dev/null)
+  # Subjects alone, with any trailing "(#N)" stripped, so a change re-applied by
+  # hand — no PR number, no cherry-pick trailer — is still recognised by title.
+  local branch_subjects
+  branch_subjects=$(git -C "$WORK_CLONE" log --format='%s' "origin/$branch" ${base_commit:+--not "$base_commit"} 2>/dev/null |
+    sed -E 's/ \(#[0-9]+\)$//')
 
-  already_on_branch() { # already_on_branch <merge-sha> <pr-number-or-empty>
-    local sha="$1" number="$2"
+  already_on_branch() { # already_on_branch <merge-sha> <pr-number-or-empty> <title-or-empty>
+    local sha="$1" number="$2" title="$3"
     if [[ -n "$sha" ]]; then
       git -C "$WORK_CLONE" merge-base --is-ancestor "$sha" "origin/$branch" 2>/dev/null && return 0
       grep -q "cherry picked from commit $sha" <<<"$branch_log" && return 0
     fi
     if [[ -n "$number" ]]; then
       grep -qE "#$number([^0-9]|$)" <<<"$branch_log" && return 0
+    fi
+    if [[ -n "$title" ]]; then
+      grep -Fxq "$title" <<<"$branch_subjects" && return 0
     fi
     return 1
   }
@@ -527,13 +541,13 @@ cmd_pick() {
           print_error "PR #$arg has no merge commit (not merged?)"
           exit 1
         fi
-        if already_on_branch "$sha" "$arg"; then
+        if already_on_branch "$sha" "$arg" "$title"; then
           print_info "PR #$arg is already on $branch — skipping"
           continue
         fi
         shas+=("$sha") labels+=("PR #$arg: $title")
       else
-        if already_on_branch "$arg" ""; then
+        if already_on_branch "$arg" "" ""; then
           print_info "commit $arg is already on $branch — skipping"
           continue
         fi
@@ -542,21 +556,28 @@ cmd_pick() {
     done
   else
     # Interactive: merged dev-branch PRs not already on the release branch
-    # (by ancestry, backport reference, or cherry-pick trailer), oldest first
-    # so picks apply in merge order.
+    # (by ancestry, backport reference, cherry-pick trailer, or title), oldest
+    # first so picks apply in merge order.
     print_info "Loading merged $DEV_BRANCH PRs not yet on $branch..."
-    local list
+    # gh pr list orders by CREATION date, so a plain --limit window silently
+    # drops long-lived PRs — opened early, merged recently — which are exactly
+    # the ones a release branch still needs. Pull a wide window and bound it by
+    # the branch point instead: anything merged into $DEV_BRANCH before $branch
+    # left it is already here by ancestry.
+    local list jq_pick
+    jq_pick='sort_by(.mergedAt) | .[] | "\(.mergeCommit.oid)\t\(.number)\t\(.title)"'
+    [[ -n "$base_date" ]] && jq_pick="[.[] | select(.mergedAt >= \"$base_date\")] | $jq_pick"
     list=$(gh pr list --repo "$UPSTREAM_REPO" --state merged --base "$DEV_BRANCH" \
-      --limit 30 --json number,title,mergeCommit,mergedAt \
-      --jq 'sort_by(.mergedAt) | .[] | "\(.mergeCommit.oid)\t\(.number)\t#\(.number) \(.title)"')
+      --limit 300 --json number,title,mergeCommit,mergedAt --jq "$jq_pick")
     local -a cand_shas=() cand_labels=()
-    while IFS=$'\t' read -r sha number label; do
+    local sha number title
+    while IFS=$'\t' read -r sha number title; do
       [[ -z "$sha" || "$sha" == "null" ]] && continue
-      already_on_branch "$sha" "$number" && continue
-      cand_shas+=("$sha") cand_labels+=("$label")
+      already_on_branch "$sha" "$number" "$title" && continue
+      cand_shas+=("$sha") cand_labels+=("#$number $title")
     done <<<"$list"
     if [[ ${#cand_shas[@]} -eq 0 ]]; then
-      print_success "Nothing to pick — every recent merged PR is already on $branch"
+      print_success "Nothing to pick — every $DEV_BRANCH PR merged since $branch opened is already on it"
       exit 0
     fi
     echo ""
