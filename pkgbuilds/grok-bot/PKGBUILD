@@ -2,9 +2,9 @@
 # Contributor: Omarchy
 
 pkgname=grok-bot
-pkgver=0.24.0
+pkgver=0.29.0
 pkgrel=1
-_commit=302d75da596fc8d11ee0446a19b31c33c6676c2c
+_commit=f0e5bfcee649ea84c0c61369cf896cd146d72136
 pkgdesc='Grok Bot desktop agent'
 arch=('x86_64')
 url='https://x.ai/bot'
@@ -30,7 +30,7 @@ source=(
   'grok-bot.sh'
   'grok-bot.desktop'
 )
-sha256sums=('5fd091d63fa410717737797ae0b14967e4f1567cae201d10c834430e4807f32d'
+sha256sums=('d223b5830282aef11d5c46d8f4d1edd239bf992e336405cbd288d4476b9233d4'
             '6dfa6c305941afa6cbaefbeaae06d05ab5a88f31630005d25a819a160c20c7a3'
             '856056c9ca63dda5d01158ce8fb6a9a7cbb3f67c13a92b573cd196d3e50f26e7')
 noextract=("${pkgname}_${pkgver}.deb")
