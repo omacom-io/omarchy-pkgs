@@ -4,9 +4,20 @@
 # upstream ships it: the desktop follows the machine's published themes
 # (Omarchy retints it live) and `t3 theme set` works. Packaging matches
 # t3code-bin exactly, so this installs in its place and the AppImage is
-# unpacked the same way. Rebase: rebase the branch on the upstream release,
-# `pnpm dist:desktop:linux` with the release's version, retag, update pkgver,
-# _patchtag, and checksums, and reset pkgrel.
+# unpacked the same way.
+#
+# Shipping a new artifact, every time:
+#   1. The t3code worktree needs a repo-root .env carrying the public T3
+#      Connect config (relay URL, Clerk publishable key, CLI OAuth client id)
+#      or Connect ships broken -- the 0.0.35-2 mistake. The values are public
+#      and recoverable from the published npm `t3` package if lost.
+#   2. Build: `pnpm dist:desktop:linux` with --build-version <upstream pkgver>.
+#   3. Tag the built commit v<pkgver>-omarchy.<n>, create a GitHub release on
+#      the fork with the AppImage as its asset.
+#   4. Update _patchtag and sha256sums_x86_64 here, and bump pkgrel (or, on a
+#      rebase to a new upstream release, bump pkgver and reset pkgrel) -- the
+#      version change is what makes the build server rebuild at all; a new
+#      release asset with an untouched PKGBUILD is invisible to it.
 
 pkgname=t3code-patched-bin
 pkgver=0.0.35
