@@ -6,17 +6,24 @@
 # different layers and the ALSA-level check is blind to the PipeWire-level one,
 # so both are checked:
 #
-#   A. ALSA/UCM. The sof_sdw card is stuck on profile "off" while UCM itself is
-#      fine. This is the signature of losing the TAS2783 enumeration race.
-#      Recovery: restart WirePlumber, up to three attempts.
+#   A. ALSA/UCM. The card is on any profile other than HiFi. "off" is the
+#      signature of losing the TAS2783 enumeration race; recovery is a
+#      WirePlumber restart, up to three attempts. Anything else -- pro-audio,
+#      in practice -- means UCM never ran: the speaker routes stay off and no
+#      mic device exists, while nothing logs an error. WirePlumber restores a
+#      pinned profile from its state file on every boot, so a restart cannot
+#      clear it; only an explicit profile switch rewrites the pin. This
+#      machine lost twelve days to a pro-audio pin that the old "not off"
+#      check reported as healthy.
 #
 #   B. PipeWire graph. The profile is a healthy "HiFi", nothing logs an error,
-#      and there is still no sound, because the graph does not reach the
-#      speakers: either the default sink names a node that does not exist, or
-#      a speaker tuning filter-chain is the default sink while its output is
-#      not linked to the Speaker sink. Every stream then plays into a dead end.
-#      Recovery: restart the tuning filter-chain, escalating to the whole audio
-#      stack if that is not enough.
+#      and there is still no sound or the wrong sound, because the graph does
+#      not route through the tuning chain: the default sink names a node that
+#      does not exist, the raw Speaker sink is default while the tuning chain
+#      exists (every stream bypasses the EQ), or the tuning output is not
+#      linked to the Speaker sink (silence the moment the speakers are
+#      selected). Recovery: the cheap targeted fix first, then restart the
+#      tuning filter-chain, escalating to the whole audio stack.
 #
 # Fault B is the reason this script logs a graph snapshot on every run,
 # including the healthy ones. A profile-only check reports "healthy" while the
@@ -36,6 +43,11 @@ card_index() {
 card_profile() {
   pactl list cards 2>/dev/null |
     grep -A40 "platform-sof_sdw" | grep "Active Profile" | awk '{print $3}'
+}
+
+card_pactl_name() {
+  pactl list short cards 2>/dev/null |
+    awk '/platform-sof_sdw/ { print $2; exit }'
 }
 
 sink_exists() {
@@ -64,14 +76,22 @@ graph_fault() {
     return 0
   fi
 
-  # Only the tuning sink needs the extra hop checked. If the user has selected
-  # headphones, HDMI or Bluetooth, the sink existing is enough.
-  if [ "$default_sink" = "$TUNING_SINK" ]; then
-    links=$(tuning_links)
-    if [ "${links:-0}" -lt 2 ]; then
-      echo "tuning sink is default but only ${links:-0}/2 channels reach the speakers"
+  # The remaining checks only apply while the tuning chain is present. If the
+  # user has selected headphones, HDMI or Bluetooth, that choice is respected;
+  # the tuning plumbing behind it still has to be intact.
+  sink_exists "$TUNING_SINK" || return 1
+
+  case "$default_sink" in
+    *${SPK_RE})
+      echo "raw speaker sink is default while the tuning chain exists"
       return 0
-    fi
+      ;;
+  esac
+
+  links=$(tuning_links)
+  if [ "${links:-0}" -lt 2 ]; then
+    echo "only ${links:-0}/2 tuning channels reach the speakers"
+    return 0
   fi
 
   return 1
@@ -85,6 +105,19 @@ repair_graph() {
   local reason="$1"
 
   repaired=1
+
+  # The bypass fault has a one-line fix. Restarting services for it would
+  # churn the graph for nothing.
+  if [ "$reason" = "raw speaker sink is default while the tuning chain exists" ]; then
+    echo "graph fault: $reason - making the tuning chain the default sink"
+    pactl set-default-sink "$TUNING_SINK" 2>/dev/null
+    sleep 2
+    if ! reason=$(graph_fault); then
+      echo "graph recovered after default-sink switch"
+      return 0
+    fi
+  fi
+
   echo "graph fault: $reason - restarting the speaker tuning filter-chain"
   systemctl --user restart omarchy-speaker-tuning 2>/dev/null
   sleep 4
@@ -132,22 +165,30 @@ finish_up() {
   fi
 }
 
-# --- Fault A: card profile stuck on "off" -------------------------------------
+# --- Fault A: card profile is not HiFi ----------------------------------------
 profile_ok=0
 for attempt in 1 2 3; do
   sleep 8
   prof=$(card_profile)
-  if [ "$prof" != "off" ] && [ -n "$prof" ]; then
+  if [ "$prof" = "HiFi" ]; then
     echo "audio profile healthy: $prof"
     profile_ok=1
     break
   fi
   repaired=1
-  echo "attempt $attempt: sof_sdw profile is '$prof' - restarting wireplumber to recover"
-  systemctl --user restart wireplumber
-  sleep 4
-  systemctl --user restart omarchy-speaker-tuning 2>/dev/null
-  if [ "$(card_profile)" != "off" ]; then
+  if [ -n "$prof" ] && [ "$prof" != "off" ]; then
+    # A pinned wrong profile survives any restart; only an explicit switch
+    # rewrites WirePlumber's persisted pin.
+    echo "attempt $attempt: sof_sdw profile is '$prof' - switching it back to HiFi"
+    pactl set-card-profile "$(card_pactl_name)" HiFi 2>/dev/null
+    sleep 4
+  else
+    echo "attempt $attempt: sof_sdw profile is '$prof' - restarting wireplumber to recover"
+    systemctl --user restart wireplumber
+    sleep 4
+    systemctl --user restart omarchy-speaker-tuning 2>/dev/null
+  fi
+  if [ "$(card_profile)" = "HiFi" ]; then
     profile_ok=1
     break
   fi
@@ -156,6 +197,11 @@ done
 if [ "$profile_ok" -ne 1 ]; then
   echo "gave up on the card profile after 3 attempts"
   snapshot
+  # Still run finish_up. The rt712 capture switches are independent of the
+  # card profile, and leaving them muted here is what turns a speaker fault
+  # into a total audio loss: the user loses the microphone as well, on the
+  # one boot where recovery already failed.
+  finish_up
   exit 0
 fi
 
