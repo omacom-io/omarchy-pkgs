@@ -1,11 +1,6 @@
 name: aarch64 package repo
 
-# Builds the aarch64 [omarchy] repository natively on a GitHub-hosted arm64
-# runner and publishes it as a workflow artifact. Nothing here touches the
-# x86_64 path: the sync-* workflows and bin/repo's defaults are unchanged.
-#
-# Two entry points: build on demand, or let an ISO workflow call this one and
-# consume the complete repository artifact in the same run.
+# Build an aarch64 Omarchy repository for manual or reusable workflows.
 
 on:
   workflow_dispatch:
@@ -86,10 +81,7 @@ jobs:
           docker info --format '{{.Driver}} {{.DockerRootDir}}'
           id
 
-      # bin/repo build only rebuilds packages whose version moved relative to
-      # the omarchy.db already in the repository tree, so carry the tree across
-      # runs. The key is the PKGBUILD set; a partial hit still saves everything
-      # whose PKGBUILD did not change.
+      # Reuse packages whose build inputs have not changed.
       - name: Restore repository tree
         uses: actions/cache@v4
         with:
@@ -98,9 +90,7 @@ jobs:
           restore-keys: |
             omarchy-repo-${{ env.ARCH }}-${{ env.MIRROR }}-
 
-      # The builder image runs makepkg as uid 1000; the runner is uid 1001.
-      # make_dir_writable chowns to the runner, so the directories must be
-      # world-writable before it runs or every package write fails.
+      # The builder and runner use different user IDs.
       - name: Prepare output directories
         run: |
           mkdir -p "$OUTPUT_DIR" "$REPO_DIR" src logs

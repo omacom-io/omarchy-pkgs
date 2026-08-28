@@ -30,10 +30,8 @@ update_database() {
   # Make output directory writable for container
   make_dir_writable "$REPO_DIR"
 
-  # repo-add is architecture- and mirror-independent, so use the edge image
-  # for the target architecture. Matching the host used to build the packages
-  # keeps this step native on both x86_64 and aarch64 runners. Using edge also
-  # lets bootstrap-rc build the rc database before the rc channel exists.
+  # Match the target architecture to keep native builds native.
+  # Use edge so RC bootstrapping does not require an existing RC image.
   build_docker_image "$BUILD_DIR" "$ARCH" "edge"
   platform_arg=$(get_platform_arg "$ARCH")
 
