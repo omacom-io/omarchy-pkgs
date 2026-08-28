@@ -1,15 +1,6 @@
 # Maintainer: Jimmy Van Veen
 
-# Arch Linux ARM's kernel packages install the kernel as /boot/Image and ship
-# no usr/lib/modules/<ver>/{pkgbase,vmlinuz}, the two files mkinitcpio and
-# limine-entry-tool find kernels through. Without them an installed aarch64
-# Omarchy never gets an initramfs, a UKI or a Limine entry for a new kernel.
-# This package is a pacman hook that writes both files before mkinitcpio's
-# 90-mkinitcpio-install hook runs. It does nothing when pkgbase exists.
-#
-# RETIRE when Arch Linux ARM's linux-aarch64 ships pkgbase and vmlinuz itself
-# (archlinuxarm/PKGBUILDs#2215 or its successor), together with
-# limine-mkinitcpio-hook's 0002-accept-pkgbase-in-package-owned-kernel-dir.patch.
+# Add kernel metadata required by mkinitcpio and Limine on Arch Linux ARM.
 
 pkgname=linux-aarch64-pkgbase-shim
 pkgver=1

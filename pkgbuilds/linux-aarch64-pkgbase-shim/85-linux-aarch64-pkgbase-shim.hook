@@ -1,6 +1,4 @@
-# Ordered before 90-mkinitcpio-install (limine-mkinitcpio-hook's override of
-# it included) so the pkgbase and vmlinuz it writes are there when that hook
-# globs usr/lib/modules/*/pkgbase.
+# Run before mkinitcpio and Limine discover installed kernels.
 [Trigger]
 Type = Path
 Operation = Install
