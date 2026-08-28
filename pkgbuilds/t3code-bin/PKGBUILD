@@ -8,7 +8,7 @@
 
 pkgname=t3code-bin
 pkgver=0.0.35
-pkgrel=1
+pkgrel=2
 pkgdesc="Open-source control plane for coding agents"
 arch=('x86_64')
 url="https://t3.codes"
@@ -55,10 +55,11 @@ conflicts=('t3code')
 options=('!debug' '!strip')
 
 _appimage="T3-Code-${pkgver}-x86_64.AppImage"
-source=('t3code-launcher.sh' 'LICENSE')
+source=('t3code-launcher.sh' 't3-launcher.sh' 'LICENSE')
 source_x86_64=("${_appimage}::https://github.com/pingdotgg/t3code/releases/download/v${pkgver}/${_appimage}")
 noextract=("${_appimage}")
 sha256sums=('cb905ff341372ef2ef6e402cf485959f8bd1df8f0efebee4cda1afdd5e6abc0a'
+            'c5b3f2a9f0b14b12cfd973b79319f0f018b7ae49a1d43d8ca346100c3f7de28f'
             '935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43')
 sha256sums_x86_64=('97564d89bdb2d1b45f2fb1916183f39d4a384349dec788d5fb6fb2c643ae0794')
 
@@ -111,5 +112,9 @@ package() {
   chmod 4755 "${pkgdir}/usr/lib/t3code/chrome-sandbox"
 
   install -Dm755 "${srcdir}/t3code-launcher.sh" "${pkgdir}/usr/bin/t3code"
+  # The server CLI, run through the bundled Electron as Node. Same entrypoint
+  # npm's `t3` package runs, so `t3 serve`, `t3 pair`, and the rest work
+  # without a separate install.
+  install -Dm755 "${srcdir}/t3-launcher.sh" "${pkgdir}/usr/bin/t3"
   install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
