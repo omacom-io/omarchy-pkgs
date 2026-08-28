@@ -1,7 +1,7 @@
 # qcom-firmware-extract
 
-Copies the vendor-signed Qualcomm firmware a Snapdragon laptop needs — the GPU
-zap shader and the audio/compute DSP images — from the owner's own Windows
+Copies the vendor-signed Qualcomm firmware a Snapdragon laptop needs, including
+the GPU zap shader and audio/compute DSP images, from the owner's own Windows
 installation on the same machine into `/usr/lib/firmware/updates/`.
 
 Omarchy ships no vendor-signed firmware: the live ISO and every package carry
@@ -18,8 +18,7 @@ The device tree names every firmware file the kernel will ask for
 mount read-only. If Windows carries several variants and linux-firmware has a
 companion image from the same device-tree node, the sibling image's hash
 selects the compatible variant; otherwise the newest copy wins. The result is
-installed under
-`/usr/lib/firmware/updates/<name>`. The GPU zap shader is added to the
+installed under `/usr/lib/firmware/updates/<name>`. The GPU zap shader is added to the
 initramfs through `/etc/mkinitcpio.conf.d/qcom-firmware.conf`; the DSP images
 are loaded from the root filesystem. What was installed, from where, and its
 checksum is recorded in `/var/lib/omarchy/qcom-firmware/manifest`.
@@ -29,15 +28,15 @@ ships gets nothing copied; a machine without a device tree exits at once.
 
 ## When it runs
 
-- **Installer, live session** — `qcom-firmware-extract --stage DIR` right
+- **Installer, live session:** `qcom-firmware-extract --stage DIR` right
   after the disk is chosen, before anything is written. A full-disk install
   destroys the Windows partition the files come from, so this is the only
   moment they can be read. The stage is copied into the target.
-- **Installer, hardware setup** — `qcom-firmware-extract --install
-  --no-rebuild` from `install/hardware/qualcomm/firmware.sh`, using the stage
+- **Installer, hardware setup:** `qcom-firmware-extract --install --no-rebuild`
+  from `install/hardware/qualcomm/firmware.sh`, using the stage
   (or a Windows partition still on disk). The installer builds the boot image
   once afterwards.
-- **Installed system** — `sudo qcom-firmware-extract` scans the disks again,
+- **Installed system:** `sudo qcom-firmware-extract` scans the disks again,
   or `sudo qcom-firmware-extract -d /path/to/FileRepository` takes any driver
   store you can mount (a Windows install of the *same model*: the files are
   tied to the vendor's signing keys). It rebuilds the boot image; reboot

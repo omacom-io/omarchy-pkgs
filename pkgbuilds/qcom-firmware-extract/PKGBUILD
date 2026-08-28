@@ -1,20 +1,7 @@
 # Maintainer: Jimmy Van Veen
 
-# Snapdragon X laptops need a handful of firmware files signed by the laptop
-# vendor (GPU zap shader, audio and compute DSP images) that linux-firmware is
-# not allowed to ship. This tool copies them from the owner's own Windows
-# installation on the same machine, driven by the device tree's firmware-name
-# properties, into /usr/lib/firmware/updates. The Omarchy installer stages the
-# files in the live session before the disk is written and installs them from
-# install/hardware/qualcomm/firmware.sh; `sudo qcom-firmware-extract` does the
-# same on an installed system.
-#
-# arch=('any') on purpose: the omarchy repo's package lists are downloaded by
-# the x86_64 ISO build too, and the tool exits immediately on a machine
-# without a device tree.
-#
-# RETIRE when linux-firmware ships complete vendor directories for the
-# supported laptops; see the script header.
+# Copy vendor-signed Qualcomm firmware named by the running device tree.
+# The tool exits without changes on machines that do not need it.
 
 pkgname=qcom-firmware-extract
 pkgver=1

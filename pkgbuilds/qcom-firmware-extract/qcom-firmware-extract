@@ -1,20 +1,7 @@
 #!/bin/bash
 #
-# qcom-firmware-extract — copy the vendor-signed Qualcomm firmware a Snapdragon
-# laptop needs from the owner's own Windows installation.
-#
-# Snapdragon X laptops boot Linux with mainline drivers, but the GPU "zap"
-# shader and the audio/compute DSP images are signed by the laptop vendor and
-# not (yet) redistributable, so linux-firmware cannot ship them. Every file
-# the kernel will ask for is named by the device tree (the `firmware-name`
-# properties), and every one of them sits in the Windows driver store on the
-# same machine. This tool joins the two: it reads the device tree, keeps only
-# the names that are missing from /usr/lib/firmware, finds them in the driver
-# store and copies them to /usr/lib/firmware/updates/<name>.
-#
-# Nothing here is model-specific. A machine whose blobs linux-firmware already
-# ships gets nothing copied; a machine without a device tree (x86) exits at
-# once with nothing to do.
+# Copy missing vendor-signed Qualcomm firmware from a Windows driver store.
+# Required filenames come from the running device tree.
 #
 # Modes
 #   --stage DIR       Live ISO, before the disk is touched: scan the Windows
@@ -33,23 +20,10 @@
 #                     DriverStore/FileRepository directory, or any directory
 #                     tree holding the files) instead of scanning partitions.
 #
-# Files land in /usr/lib/firmware/updates/, never /usr/lib/firmware/: the
-# kernel and mkinitcpio search updates/ first and no package owns anything
-# there, so the day linux-firmware ships a machine's files pacman does not
-# collide with the copies.
-#
-# RETIRE for a given machine when linux-firmware ships its vendor directory
-# (as it already does for Lenovo's and Dell's X1E laptops): the tool finds
-# nothing missing and does nothing. When every supported machine is covered,
-# drop the package and prune /usr/lib/firmware/updates entries listed in
-# /var/lib/omarchy/qcom-firmware/manifest.
+# Files land in /usr/lib/firmware/updates to avoid package ownership conflicts.
 #
 # Derived from Canonical's qcom-firmware-extract (Tobias Heider, GPL-2+):
 # https://salsa.debian.org/debian/qcom-firmware-extract
-# That tool keys on /proc/device-tree/model with a per-model table, extracts
-# a fixed list of file names, and builds a .deb; this one reads the names
-# from the device tree and writes the files directly.
-#
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 set -euo pipefail
@@ -165,10 +139,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Mount every NTFS partition read-only and keep the ones that hold a driver
-# store. Internal disks first, so a Windows recovery stick does not win over
-# the installation the machine actually runs. A BitLocker volume cannot be
-# read; it is reported so the user knows why nothing was found.
+# Mount Windows driver stores read-only, preferring internal disks.
 scan_windows_partitions() {
   local dev fstype tran mp bitlocker=""
   if ((EUID != 0)); then
@@ -198,7 +169,7 @@ scan_windows_partitions() {
       rmdir "$mp" 2>/dev/null || true
     fi
   done
-  [[ -n $bitlocker ]] && warn "BitLocker volume(s) skipped:$bitlocker — turn BitLocker off in Windows to let the firmware be read"
+  [[ -n $bitlocker ]] && warn "BitLocker volume(s) skipped:$bitlocker; turn BitLocker off in Windows to let the firmware be read"
   return 0
 }
 
@@ -227,10 +198,7 @@ firmware_sha256() {
   esac | sha256sum | cut -d' ' -f1
 }
 
-# When Windows carries several versions of a board-specific DTB, select the
-# one beside the same DSP image linux-firmware already installed. The Yoga
-# Slim 7x driver store contains multiple cdsp_dtbs.elf files, and loading a
-# DTB signed for a different companion image prevents the CDSP from starting.
+# Match ambiguous DTBs to an installed sibling firmware blob from the same node.
 matching_companion_candidate() {
   local node=$1
   shift
@@ -259,9 +227,7 @@ matching_companion_candidate() {
   return 2
 }
 
-# Newest copy of an unambiguous file name anywhere under the sources. When
-# several variants exist and an installed sibling identifies the right one,
-# require that match instead of guessing by modification time.
+# Require a companion match when several firmware variants exist.
 find_in_sources() {
   local base=$1 node=$2 selected result candidate newest newest_mtime mtime
   local -a candidates=()
@@ -287,9 +253,7 @@ find_in_sources() {
     return 1
   fi
 
-  # No installed companion exists to distinguish driver versions (common on
-  # machines whose entire vendor firmware set is absent). Preserve the prior
-  # behavior there and take Windows' newest copy.
+  # With no installed companion, fall back to the newest copy.
   newest=${candidates[0]}
   newest_mtime=$(stat -c %Y "$newest" 2>/dev/null || stat -f %m "$newest")
   for candidate in "${candidates[@]:1}"; do
@@ -369,11 +333,7 @@ for i in "${!missing_names[@]}"; do
   installed=$((installed + 1))
 done
 
-# The GPU zap shader is the one file needed before the root filesystem is
-# mounted: the msm driver is in the initramfs (mkinitcpio's kms hook) and
-# loads the zap shader the first time the DRM device is opened. The DSP images
-# are loaded later from the root filesystem. List only files that exist —
-# a FILES entry that does not exist fails every later initramfs build.
+# Include existing GPU zap shaders in the initramfs for the early DRM driver.
 declare -a initramfs_files=()
 while read -r node name; do
   [[ $node == zap-shader ]] || continue
@@ -389,8 +349,7 @@ done < <(dt_firmware_names)
 if ((${#initramfs_files[@]})); then
   mkdir -p "$(dirname "$INITCPIO_CONF")"
   {
-    echo "# Generated by qcom-firmware-extract; the GPU zap shader has to be in the"
-    echo "# initramfs because the DRM driver loads it before the root filesystem is up."
+    echo "# Generated by qcom-firmware-extract for early DRM firmware loading."
     printf 'FILES+=(%s)\n' "$(printf '%q ' "${initramfs_files[@]}" | sed 's/ $//')"
   } >"$INITCPIO_CONF"
 else

@@ -28,9 +28,7 @@ printf '%s\0%s\0' \
   "$firmware_path/qccdsp8380.mbn" \
   "$firmware_path/cdsp_dtbs.elf" >"$node/firmware-name"
 
-# linux-firmware carries the main CDSP image but omits its signed DTB. Windows
-# retains several driver versions; deliberately make the incompatible one
-# newer so a newest-filename policy selects the wrong file.
+# Make the incompatible Windows firmware newer than the matching variant.
 printf 'installed-cdsp' >"$firmware_root/$firmware_path/qccdsp8380.mbn"
 printf 'other-cdsp' >"$driver_store/wrong/qccdsp8380.mbn"
 printf 'wrong-dtb' >"$driver_store/wrong/cdsp_dtbs.elf"
