@@ -46,6 +46,7 @@ source=(
   0030-ASoC-Intel-soc-acpi-intel-ptl-add-HP-EliteBook-X-G2i.patch
   0031-ASoC-sdw_utils-set-a-component-name-for-the-TAS2783A.patch
   0032-media-ipu-bridge-Add-linkfreq-to-ov05c10-sensor-for-n.patch
+  0033-ASoC-tas2783-do-not-block-system-resume-on-peripheral.patch
 )
 source_x86_64=(config.x86_64)
 validpgpkeys=(
@@ -62,7 +63,8 @@ b2sums=('84b59e5572d91f5ea1bb603aa7691851bd9549e1bf18a6bec8e27eb8a6e2de2e33da2ad
         'ed167ad347e83f072316b0d980ad192d97d0c4a69f6d1841a96089aa17caa0e57cb785214ed9297290f034420b5d0838dc75f84c7e9a9459eb49fd9dc22f3a3e'
             'e8a8ac621983c25a1f1ced2b0245aa6d58cfe2434c9214adcce94608249a6a3967cf90f0df695e03ec83818d5ce2195b1229d8c166f9aea3f437b945f605cf17'
             'ee9d73d1b798ad8f24e76ff6ff5304383dfa2f7cc348123bbeaeaf60fab64dca22000bad9ef73a8573cac22b1aedebebbb9e6b611ec5aeba71ad163ff0a9be46'
-            '9c80100c214905fced14b08743eaccc1bc6577fae862b6ee1ffa2feb8a34c1b038cac2a140524eb3227d967a7b967f7fe5d3bceeba420822fd1cc8225ec790f3')
+            '9c80100c214905fced14b08743eaccc1bc6577fae862b6ee1ffa2feb8a34c1b038cac2a140524eb3227d967a7b967f7fe5d3bceeba420822fd1cc8225ec790f3'
+            'f29fe05bdd957029c47d042c3c0e4d41a32ae628f39fd07178fe8c5e95dc9fe6cb8f64dd34224df9ea81e3b9219904873783b3af121f5a10e409acb6bb8ef420')
 b2sums_x86_64=('b10d80423aa3eb65e2046bf5b1998f9a7bdbc97494c6881881f50ffcdb5fe2e242782f59dbb6402cd77ce64b988dbf295fd9fa54f20180c76fbe88b82e1dbc9d')
 
 # https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
@@ -75,7 +77,8 @@ sha256sums=('ff01dcb449279d5b4cfccdb01fee639cf5ff1803f1749a77844dd33915422c49'
             '1a0bebfba76248bbda67f8812278835de71754412369454ce60f4dde0bd81916'
             '18ad3e3ef72ec7d7451b8265d685325a1683454bf16c6a940e23ce41d5841a12'
             'a196f9af1751691452ceecc5b06ef815d1130bc3547592b78ce344a102829b69'
-            'ec9bc5f46e06b68d03eeaf0b574de42d972caa82e7dc161c282f5d9f6dcf2037')
+            'ec9bc5f46e06b68d03eeaf0b574de42d972caa82e7dc161c282f5d9f6dcf2037'
+            'b5115fdbdb3d5e94461b0c8046d42569b4b54fcab8d48e4219a4ce0fee16fe3e')
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase
