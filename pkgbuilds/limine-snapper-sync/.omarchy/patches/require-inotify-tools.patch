@@ -1,0 +1,9 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -19 +19,2 @@
+-	'libnotify')
++	'libnotify'
++	'inotify-tools')
+@@ -23 +24,0 @@
+-	'inotify-tools: Monitors when snapshots are created or deleted.'
