@@ -21,7 +21,7 @@
 
 pkgname=t3code-patched-bin
 pkgver=0.0.35
-pkgrel=4
+pkgrel=5
 pkgdesc="Open-source control plane for coding agents, with Omarchy environment-theme patches"
 arch=('x86_64')
 url="https://t3.codes"
@@ -67,7 +67,7 @@ provides=("t3code=${pkgver}")
 conflicts=('t3code' 't3code-bin')
 options=('!debug' '!strip')
 
-_patchtag="v${pkgver}-omarchy.4"
+_patchtag="v${pkgver}-omarchy.5"
 _appimage="T3-Code-${pkgver}-x86_64.AppImage"
 source=('t3code-launcher.sh' 't3-launcher.sh' 'LICENSE')
 source_x86_64=("${_appimage}::https://github.com/ryanrhughes/t3code/releases/download/${_patchtag}/${_appimage}")
@@ -75,7 +75,7 @@ noextract=("${_appimage}")
 sha256sums=('cb905ff341372ef2ef6e402cf485959f8bd1df8f0efebee4cda1afdd5e6abc0a'
             'c5b3f2a9f0b14b12cfd973b79319f0f018b7ae49a1d43d8ca346100c3f7de28f'
             '935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43')
-sha256sums_x86_64=('be65cf6ed4ad92d2275fb4d5a9427c9cb6efa20045a4201416a5635b279860f7')
+sha256sums_x86_64=('6f58306d54525ca695c7b902aac610d111f85a1f3ba8a9bf04e6e1950337b1f6')
 
 prepare() {
   chmod +x "${srcdir}/${_appimage}"
