@@ -43,7 +43,7 @@ Commands:
   release beta|alpha [vX.Y.Z]    Same for beta/alpha channels
   release rc --commit <sha>      Untagged pre-release from a bare commit,
                                  auto-numbered past published edge + PKGBUILD
-  self-test                      Run version-normalization and ordering tests
+  self-test                      Run release and package-contract tests
 
 Options for release:
   --base <X.Y.Z>    (rc) Base version the RC leads up to (default: base of
@@ -607,6 +607,118 @@ cmd_release() {
 cmd_self_test() {
   local failures=0
 
+  load_package_dependency_metadata() {
+    local package="$1" destination="$2" output
+    if output=$(
+      (
+        if cd "$BUILD_ROOT/pkgbuilds/$package"; then
+          :
+        else
+          echo "package directory is unavailable" >&2
+          exit 1
+        fi
+
+        if [[ -f PKGBUILD ]]; then
+          :
+        else
+          echo "PKGBUILD is missing" >&2
+          exit 1
+        fi
+
+        unset depends
+        local variable
+        while IFS= read -r variable; do
+          unset "$variable"
+        done < <(compgen -A variable depends_)
+
+        if source PKGBUILD >/dev/null; then
+          :
+        else
+          echo "PKGBUILD could not be sourced" >&2
+          exit 1
+        fi
+
+        local -a dependency_fields=(depends)
+        while IFS= read -r variable; do
+          dependency_fields+=("$variable")
+        done < <(compgen -A variable depends_)
+
+        local declaration dependency field
+        for field in "${dependency_fields[@]}"; do
+          if declaration=$(declare -p "$field" 2>/dev/null); then
+            case $declaration in
+            "declare -a "*) ;;
+            *)
+              echo "$field must be an indexed array" >&2
+              exit 1
+              ;;
+            esac
+          else
+            echo "$field must be declared as an indexed array" >&2
+            exit 1
+          fi
+
+          local -n dependency_values="$field"
+          for dependency in "${dependency_values[@]}"; do
+            printf 'dependency\t%s\t%s\n' "$field" "$dependency"
+          done
+          unset -n dependency_values
+        done
+      ) 2>&1
+    ); then
+      printf -v "$destination" '%s' "$output"
+    else
+      echo "  FAIL: could not read dependency metadata for $package"
+      if [[ -n $output ]]; then
+        while IFS= read -r line; do
+          echo "    $line"
+        done <<< "$output"
+      fi
+      return 1
+    fi
+  }
+
+  dependency_metadata_has() {
+    local metadata="$1" dependency="$2" scope="$3"
+    local marker field declared dependency_name
+    while IFS=$'\t' read -r marker field declared; do
+      [[ $marker == "dependency" ]] || continue
+      dependency_name=${declared%%[<>=]*}
+      if [[ $dependency_name == "$dependency" && ( $scope == "all" || $field == "depends" ) ]]; then
+        return 0
+      fi
+    done <<< "$metadata"
+    return 1
+  }
+
+  check_hard_dependency() {
+    local package="$1" dependency="$2" metadata
+    if load_package_dependency_metadata "$package" metadata; then
+      if dependency_metadata_has "$metadata" "$dependency" plain; then
+        echo "  ok: $package hard-depends on $dependency in plain depends"
+      else
+        echo "  FAIL: $package must hard-depend on $dependency in plain depends"
+        failures=$((failures + 1))
+      fi
+    else
+      failures=$((failures + 1))
+    fi
+  }
+
+  check_no_hard_dependency() {
+    local package="$1" dependency="$2" metadata
+    if load_package_dependency_metadata "$package" metadata; then
+      if dependency_metadata_has "$metadata" "$dependency" all; then
+        echo "  FAIL: $package must not hard-depend on $dependency in depends or depends_*"
+        failures=$((failures + 1))
+      else
+        echo "  ok: $package does not hard-depend on $dependency in depends or depends_*"
+      fi
+    else
+      failures=$((failures + 1))
+    fi
+  }
+
   check_norm() {
     local input="$1" expected="$2" got
     got=$(normalize_tag "$input" 2>/dev/null) || got="<reject>"
@@ -670,6 +782,12 @@ cmd_self_test() {
   [[ $(version_base 4.0.0rc7) == 4.0.0 ]] && echo "  ok: version_base 4.0.0rc7 → 4.0.0" || { echo "  FAIL: version_base"; failures=$((failures + 1)); }
   version_is_rc 4.0.0rc1 && echo "  ok: 4.0.0rc1 is rc" || { echo "  FAIL: version_is_rc positive"; failures=$((failures + 1)); }
   version_is_rc 4.0.0 && { echo "  FAIL: version_is_rc negative"; failures=$((failures + 1)); } || echo "  ok: 4.0.0 is not rc"
+
+  echo "Target package contracts:"
+  check_hard_dependency omarchy zram-generator
+  check_hard_dependency omarchy-dev zram-generator
+  check_no_hard_dependency omarchy-settings zram-generator
+  check_no_hard_dependency omarchy-settings-dev zram-generator
 
   echo ""
   if [[ "$failures" -eq 0 ]]; then
