@@ -5,6 +5,7 @@
 
 # Setup directories
 ARCH=${ARCH:-x86_64}
+export CARCH="$ARCH"
 MIRROR=${MIRROR:-edge}
 DRY_RUN=${DRY_RUN:-false}
 PKGBUILDS_DIR=${PKGBUILDS_DIR:-/pkgbuilds}
@@ -46,8 +47,18 @@ EOF
   cd "$BUILD_OUTPUT_DIR"
   if [[ ! -f "omarchy-build.db.tar.zst" ]]; then
     # Create an empty database
-    repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
-    ln -sf omarchy-build.db.tar.zst omarchy-build.db
+    if ! repo-add omarchy-build.db.tar.zst >/dev/null 2>&1; then
+      echo "==> ERROR: Cannot initialize the local build repository"
+      exit 1
+    fi
+    [[ -f omarchy-build.db.tar.zst ]] || {
+      echo "==> ERROR: Local build repository database was not created"
+      exit 1
+    }
+    ln -sf omarchy-build.db.tar.zst omarchy-build.db || {
+      echo "==> ERROR: Cannot create the local build repository alias"
+      exit 1
+    }
   else
     # Database exists, check if we need to rebuild it from packages
     if ls *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | grep -q .; then
@@ -69,7 +80,10 @@ EOF
   fi
 
   # Sync pacman database
-  sudo pacman -Sy
+  if ! sudo pacman -Sy; then
+    echo "==> ERROR: Cannot synchronize package databases"
+    exit 1
+  fi
 fi
 
 echo "==> Package Builder"
@@ -86,10 +100,91 @@ FAILED_PACKAGES=""
 SUCCESSFUL_PACKAGES=""
 SKIPPED_PACKAGES=""
 
+# Map package names and virtual provides back to the package base that emits
+# them. A zero-baseline build cannot rely on an older repository copy to
+# satisfy dependencies such as `mise`, which is produced by `mise-bin`.
+declare -A DEPENDENCY_PROVIDER=()
+declare -A DEPENDENCY_DIRECT_PROVIDER=()
+
 # Find package directory
 find_package_dir() {
   local pkg="$1"
   package_dir_for_name "$pkg"
+}
+
+package_direct_dependency_names() {
+  local pkg="$1"
+  local pkgdir pkgbuild
+  pkgdir=$(find_package_dir "$pkg") || return 1
+  pkgbuild="$pkgdir/PKGBUILD"
+
+  (
+    cd "$pkgdir" || exit 1
+    source "$pkgbuild" >/dev/null 2>&1 || exit 1
+    printf '%s\n' "$pkg" "${pkgname[@]}"
+  ) | awk 'NF && !seen[$0]++'
+}
+
+package_virtual_dependency_names() {
+  local pkg="$1"
+  local pkgdir pkgbuild
+  pkgdir=$(find_package_dir "$pkg") || return 1
+  pkgbuild="$pkgdir/PKGBUILD"
+
+  (
+    cd "$pkgdir" || exit 1
+    source "$pkgbuild" >/dev/null 2>&1 || exit 1
+    declare -n arch_provides="provides_$ARCH"
+    printf '%s\n' "${provides[@]}" "${arch_provides[@]}"
+  ) | while IFS= read -r name; do
+    # provides entries may pin the version supplied by the package.
+    name=${name%%[<>=]*}
+    [[ -n $name ]] && printf '%s\n' "$name"
+  done
+  return 0
+}
+
+index_dependency_providers() {
+  local pkg name names existing
+  DEPENDENCY_PROVIDER=()
+  DEPENDENCY_DIRECT_PROVIDER=()
+
+  # Real package names always win over virtual provides. This matters when an
+  # edge repository contains mutually exclusive stable/dev variants: the dev
+  # package may provide the stable name, but a dependency that names the real
+  # stable package must still order against that package base.
+  for pkg in "${PACKAGES_TO_BUILD[@]}"; do
+    if ! names=$(package_direct_dependency_names "$pkg"); then
+      echo "ERROR: Cannot read package names for '$pkg'" >&2
+      return 1
+    fi
+    while IFS= read -r name; do
+      existing=${DEPENDENCY_DIRECT_PROVIDER[$name]:-}
+      if [[ -n $existing && $existing != "$pkg" ]]; then
+        echo "ERROR: Multiple local package bases emit '$name': $existing and $pkg" >&2
+        return 1
+      fi
+      DEPENDENCY_DIRECT_PROVIDER[$name]=$pkg
+      DEPENDENCY_PROVIDER[$name]=$pkg
+    done <<< "$names"
+  done
+
+  for pkg in "${PACKAGES_TO_BUILD[@]}"; do
+    if ! names=$(package_virtual_dependency_names "$pkg"); then
+      echo "ERROR: Cannot read virtual providers for '$pkg'" >&2
+      return 1
+    fi
+    while IFS= read -r name; do
+      [[ -n $name ]] || continue
+      [[ -z ${DEPENDENCY_DIRECT_PROVIDER[$name]:-} ]] || continue
+      existing=${DEPENDENCY_PROVIDER[$name]:-}
+      if [[ -n $existing && $existing != "$pkg" ]]; then
+        echo "ERROR: Ambiguous virtual provider for '$name': $existing and $pkg" >&2
+        return 1
+      fi
+      DEPENDENCY_PROVIDER[$name]=$pkg
+    done <<< "$names"
+  done
 }
 
 # Get version from final output (production packages)
@@ -286,20 +381,47 @@ build_package() {
     # Ensure output directory exists
     mkdir -p "$BUILD_OUTPUT_DIR"
     
-    for pkg_file in *.pkg.tar.*; do
-      [[ -f "$pkg_file" ]] && cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
+    # A source archive is allowed to end in .pkg.tar.zst (for example, a
+    # recipe that repackages an official Arch package). Copy only the outputs
+    # declared by makepkg, never every matching file in the working directory.
+    local -a built_filenames=()
+    local -a package_outputs=()
+    mapfile -t package_outputs < <(makepkg --packagelist)
+    for pkg_file in "${package_outputs[@]}"; do
+      [[ -f $pkg_file ]] || {
+        echo "    Declared package output is missing: $pkg_file"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        cd "/src/$pkg" || return 1
+        return 1
+      }
+      if ! cp "$pkg_file" "$BUILD_OUTPUT_DIR/"; then
+        echo "    Failed to copy $pkg_file to $BUILD_OUTPUT_DIR"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        cd "/src/$pkg" || return 1
+        return 1
+      fi
+      built_filenames+=("${pkg_file##*/}")
     done
+
+    (( ${#built_filenames[@]} > 0 )) || {
+      echo "    Makepkg completed without producing a package archive"
+      FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+      cd "/src/$pkg" || return 1
+      return 1
+    }
 
     cd "$BUILD_OUTPUT_DIR"
 
-    # Find ALL package files (handles split packages)
-    local new_pkgs=($(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db'))
-
-    if [[ ${#new_pkgs[@]} -gt 0 ]]; then
-      repo-add omarchy-build.db.tar.zst "${new_pkgs[@]}" >/dev/null 2>&1
-      ln -sf omarchy-build.db.tar.zst omarchy-build.db
-      sudo pacman -Sy >/dev/null 2>&1
+    # A package base may emit split packages whose names do not share the
+    # package directory prefix. Index the files makepkg actually produced.
+    if ! repo-add omarchy-build.db.tar.zst "${built_filenames[@]}" >/dev/null 2>&1; then
+      echo "    Failed to index package outputs"
+      FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+      cd "/src/$pkg" || return 1
+      return 1
     fi
+    ln -sf omarchy-build.db.tar.zst omarchy-build.db
+    sudo pacman -Sy >/dev/null 2>&1
 
     cd /src/$pkg
 
@@ -325,15 +447,23 @@ get_package_deps() {
     return
   fi
 
-  # Extract depends and makedepends, filter for packages in our pkgbuilds/
+  # Include target-specific dependency arrays when ordering local packages.
   (
     source "$pkgbuild" 2>/dev/null
-    echo "${depends[@]} ${makedepends[@]}"
+    declare -n arch_depends="depends_$ARCH"
+    declare -n arch_makedepends="makedepends_$ARCH"
+    declare -n arch_checkdepends="checkdepends_$ARCH"
+    echo "${depends[*]} ${makedepends[*]} ${checkdepends[*]} ${arch_depends[*]} ${arch_makedepends[*]} ${arch_checkdepends[*]}"
   ) | tr ' ' '\n' | while read -r dep; do
     # Strip version constraints (e.g., 'hyprshade>=1.0' -> 'hyprshade')
     dep=$(echo "$dep" | sed 's/[<>=].*$//')
-    # Check if this dependency exists in our pkgbuilds
-    if find_package_dir "$dep" >/dev/null 2>&1; then
+    [[ -n $dep ]] || continue
+    # Resolve both real package names and virtual provides to the package base
+    # selected for this build. Fall back to the historical direct-directory
+    # lookup for callers that have not initialized the provider index.
+    if [[ -n ${DEPENDENCY_PROVIDER[$dep]:-} ]]; then
+      echo "${DEPENDENCY_PROVIDER[$dep]}"
+    elif find_package_dir "$dep" >/dev/null 2>&1; then
       echo "$dep"
     fi
   done
@@ -494,6 +624,8 @@ if [[ ${#PACKAGES_TO_BUILD[@]} -eq 0 ]]; then
 else
   echo "==> ${#PACKAGES_TO_BUILD[@]} package(s) need building: ${PACKAGES_TO_BUILD[@]}"
   echo "==> Determining build order based on dependencies..."
+
+  index_dependency_providers || exit 1
 
   # Second pass: order only the packages that need building
   # Strategy: build packages with no unmet dependencies first

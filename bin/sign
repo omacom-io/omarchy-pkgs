@@ -66,23 +66,32 @@ if [[ -z "$GPG_PASSPHRASE" ]]; then
   exit 1
 fi
 
-# Build/update the Docker image (always use x86_64 for signing - it's architecture independent)
-build_docker_image "$BUILD_DIR" "x86_64" "$MIRROR"
+# Signing is architecture-neutral. Preserve upstream's edge/x86 image for the
+# three-channel bootstrap, except on native ARM runners where that would
+# introduce QEMU solely for signing.
+IMAGE_ARCH=x86_64
+IMAGE_MIRROR=edge
+PLATFORM_ARGS=(--platform linux/amd64)
+if [[ $ARCH == aarch64 && $(uname -m) == aarch64 ]]; then
+  IMAGE_ARCH=$ARCH
+  IMAGE_MIRROR=$MIRROR
+  read -r -a PLATFORM_ARGS <<< "$(get_platform_arg "$ARCH")"
+fi
+build_docker_image "$BUILD_DIR" "$IMAGE_ARCH" "$IMAGE_MIRROR"
 
 print_info "Running package signing..."
 
 # Ensure output directory is writable by container user
 make_dir_writable "$BUILD_OUTPUT_DIR"
 
-# Run the signing script in Docker (always use x86_64 image)
-docker run --rm --platform linux/amd64 \
+docker run --rm "${PLATFORM_ARGS[@]}" \
   -e ARCH="$ARCH" \
   -e MIRROR="$MIRROR" \
   -e GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY" \
   -e GPG_PASSPHRASE="$GPG_PASSPHRASE" \
   -v "$BUILD_ROOT/build-output:/build-output" \
   -v "$BUILD_DIR:/build:ro" \
-  omarchy-pkg-builder:latest-x86_64-$MIRROR /build/sign.sh
+  "omarchy-pkg-builder:latest-$IMAGE_ARCH-$IMAGE_MIRROR" /build/sign.sh
 
 SIGN_RESULT=$?
 
