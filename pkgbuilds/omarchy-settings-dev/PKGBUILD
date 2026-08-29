@@ -38,7 +38,8 @@ makedepends=(
 # backup=() is pacman's hook for protecting user edits to package-owned files
 # on upgrade. Only the paths the package actually installs into /etc qualify.
 # The etc-overrides set (faillock.conf, nsswitch.conf, cups-browsed.conf,
-# plymouthd.conf, /etc/skel/.bashrc) ships at /usr/share/omarchy/etc-overrides/
+# cups-files.conf, plymouthd.conf, /etc/skel/.bashrc) ships at
+# /usr/share/omarchy/etc-overrides/
 # and is cp -f'd by post_install — those paths are unowned by pacman and the
 # scriptlet WILL clobber user edits on each upgrade (documented limitation).
 backup=(
@@ -90,6 +91,7 @@ _etc_override_paths=(
   'etc/security/faillock.conf'
   'etc/nsswitch.conf'
   'etc/cups/cups-browsed.conf'
+  'etc/cups/cups-files.conf'
   'etc/plymouth/plymouthd.conf'
 )
 
@@ -224,6 +226,8 @@ EOF
         mv "$pkgdir/$path" "$pkgdir/usr/share/omarchy/etc-overrides/nsswitch.conf" ;;
       'etc/cups/cups-browsed.conf')
         mv "$pkgdir/$path" "$pkgdir/usr/share/omarchy/etc-overrides/cups-cups-browsed.conf" ;;
+      'etc/cups/cups-files.conf')
+        [[ ! -f $pkgdir/$path ]] || mv "$pkgdir/$path" "$pkgdir/usr/share/omarchy/etc-overrides/cups-cups-files.conf" ;;
       'etc/plymouth/plymouthd.conf')
         mv "$pkgdir/$path" "$pkgdir/usr/share/omarchy/etc-overrides/plymouth-plymouthd.conf" ;;
     esac
