@@ -1,0 +1,120 @@
+# Maintainer: Omarchy AArch64
+
+pkgbase=ollama
+pkgname=(
+  ollama
+  ollama-cuda
+  ollama-cuda-jetpack5
+  ollama-cuda-jetpack6
+)
+pkgver=0.33.2
+pkgrel=1
+pkgdesc='Create, run and share large language models on ARM64'
+arch=('aarch64')
+url='https://github.com/ollama/ollama'
+license=('MIT')
+options=('!strip')
+
+source=(
+  "LICENSE-${pkgver}::https://raw.githubusercontent.com/ollama/ollama/v${pkgver}/LICENSE"
+  "README-${pkgver}.md::https://raw.githubusercontent.com/ollama/ollama/v${pkgver}/README.md"
+  'ollama.conf'
+  'ollama-cuda.conf'
+  'ollama.service'
+  'ollama-cuda.service'
+  'sysusers.conf'
+  'tmpfiles.d'
+  'ollama.install'
+)
+source_aarch64=(
+  "https://github.com/ollama/ollama/releases/download/v${pkgver}/ollama-linux-arm64.tar.zst"
+  "https://github.com/ollama/ollama/releases/download/v${pkgver}/ollama-linux-arm64-jetpack5.tar.zst"
+  "https://github.com/ollama/ollama/releases/download/v${pkgver}/ollama-linux-arm64-jetpack6.tar.zst"
+)
+sha256sums=(
+  '5934ed2ce0d15154bcdb9c85203210abac0da4314af34081e36df4599f90b226'
+  '09c456b8f3e2fca486f6961e07494f424ec6f998cfd0b23ebde099bc028a47de'
+  '5de9e6f063f2a711744d372eb54d6079f56b6302e6c8057d52250f76806dc2d9'
+  'e1c768e69e400b7d6d33229cff4885d43e23fec0ebff442cfcd27837a9b71727'
+  '719e1e15d5dbaa35044c0f946e6a44ae458ba0c30f82dfa50edf8275ec078717'
+  '138f38a3ab5582d7a2f9f21c98a8a1112e3afb767e32cc348cb320938874104b'
+  '14e2e267be85b6943f66dfe60e73f5e0a611eaf40ee69a4cc0d497d071392cf4'
+  '137e1d50a5f3058c30a73b7bb3c323888d225e6a7ae47564be869827db0659a3'
+  '940eca99d12d8330b1a5d4c9b7636296fb4b0c4cfb1ccd7a1ddf81c31348a8f7'
+)
+sha256sums_aarch64=(
+  '6c648fd62bc8ea18d19aeb0900a03ff2d6a1fc830d901348d070fb93aca4630e'
+  '00f3c09d806c9d57db67eb92f2ff681536316e8a06a9cd5521f2ec35099f9033'
+  'bd93c96fe95f5d2ee0fe3c9dac73e6d1ed4f08b29c878793956bd1f90aea35a1'
+)
+
+_install_cuda_service() {
+  install -Dm644 "$srcdir/ollama-cuda.service" \
+    "$pkgdir/usr/lib/systemd/system/ollama.service.d/01-cuda.conf"
+  install -Dm644 "$srcdir/ollama-cuda.conf" "$pkgdir/etc/ollama-cuda.conf"
+}
+
+package_ollama() {
+  pkgdesc='Ollama CPU runtime for ARM64'
+  depends=('gcc-libs' 'glibc' 'libcap')
+  optdepends=(
+    'ollama-cuda: generic NVIDIA CUDA backend'
+    'ollama-cuda-jetpack5: NVIDIA JetPack 5 backend'
+    'ollama-cuda-jetpack6: NVIDIA JetPack 6 backend'
+  )
+  backup=('etc/ollama.conf')
+  install=ollama.install
+
+  install -Dm755 "$srcdir/bin/ollama" "$pkgdir/usr/bin/ollama"
+  install -dm755 "$pkgdir/usr/lib/ollama"
+  local item name
+  for item in "$srcdir/lib/ollama/"*; do
+    name=${item##*/}
+    case "$name" in
+      cuda_v12 | cuda_v13 | cuda_jetpack5 | cuda_jetpack6 | vulkan*) continue ;;
+    esac
+    cp -a "$item" "$pkgdir/usr/lib/ollama/"
+  done
+
+  install -Dm644 "$srcdir/ollama.service" "$pkgdir/usr/lib/systemd/system/ollama.service"
+  install -Dm644 "$srcdir/ollama.conf" "$pkgdir/etc/ollama.conf"
+  install -Dm644 "$srcdir/sysusers.conf" "$pkgdir/usr/lib/sysusers.d/ollama.conf"
+  install -Dm644 "$srcdir/tmpfiles.d" "$pkgdir/usr/lib/tmpfiles.d/ollama.conf"
+  install -Dm644 "$srcdir/LICENSE-${pkgver}" "$pkgdir/usr/share/licenses/ollama/LICENSE"
+  install -Dm644 "$srcdir/README-${pkgver}.md" "$pkgdir/usr/share/doc/ollama/README.md"
+}
+
+package_ollama-cuda() {
+  pkgdesc='Generic NVIDIA CUDA 12/13 backends for Ollama on ARM64'
+  depends=("ollama=${pkgver}")
+  optdepends=('nvidia-utils: NVIDIA userspace driver where available')
+  conflicts=('ollama-cuda-jetpack5' 'ollama-cuda-jetpack6')
+  backup=('etc/ollama-cuda.conf')
+
+  install -dm755 "$pkgdir/usr/lib/ollama"
+  cp -a "$srcdir/lib/ollama/cuda_v12" "$srcdir/lib/ollama/cuda_v13" \
+    "$pkgdir/usr/lib/ollama/"
+  _install_cuda_service
+}
+
+package_ollama-cuda-jetpack5() {
+  pkgdesc='NVIDIA JetPack 5 CUDA backend for Ollama on ARM64'
+  depends=("ollama=${pkgver}")
+  conflicts=('ollama-cuda' 'ollama-cuda-jetpack6')
+  backup=('etc/ollama-cuda.conf')
+
+  install -dm755 "$pkgdir/usr/lib/ollama"
+  cp -a "$srcdir/lib/ollama/cuda_jetpack5" "$pkgdir/usr/lib/ollama/"
+  _install_cuda_service
+}
+
+package_ollama-cuda-jetpack6() {
+  pkgdesc='NVIDIA JetPack 6 CUDA backend for Ollama on ARM64'
+  depends=("ollama=${pkgver}")
+  conflicts=('ollama-cuda' 'ollama-cuda-jetpack5')
+  backup=('etc/ollama-cuda.conf')
+
+  install -dm755 "$pkgdir/usr/lib/ollama"
+  cp -a "$srcdir/lib/ollama/cuda_jetpack6" "$pkgdir/usr/lib/ollama/"
+  _install_cuda_service
+}

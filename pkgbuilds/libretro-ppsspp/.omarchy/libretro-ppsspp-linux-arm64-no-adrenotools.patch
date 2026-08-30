@@ -1,0 +1,25 @@
+diff --git a/libretro/Makefile.common b/libretro/Makefile.common
+--- a/libretro/Makefile.common
++++ b/libretro/Makefile.common
+@@ -204 +204,6 @@
++ifeq ($(TARGET_ARCH),arm64)
++SOURCES_C += $(EXTDIR)/libpng17/arm/arm_init.c \
++	     $(EXTDIR)/libpng17/arm/filter_neon_intrinsics.c
++endif
++
+ INCFLAGS += -I$(EXTDIR)/lua
+@@ -685,12 +685,14 @@ SOURCES_CXX += $(COMMONDIR)/MemArenaPosix.cpp \
+ endif
+ 
+ 
++ifeq ($(PLATFORM_EXT), android)
+ ifeq ($(TARGET_ARCH),arm64)
+ SOURCES_CXX += \
+ 	  $(EXTDIR)/libadrenotools/src/driver.cpp \
+ 	  $(EXTDIR)/libadrenotools/lib/linkernsbypass/android_linker_ns.cpp \
+ 	  $(EXTDIR)/libadrenotools/lib/linkernsbypass/elf_soname_patcher.cpp
+ endif
++endif
+ 
+ SOURCES_C += \
+ 	       $(EXTDIR)/aemu_postoffice/client/postoffice.c \

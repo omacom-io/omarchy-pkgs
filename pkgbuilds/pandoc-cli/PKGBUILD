@@ -1,0 +1,21 @@
+pkgname=pandoc-cli
+pkgver=3.10.2
+pkgrel=1
+pkgdesc='Universal markup converter (official ARM64 binary)'
+arch=('aarch64')
+url='https://pandoc.org/'
+license=('GPL-2.0-or-later')
+provides=('pandoc')
+conflicts=('pandoc')
+options=('!strip' '!debug')
+source_aarch64=("pandoc-$pkgver-linux-arm64.tar.gz::https://github.com/jgm/pandoc/releases/download/$pkgver/pandoc-$pkgver-linux-arm64.tar.gz")
+sha256sums_aarch64=('1c4d69f2a092bd47cb180e58a4aab7b9637101ced928252458c7d41a7f7fa71d')
+
+package() {
+  cd "pandoc-$pkgver"
+
+  install -Dm755 bin/pandoc "$pkgdir/usr/bin/pandoc"
+  ln -s pandoc "$pkgdir/usr/bin/pandoc-lua"
+  ln -s pandoc "$pkgdir/usr/bin/pandoc-server"
+  install -Dm644 share/man/man1/*.1.gz -t "$pkgdir/usr/share/man/man1"
+}

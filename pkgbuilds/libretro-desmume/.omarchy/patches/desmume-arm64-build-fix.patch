@@ -1,0 +1,17 @@
+--- a/desmume/src/frontend/libretro/Makefile.libretro
++++ b/desmume/src/frontend/libretro/Makefile.libretro
+@@ -95,5 +95,14 @@ ifneq (,$(findstring unix,$(platform)))
+    endif
+ 
++   # ARM64 uses the interpreter; the bundled JIT is x86 or 32-bit ARM only.
++   ifneq (,$(findstring arm64,$(platform)))
++      DESMUME_JIT = 0
++      DESMUME_JIT_ARM = 0
++      override TARGET_ARCH := arm64
++      CXXFLAGS += -DUSE_POSIX_MEMALIGN
++      CXXFLAGS += -DARM64
++   endif
++
+    # Generic ARM
+    ifneq (,$(findstring armv,$(platform)))
+       ARCH = arm

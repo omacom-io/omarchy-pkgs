@@ -1,0 +1,21 @@
+diff --git a/Makefile b/Makefile
+--- a/Makefile
++++ b/Makefile
+@@ -62,7 +62,7 @@ NET:=net.o
+ EXE:=
+ 
+ HAS_PROC:=$(shell if [ -d /proc ]; then /bin/echo -e -DHAS_PROC; fi)
+-CFLAGS:=-std=gnu99 -Wreturn-type -Werror=return-type -Werror=implicit-function-declaration -Wno-unused-value  -Wpointer-arith -Werror=pointer-arith $(HAS_PROC) -DHAVE_UNISTD_H
++CFLAGS+= -std=gnu99 -Wreturn-type -Werror=return-type -Werror=implicit-function-declaration -Wno-unused-value  -Wpointer-arith -Werror=pointer-arith $(HAS_PROC) -DHAVE_UNISTD_H
+ 
+ ifeq ($(OS),Darwin)
+ LIBS=$(SDL) glew
+@@ -170,7 +170,7 @@ CFLAGS+= -I$(SDL_INCLUDE_PATH)
+ 
+ else #PORTABLE
+ ifeq ($(MAKECMDGOALS),libblastem.$(SO))
+-LDFLAGS:=-lm
++LDFLAGS+= -lm
+ else
+ CFLAGS:=$(shell pkg-config --cflags-only-I $(LIBS)) $(CFLAGS)
+ LDFLAGS:=-lm $(shell pkg-config --libs $(LIBS))

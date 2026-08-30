@@ -1,0 +1,21 @@
+# Build-container bootstrap for Arch Linux ARM, which does not currently ship
+# the Gradle package required by the Limine native-image recipes.
+pkgname=gradle
+pkgver=9.7.1
+pkgrel=1
+pkgdesc='Gradle bootstrap for building Omarchy Limine tools'
+arch=('aarch64')
+url='https://gradle.org/'
+license=('Apache-2.0')
+provides=("gradle=$pkgver")
+source=("https://services.gradle.org/distributions/gradle-$pkgver-bin.zip")
+sha256sums=('acd53f1edaf02f1a8ff99879f8a34b302661a057d9b063ae9e35b552f804d20a')
+
+package() {
+  install -d "$pkgdir/opt/gradle-$pkgver" "$pkgdir/usr/bin" \
+    "$pkgdir/usr/share/licenses/$pkgname"
+  cp -a "$srcdir/gradle-$pkgver/." "$pkgdir/opt/gradle-$pkgver/"
+  ln -s "/opt/gradle-$pkgver/bin/gradle" "$pkgdir/usr/bin/gradle"
+  install -m644 "$srcdir/gradle-$pkgver/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

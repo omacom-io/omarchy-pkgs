@@ -1,0 +1,12 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -6,7 +6,7 @@ pkgver=2.24.33
+ pkgrel=5
+ pkgdesc="GObject-based multi-platform GUI toolkit (legacy)"
+ url="https://www.gtk.org/"
+-arch=(x86_64)
++arch=(x86_64 aarch64)
+ license=(LGPL-2.1-or-later)
+ depends=(
+   atk

@@ -1,0 +1,27 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -1,10 +1,10 @@
+ # Maintainer: Maxime Gauduin <alucryd@archlinux.org>
+ 
+ pkgname=libretro-blastem
+-pkgver=20220726.034247.g277e4a626685
++pkgver=20260813.175226.gaeb16cd0750f
+ pkgrel=1
+ pkgdesc='Sega Mega Drive core'
+-arch=(x86_64)
++arch=(x86_64 aarch64)
+ url=https://github.com/libretro/blastem
+ license=(GPL-3.0-only)
+ groups=(libretro)
+@@ -17,8 +17,8 @@ source=(
+   libretro-blastem::git+https://github.com/libretro/blastem.git#commit=${pkgver##*.g}
+   libretro-blastem-flags.patch
+ )
+-b2sums=('a3d1bea39ea1701947f786dfbb0c8cdee3beac6ffa320b9cb6ad864e023ef38c899c910cc99d350c207f9052727f447620857656b82bc5c55f5b0f8f4612e4dd'
+-        '35431a1ad2960c8fdfb266f049291557dc2c4956495f06a87daac7e6e6063d8606eb4abf64cc4e49467178c2e26fc9b5ba29fa43a3351f2f6de8e54c50846740')
++b2sums=('3de5cc33923f8b64133ddcdd66e0e6d2fed73e9d65b1318ad4f2c306cf14da7a40de40d8307e2ad4e31796851949fbb6d1b8717783a71a0b4102c0eacae460e5'
++        '0973d8d0ebc5f71e132950eca6321c15eec8944c747d24a9e6bf15e79343249290b3f66b9761569e31b41ffc5cb05ea7be6d2e9926790a67fbe1bb2d3805c1db')
+ 
+ prepare() {
+   cd libretro-blastem

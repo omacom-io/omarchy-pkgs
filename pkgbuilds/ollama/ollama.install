@@ -1,0 +1,7 @@
+post_install() {
+  setcap cap_perfmon+ep /usr/bin/ollama 2>/dev/null || true
+}
+
+post_upgrade() {
+  post_install
+}

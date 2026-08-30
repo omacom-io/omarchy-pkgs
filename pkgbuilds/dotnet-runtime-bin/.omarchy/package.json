@@ -1,0 +1,6 @@
+{
+  "source": "aur",
+  "aur": "dotnet-core-bin",
+  "upstream_commit": "2c499d7ce634efb8e93eee4c4239490b02e98e09",
+  "release_ring": "fast"
+}

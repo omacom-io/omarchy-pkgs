@@ -1,0 +1,24 @@
+[Unit]
+Description=Ollama Service
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+ExecStart=/usr/bin/ollama serve
+WorkingDirectory=/var/lib/ollama
+Environment="HOME=/var/lib/ollama"
+Environment="OLLAMA_MODELS=/var/lib/ollama"
+EnvironmentFile=-/etc/ollama.conf
+AmbientCapabilities=CAP_PERFMON
+User=ollama
+Group=ollama
+Type=simple
+RestartPreventExitStatus=1
+Restart=on-failure
+RestartSec=3
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
