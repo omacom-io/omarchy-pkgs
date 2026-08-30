@@ -176,7 +176,10 @@ ensure_work_clone() {
 published_version() {
   local channel="$1" tmp descs
   tmp=$(mktemp) || return 2
-  if ! curl -sf "$PKGS_DB_BASE/$channel/x86_64/omarchy.db.tar.zst" -o "$tmp"; then
+  # A unique query string busts the CDN cache: right after a sync the plain
+  # URL can keep serving the previous db for a while, which reads as "not
+  # published yet" to status, the wait loop, and ship's pre-checks.
+  if ! curl -sf "$PKGS_DB_BASE/$channel/x86_64/omarchy.db.tar.zst?$(date +%s%N)" -o "$tmp"; then
     rm -f "$tmp"
     return 2
   fi

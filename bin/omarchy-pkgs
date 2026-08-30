@@ -102,7 +102,11 @@ pkgbuild_var() {
 published_edge_version() {
   local pkg="$1" tmp descs
   tmp=$(mktemp) || return 2
-  if ! curl -sf "$EDGE_DB_URL" -o "$tmp"; then
+  # Bust the CDN cache — a stale db here mis-numbers the next rcN or lets an
+  # ordering check run against last release's versions.
+  local sep='?'
+  [[ "$EDGE_DB_URL" == *\?* ]] && sep='&'
+  if ! curl -sf "$EDGE_DB_URL$sep$(date +%s%N)" -o "$tmp"; then
     rm -f "$tmp"
     return 2
   fi
