@@ -143,6 +143,7 @@ DOCKER_ARGS=(
   -e ARCH="$ARCH"
   -e MIRROR="$MIRROR"
   -e PACKAGES="$PACKAGES"
+  -e OMARCHY_RC_PINS="${OMARCHY_RC_PINS:-}"
   -v "$BUILD_ROOT/build-output:/build-output"
   -v "$REPO_ROOT:/pkgs.omarchy.org"
   -v "$BUILD_DIR:/build:ro"
