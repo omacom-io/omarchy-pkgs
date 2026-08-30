@@ -25,10 +25,11 @@ jobs:
             -w /workspace \
             archlinux:base-devel bash -lc '
               set -euo pipefail
-              pacman -Syu --noconfirm jq
+              pacman -Syu --noconfirm jq nodejs
               ./bin/sync-upstream self-test
               ./bin/omarchy-pkgs self-test
               ./bin/omarchy-release self-test
               useradd --create-home test-runner
+              runuser -u test-runner -- ./test/audit-package-architecture-test.sh
               runuser -u test-runner -- ./test/aarch64-support-test.sh
             '

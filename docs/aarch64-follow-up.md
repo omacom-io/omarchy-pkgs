@@ -23,6 +23,9 @@ acceptance should be performed on a native AArch64 builder.
   package set covered by this pull request.
 - An AArch64 Gradle bootstrap package in the normal build plan so packages such
   as Limine do not depend on a package that the ARM repository cannot provide.
+- A bounded final-package architecture audit that recursively opens Electron
+  ASAR and libarchive-supported containers before an AArch64 artifact is
+  admitted to the build repository.
 - Metadata and dry-run tests that do not require changes to upstream's CI
   runner architecture.
 
@@ -36,10 +39,10 @@ Package-specific exceptions remain inside their package directories. See
 ## Package scope
 
 Relative to the `upstream/master` revision used as this pull request's base,
-all 116 existing package directories remain present. This change extends 26 of
+all 116 existing package directories remain present. This change extends 27 of
 those existing recipes and adds 20 package directories, for 136 in total. The
-46 package bases exercised by `test/aarch64-support-test.sh` are those 26
-adapted recipes plus the 20 additions; the test does not claim that every
+47 package bases exercised by `test/aarch64-support-test.sh` are 27 adapted
+recipes plus the 20 additions; the test does not claim that every
 unchanged recipe requires an AArch64 exception.
 
 The added package directories are grouped by their role:
@@ -93,7 +96,7 @@ metadata. No game ROM was used in this packaging test. BlastEm's native
 AArch64 enablement commit separately records a RetroArch gameplay test:
 <https://github.com/libretro/blastem/commit/b817f113b36b9ebe12956bc60f40697408eb2c34>.
 
-The self-tests also generated verified AArch64 metadata for all 46 package
+The self-tests also generated verified AArch64 metadata for all 47 package
 bases covered by this pull request and checked the preserved x86_64 paths,
 AUR post-sync patches, dynamic checksum hooks, split-package indexing, and
 architecture guards in the repository tools.
@@ -108,6 +111,40 @@ reporting `arm64`. Obsidian reached its Electron main package but, both before
 and after the cleanup, crashed in the headless container after failing to find
 D-Bus. That result establishes no packaging regression but is not a desktop
 runtime acceptance test.
+
+That original audit established the architecture of ELF payloads only. A later
+multi-format check found that Typora's official ARM64 Debian archive also
+carried an unused macOS x86_64 `cld.node` addon. The AArch64 recipe now removes
+that exact Mach-O payload and fails closed if the vendor replaces it with an
+unknown format; the persistent recipe patch keeps the correction across AUR
+synchronization.
+
+The corrected Typora recipe was then rebuilt through the normal Docker entry
+point on a native AArch64 daemon. Its final `1.14.9-1.1` package passed the
+build gate with 4,264 expanded files, 12 AArch64 ELF files, three recursively
+opened ASAR containers, and no foreign executable or audit error. An
+independent invocation returned the same counts, the removed `cld.node` path
+was absent from the archive, and the temporary repository database recorded
+the package archive's independently calculated SHA-256 digest.
+
+The generic build path now runs `bin/audit-package-architecture` against every
+final AArch64 archive before copying it to `build-output` or adding it to the
+temporary repository database. It validates every ELF machine and recursively
+opens standard Electron ASAR, tar, zip, Debian, RPM, and other
+libarchive-supported containers. Mach-O, PE, and DOS executables are reported
+separately and rejected by the build gate until a package-local recipe has
+reviewed and removed them. Recursion depth, expanded file count, expanded byte
+count, and extraction time are bounded. The dependency-free ASAR reader avoids
+an npm or network dependency in the release environment. Synthetic tests cover
+good and bad ASAR payloads, nested tar payloads, foreign executable formats,
+both supported target architectures, and every configured resource limit.
+
+Maintainers can audit an unpacked tree or a completed archive directly:
+
+```sh
+bin/audit-package-architecture --arch aarch64 --reject-foreign \
+  path/to/package.pkg.tar.zst
+```
 
 The targeted commands above used no signing key, rclone credential, production
 remote, or release-train state. They establish package-level behavior, not
@@ -177,9 +214,9 @@ cannot be completed solely by changing an Arch package recipe:
   unsupported and emits a warning; the unusable x64 file is removed. Full
   seccomp support requires Microsoft to ship the documented ARM64 helper.
 
-These limitations are recorded rather than hidden by weakening the repository
-ELF audit. Neither package uses emulation, and their x86_64 packaging paths are
-unchanged.
+These limitations are recorded rather than hidden by weakening the package
+architecture audit. Neither package uses emulation, and their x86_64 packaging
+paths are unchanged.
 
 ## Not included in this pull request
 

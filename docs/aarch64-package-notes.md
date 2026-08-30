@@ -48,6 +48,7 @@ each exception can be reviewed, updated, or removed with its package.
 | `sunshine` | `libmfx` is an x86_64-only dependency. | `post-sync.sh` moves it to `depends_x86_64`. |
 | `symfony-cli` | The vendor provides an ARM64 binary but the recipe declaration is narrower. | `post-sync.sh` extends the architecture declaration. |
 | `tensaku` | Its Rust/GTK source build is portable but the AUR recipe declares x86_64 only. | A small recipe patch extends only the architecture declaration. |
+| `typora` | The official ARM64 Debian archive contains an unused macOS x86_64 `cld.node` addon under the spellchecker dependencies. | A recipe patch verifies and retains a future AArch64 ELF replacement, removes only the known Mach-O x86_64 addon from AArch64 packages, and fails closed for any unexpected replacement. The x86_64 package path is unchanged. |
 | `tzupdate` | Its Rust source build is portable but the AUR recipe declares x86_64 only. | A small recipe patch extends only the architecture declaration. |
 | `v4l2-relayd` | The source build supports ARM64 but the recipe declaration is narrower. | `post-sync.sh` extends the architecture declaration. |
 | `visual-studio-code-bin` | Microsoft's ARM64 Debian bundle includes native Copilot search helpers alongside x64 copies, and currently carries only an x64 optional `apply-seccomp` helper. | A recipe patch requires and retains the ARM64 Copilot helpers, removes their x64 copies, and removes non-ARM seccomp directories only on AArch64. The missing ARM64 seccomp helper remains a documented vendor limitation. |

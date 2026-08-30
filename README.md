@@ -175,6 +175,17 @@ bin/repo build --dry-run                         # Show what would build
 
 Use `--dry-run` to show the build plan without running `makepkg`.
 
+For AArch64, every final package is architecture-audited before it enters
+`build-output` or the temporary repository database. The audit checks ELF
+machine types, reports non-Linux executables, and recursively inspects Electron
+ASAR and libarchive-supported containers with bounded extraction. To inspect an
+archive independently:
+
+```bash
+bin/audit-package-architecture --arch aarch64 --reject-foreign \
+  path/to/package.pkg.tar.zst
+```
+
 ### Sign
 
 ```bash

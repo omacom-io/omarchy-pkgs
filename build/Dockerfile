@@ -130,6 +130,7 @@ RUN pacman -Syu --noconfirm && \
         wget \
         curl \
         jq \
+        nodejs \
         gnupg && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*

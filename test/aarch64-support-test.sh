@@ -64,6 +64,7 @@ packages=(
   t3code-bin
   tensaku
   tzupdate
+  typora
   v4l2-relayd
   visual-studio-code-bin
   voxtype-bin
@@ -220,6 +221,31 @@ grep -Fq 'Unexpected Obsidian addon architecture' \
   echo 'Obsidian does not reject unknown vendor addon architectures' >&2
   exit 1
 }
+typora_pkgbuild="$ROOT/pkgbuilds/typora/PKGBUILD"
+grep -Eq '^pkgrel=[0-9]+\.1$' "$typora_pkgbuild" || {
+  echo 'Typora AArch64 cleanup does not carry a repository revision' >&2
+  exit 1
+}
+if ! grep -Fq 'cffaedfe07000001' "$typora_pkgbuild" ||
+  ! grep -Fq 'Unexpected Typora cld addon header' "$typora_pkgbuild"; then
+  echo 'Typora does not fail closed while pruning its unused macOS addon' >&2
+  exit 1
+fi
+[[ -f $ROOT/pkgbuilds/typora/.omarchy/patches/aarch64.patch ]] || {
+  echo 'AUR synchronization would discard the Typora AArch64 cleanup' >&2
+  exit 1
+}
+git -C "$ROOT" apply --reverse --check --directory=pkgbuilds/typora \
+  pkgbuilds/typora/.omarchy/patches/aarch64.patch || {
+  echo 'Typora AUR synchronization patch is malformed or out of date' >&2
+  exit 1
+}
+if ! grep -Fq '/build/audit-package-architecture.sh --arch aarch64' \
+  "$ROOT/build/build.sh" ||
+  ! grep -Fq -- '--reject-foreign "$pkg_file"' "$ROOT/build/build.sh"; then
+  echo 'AArch64 package outputs are not audited before repository indexing' >&2
+  exit 1
+fi
 grep -Fq 'ChatGPT prebuild matrix lacks Linux ARM64' \
   "$ROOT/pkgbuilds/openai-codex-desktop/PKGBUILD" || {
   echo 'OpenAI Desktop does not require native entries in vendor prebuild matrices' >&2

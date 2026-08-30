@@ -466,6 +466,16 @@ build_package() {
         cd "/src/$pkg" || return 1
         return 1
       }
+      if [[ $ARCH == aarch64 ]]; then
+        echo "    Auditing final AArch64 payload: ${pkg_file##*/}"
+        if ! /build/audit-package-architecture.sh --arch aarch64 \
+          --reject-foreign "$pkg_file"; then
+          echo "    Package architecture audit failed: $pkg_file"
+          FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+          cd "/src/$pkg" || return 1
+          return 1
+        fi
+      fi
       if ! cp "$pkg_file" "$BUILD_OUTPUT_DIR/"; then
         echo "    Failed to copy $pkg_file to $BUILD_OUTPUT_DIR"
         FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
