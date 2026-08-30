@@ -2,8 +2,10 @@
 
 # Recursively audit final package payloads for target-architecture executables.
 # Nested ASAR and libarchive-supported containers are opened with bounded
-# recursion. Wrong-architecture ELF files always fail; non-Linux executable
-# formats are reported and may be rejected with --reject-foreign.
+# recursion. Wrong-architecture ELF files fail unless an exact reviewed
+# exception covers them; native non-Linux formats are reported and may be
+# rejected with --reject-foreign. Managed ECMA-335 assemblies are counted
+# separately from native PE files.
 
 set -euo pipefail
 
@@ -16,6 +18,7 @@ MAX_FILES=250000
 MAX_BYTES=4294967296
 REJECT_FOREIGN=false
 JSON=false
+ALLOWLIST=""
 INPUTS=()
 
 usage() {
@@ -27,12 +30,15 @@ Options:
   --max-depth <count>      Maximum nested-container depth (default: 4)
   --max-files <count>      Maximum expanded regular files per input (default: 250000)
   --max-bytes <count>      Maximum expanded bytes per input (default: 4294967296)
+  --allowlist <path>       Reviewed exceptions (TSV: kind, SHA-256, relative path)
   --reject-foreign         Reject Mach-O, PE, and DOS executables as unreviewed
   --json                   Emit one compact JSON result per input
   -h, --help               Show this help
 
-Wrong-architecture Linux ELF files always fail. Without --reject-foreign,
-non-Linux executable formats are reported for package-specific review.
+Wrong-architecture Linux ELF files fail unless an exact reviewed allowlist
+entry covers the file or its checksum-pinned container. Without
+--reject-foreign, native non-Linux executable formats are reported for
+package-specific review. ECMA-335 assemblies are counted as managed PE.
 EOF
 }
 
@@ -60,6 +66,11 @@ while (($# > 0)); do
   --max-bytes)
     (($# >= 2)) || { echo "ERROR: --max-bytes requires a value" >&2; exit 2; }
     MAX_BYTES=$2
+    shift 2
+    ;;
+  --allowlist)
+    (($# >= 2)) || { echo "ERROR: --allowlist requires a value" >&2; exit 2; }
+    ALLOWLIST=$2
     shift 2
     ;;
   --reject-foreign)
@@ -105,7 +116,7 @@ positive_integer "$MAX_FILES" || { echo "ERROR: invalid --max-files" >&2; exit 2
 positive_integer "$MAX_BYTES" || { echo "ERROR: invalid --max-bytes" >&2; exit 2; }
 ((${#INPUTS[@]} > 0)) || { usage >&2; exit 2; }
 
-for command in bsdtar file find jq readelf stat timeout; do
+for command in bsdtar file find jq readelf sha256sum timeout; do
   command -v "$command" >/dev/null || {
     echo "ERROR: required audit command is missing: $command" >&2
     exit 2
@@ -118,18 +129,123 @@ trap 'rm -rf "$work"' EXIT
 file_count=0
 byte_count=0
 elf_count=0
+non_target_elf_count=0
+managed_pe_count=0
 archive_count=0
 foreign_count=0
+reviewed_non_target_elf_count=0
+reviewed_foreign_count=0
 max_depth_seen=0
 errors=0
 extract_sequence=0
 input_sequence=0
+metadata_sequence=0
 current_work=""
+declare -A allowed_files=()
+declare -A allowed_containers=()
+declare -A allowlist_used=()
+
+load_allowlist() {
+  [[ -n $ALLOWLIST ]] || return 0
+  [[ -f $ALLOWLIST ]] || {
+    echo "ERROR: audit allowlist does not exist: $ALLOWLIST" >&2
+    return 1
+  }
+
+  local line line_number=0 kind digest path extra key
+  while IFS= read -r line || [[ -n $line ]]; do
+    ((line_number += 1))
+    line=${line%$'\r'}
+    [[ $line =~ ^[[:space:]]*(#|$) ]] && continue
+    IFS=$'\t' read -r kind digest path extra <<< "$line"
+    [[ -z ${extra:-} && -n ${kind:-} && -n ${digest:-} && -n ${path:-} ]] || {
+      echo "ERROR: malformed audit allowlist row $line_number (expected three tab-separated fields)" >&2
+      return 1
+    }
+    case $kind in
+    file | container) ;;
+    *)
+      echo "ERROR: invalid audit allowlist kind on row $line_number: $kind" >&2
+      return 1
+      ;;
+    esac
+    [[ $digest =~ ^[0-9a-f]{64}$ ]] || {
+      echo "ERROR: invalid audit allowlist SHA-256 on row $line_number" >&2
+      return 1
+    }
+    if [[ $path == /* || $path == .. || $path == ../* || $path == */../* || $path == */.. ]]; then
+      echo "ERROR: unsafe audit allowlist path on row $line_number: $path" >&2
+      return 1
+    fi
+    key="$kind:$path"
+    [[ -z ${allowlist_used[$key]+set} ]] || {
+      echo "ERROR: duplicate audit allowlist entry on row $line_number: $key" >&2
+      return 1
+    }
+    if [[ $kind == file ]]; then
+      allowed_files["$path"]=$digest
+    else
+      allowed_containers["$path"]=$digest
+    fi
+    allowlist_used["$key"]=false
+  done < "$ALLOWLIST"
+}
+
+reset_allowlist_usage() {
+  local key
+  for key in "${!allowlist_used[@]}"; do
+    allowlist_used["$key"]=false
+  done
+}
+
+reviewed_file() {
+  local path=$1 candidate=$2 expected actual key
+  [[ -n ${allowed_files[$path]+set} ]] || return 1
+  expected=${allowed_files[$path]}
+  actual=$(sha256sum "$candidate" | awk '{ print $1 }') || return 1
+  key="file:$path"
+  if [[ $actual != "$expected" ]]; then
+    echo "ERROR: audit allowlist digest mismatch for $path" >&2
+    ((errors += 1))
+    return 1
+  fi
+  allowlist_used["$key"]=true
+}
+
+reviewed_container() {
+  local path=$1 candidate=$2 expected actual key
+  [[ -n ${allowed_containers[$path]+set} ]] || return 1
+  expected=${allowed_containers[$path]}
+  actual=$(sha256sum "$candidate" | awk '{ print $1 }') || return 1
+  key="container:$path"
+  if [[ $actual != "$expected" ]]; then
+    echo "ERROR: audit allowlist digest mismatch for $path" >&2
+    ((errors += 1))
+    return 1
+  fi
+  allowlist_used["$key"]=true
+}
+
+validate_allowlist_usage() {
+  local key
+  for key in "${!allowlist_used[@]}"; do
+    [[ ${allowlist_used[$key]} == true ]] && continue
+    echo "ERROR: unused audit allowlist entry: ${key#*:}" >&2
+    ((errors += 1))
+  done
+}
+
+load_allowlist || exit 2
 
 record_tree_size() {
-  local root=$1 candidate size
-  while IFS= read -r -d '' candidate; do
-    size=$(stat -c %s -- "$candidate") || return 1
+  local root=$1 manifest size
+  ((metadata_sequence += 1))
+  manifest="$current_work/sizes-$metadata_sequence"
+  if ! find "$root" -type f -printf '%s\0' > "$manifest"; then
+    echo "ERROR: cannot enumerate expanded files under $root" >&2
+    return 1
+  fi
+  while IFS= read -r -d '' size; do
     ((file_count += 1))
     ((byte_count += size))
     if ((file_count > MAX_FILES)); then
@@ -140,7 +256,7 @@ record_tree_size() {
       echo "ERROR: expanded byte limit exceeded: $byte_count > $MAX_BYTES" >&2
       return 1
     fi
-  done < <(find "$root" -type f -print0)
+  done < "$manifest"
 }
 
 safe_archive_members() {
@@ -168,7 +284,8 @@ is_nested_archive() {
   local candidate=$1 type=$2
   case $type in
   *'Electron ASAR archive'*) return 0 ;;
-  *'Zip archive'* | *'archive data'* | *'tar archive'* | \
+  *'Zip archive data'* | *'POSIX tar archive'* | *'GNU tar archive'* | \
+    *'cpio archive'* | *'7-zip archive data'* | *'RAR archive data'* | \
     *'Debian binary package'* | *'RPM '* | *'Squashfs filesystem'*) return 0 ;;
   esac
   case ${candidate,,} in
@@ -179,42 +296,84 @@ is_nested_archive() {
 }
 
 scan_tree() {
-  local root=$1 depth=$2 display_root=$3
+  local root=$1 depth=$2 display_root=$3 logical_root=$4 inherited_review=$5
   local candidate relative type machine destination remaining_files remaining_bytes
+  local classification index logical_path reviewed container_reviewed
   local -a archives=()
+  local -a archive_types=()
+  local -a archive_logical_paths=()
+  local -a archive_reviewed=()
 
   ((depth > max_depth_seen)) && max_depth_seen=$depth
   record_tree_size "$root" || { ((errors += 1)); return; }
 
+  ((metadata_sequence += 1))
+  classification="$current_work/types-$metadata_sequence"
+  if ! find "$root" -type f -print0 | xargs -0 -r file -N -0 -- > "$classification"; then
+    echo "ERROR: cannot classify files under $display_root" >&2
+    ((errors += 1))
+    return
+  fi
+
   while IFS= read -r -d '' candidate; do
-    relative=${candidate#"$root"/}
-    type=$(file -b -- "$candidate") || {
-      echo "ERROR: cannot classify $display_root/$relative" >&2
+    if ! IFS= read -r type; then
+      echo "ERROR: truncated file-classification output under $display_root" >&2
       ((errors += 1))
-      continue
-    }
+      break
+    fi
+    type=${type#: }
+    relative=${candidate#"$root"/}
+    logical_path=${logical_root:+$logical_root/}$relative
 
     if [[ $type == ELF\ * ]]; then
       ((elf_count += 1))
       machine=$(readelf -h -- "$candidate" 2>/dev/null |
         sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p')
       if [[ $machine != "$EXPECTED_MACHINE" ]]; then
-        echo "ERROR: non-$ARCH ELF: $display_root/$relative (${machine:-unknown})" >&2
-        ((errors += 1))
+        ((non_target_elf_count += 1))
+        reviewed=$inherited_review
+        if [[ $reviewed == true ]] || reviewed_file "$logical_path" "$candidate"; then
+          ((reviewed_non_target_elf_count += 1))
+          echo "REVIEWED: non-$ARCH ELF: $display_root/$relative (${machine:-unknown})" >&2
+        else
+          echo "ERROR: non-$ARCH ELF: $display_root/$relative (${machine:-unknown})" >&2
+          ((errors += 1))
+        fi
       fi
+    elif [[ $type == PE32* && $type == *'Mono/.Net assembly'* ]]; then
+      # ECMA-335 assemblies use the PE container even when their IL is
+      # architecture-neutral. Keep them distinct from native Windows PE files
+      # so an AArch64 .NET package is not rejected for its normal managed code.
+      ((managed_pe_count += 1))
     elif [[ $type == Mach-O\ * || $type == PE32* || $type == MS-DOS\ executable* ]]; then
       ((foreign_count += 1))
-      echo "FOREIGN: $display_root/$relative ($type)" >&2
+      reviewed=$inherited_review
+      if [[ $reviewed == true ]] || reviewed_file "$logical_path" "$candidate"; then
+        ((reviewed_foreign_count += 1))
+        echo "REVIEWED: $display_root/$relative ($type)" >&2
+      else
+        echo "FOREIGN: $display_root/$relative ($type)" >&2
+      fi
     fi
 
     if is_nested_archive "$candidate" "$type"; then
+      container_reviewed=$inherited_review
+      if [[ $container_reviewed == false ]] && reviewed_container "$logical_path" "$candidate"; then
+        container_reviewed=true
+      fi
       archives+=("$candidate")
+      archive_types+=("$type")
+      archive_logical_paths+=("$logical_path")
+      archive_reviewed+=("$container_reviewed")
     fi
-  done < <(find "$root" -type f -print0)
+  done < "$classification"
 
-  for candidate in "${archives[@]}"; do
+  for ((index = 0; index < ${#archives[@]}; index += 1)); do
+    candidate=${archives[$index]}
+    type=${archive_types[$index]}
+    logical_path=${archive_logical_paths[$index]}
+    container_reviewed=${archive_reviewed[$index]}
     relative=${candidate#"$root"/}
-    type=$(file -b -- "$candidate")
     if ((depth >= MAX_DEPTH)); then
       echo "ERROR: nested archive depth exceeds $MAX_DEPTH: $display_root/$relative" >&2
       ((errors += 1))
@@ -255,21 +414,28 @@ scan_tree() {
       continue
     fi
 
-    scan_tree "$destination" "$((depth + 1))" "$display_root/$relative"
+    scan_tree "$destination" "$((depth + 1))" "$display_root/$relative" \
+      "$logical_path" "$container_reviewed"
   done
 }
 
 audit_input() {
-  local input=$1 input_root result_errors
+  local input=$1 input_root result_errors unreviewed_foreign_count
 
   file_count=0
   byte_count=0
   elf_count=0
+  non_target_elf_count=0
+  managed_pe_count=0
   archive_count=0
   foreign_count=0
+  reviewed_non_target_elf_count=0
+  reviewed_foreign_count=0
   max_depth_seen=0
   errors=0
   extract_sequence=0
+  metadata_sequence=0
+  reset_allowlist_usage
   ((input_sequence += 1))
   current_work="$work/input-$input_sequence"
   mkdir -p "$current_work"
@@ -288,10 +454,13 @@ audit_input() {
     input_root=""
   fi
 
-  [[ -z $input_root || $errors -ne 0 ]] || scan_tree "$input_root" 0 "${input##*/}"
-  if [[ $REJECT_FOREIGN == true && $foreign_count -gt 0 ]]; then
-    echo "ERROR: $foreign_count unreviewed non-Linux executable(s) in ${input##*/}" >&2
-    ((errors += foreign_count))
+  [[ -z $input_root || $errors -ne 0 ]] || \
+    scan_tree "$input_root" 0 "${input##*/}" "" false
+  validate_allowlist_usage
+  unreviewed_foreign_count=$((foreign_count - reviewed_foreign_count))
+  if [[ $REJECT_FOREIGN == true && $unreviewed_foreign_count -gt 0 ]]; then
+    echo "ERROR: $unreviewed_foreign_count unreviewed non-Linux executable(s) in ${input##*/}" >&2
+    ((errors += unreviewed_foreign_count))
   fi
   result_errors=$errors
 
@@ -302,19 +471,29 @@ audit_input() {
       --argjson file_count "$file_count" \
       --argjson expanded_bytes "$byte_count" \
       --argjson elf_count "$elf_count" \
+      --argjson non_target_elf_count "$non_target_elf_count" \
+      --argjson reviewed_non_target_elf_count "$reviewed_non_target_elf_count" \
+      --argjson managed_pe_count "$managed_pe_count" \
       --argjson nested_archive_count "$archive_count" \
       --argjson foreign_executable_count "$foreign_count" \
+      --argjson reviewed_foreign_executable_count "$reviewed_foreign_count" \
       --argjson max_depth_seen "$max_depth_seen" \
       --argjson errors "$result_errors" \
       '{input: $input, target_architecture: $target_architecture,
         file_count: $file_count, expanded_bytes: $expanded_bytes,
-        elf_count: $elf_count, nested_archive_count: $nested_archive_count,
+        elf_count: $elf_count, non_target_elf_count: $non_target_elf_count,
+        reviewed_non_target_elf_count: $reviewed_non_target_elf_count,
+        managed_pe_count: $managed_pe_count,
+        nested_archive_count: $nested_archive_count,
         foreign_executable_count: $foreign_executable_count,
+        reviewed_foreign_executable_count: $reviewed_foreign_executable_count,
         max_depth_seen: $max_depth_seen, errors: $errors}'
   else
-    printf '%s: files=%d bytes=%d ELF=%d nested=%d foreign=%d errors=%d\n' \
+    printf '%s: files=%d bytes=%d ELF=%d wrong-ELF=%d managed-PE=%d nested=%d foreign=%d reviewed=%d errors=%d\n' \
       "${input##*/}" "$file_count" "$byte_count" "$elf_count" \
-      "$archive_count" "$foreign_count" "$result_errors"
+      "$non_target_elf_count" "$managed_pe_count" "$archive_count" \
+      "$foreign_count" "$((reviewed_non_target_elf_count + reviewed_foreign_count))" \
+      "$result_errors"
   fi
 
   ((result_errors == 0))

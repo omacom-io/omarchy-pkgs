@@ -131,20 +131,55 @@ The generic build path now runs `bin/audit-package-architecture` against every
 final AArch64 archive before copying it to `build-output` or adding it to the
 temporary repository database. It validates every ELF machine and recursively
 opens standard Electron ASAR, tar, zip, Debian, RPM, and other
-libarchive-supported containers. Mach-O, PE, and DOS executables are reported
-separately and rejected by the build gate until a package-local recipe has
-reviewed and removed them. Recursion depth, expanded file count, expanded byte
-count, and extraction time are bounded. The dependency-free ASAR reader avoids
-an npm or network dependency in the release environment. Synthetic tests cover
-good and bad ASAR payloads, nested tar payloads, foreign executable formats,
-both supported target architectures, and every configured resource limit.
+libarchive-supported containers. ECMA-335 managed assemblies are counted
+separately from native Windows PE files. Wrong-architecture ELF, Mach-O, native
+PE, and DOS executables fail unless a package-local review pins either that
+exact relative file or its deliberate cross-platform container by SHA-256.
+Changed digests, missing paths, unused entries, and malformed allowlists all
+fail; reviewed violations remain counted in the JSON evidence. This keeps
+Gradle's intentional platform-matrix JARs and Heroic's Wine shims auditable
+without a package-wide or directory-wide exemption. Unreachable foreign
+prebuilds in Cursor, Copilot CLI, T3 Code, Typora, and VS Code are removed by
+their recipes instead.
+
+Split PKGBUILDs may scope a policy to one output with
+`.omarchy/aarch64-audit-allowlist.<pkgname>`. The builder rejects an ambiguous
+generic/output-specific pair and any policy that matches no emitted package.
+The .NET recipe uses this for `dotnet-sdk-bin`: 2,454 managed assemblies are
+classified separately, while five Windows-target test/debugging tools are
+reviewed by exact path and digest only for that split output.
+
+The hardened gate was exercised through the normal native Docker build path
+against Cursor, GitHub Copilot CLI, T3 Code, and Visual Studio Code. All four
+recipes built successfully without QEMU. Cursor, Copilot, and T3 produced no
+foreign executable or wrong-architecture ELF; T3 retained the locally compiled
+AArch64 `node-pty` binding. VS Code retained only its one documented x64
+`apply-seccomp` helper inside ASAR, which matched the exact review digest; its
+other Windows/macOS helpers were absent. The six-output .NET recipe was then
+built in the same clean path: five outputs needed no exception, while only
+`dotnet-sdk-bin` selected the output-specific five-file policy. Every output
+completed with zero audit errors.
+
+Recursion depth, expanded file count, expanded byte count, and extraction time
+are bounded. File sizes and types are enumerated in batches, so a Gradle
+archive expanding to more than 100,000 files completes in tens of seconds
+rather than spawning one classifier process per file. The dependency-free ASAR
+reader avoids an npm or network dependency in the release environment.
+Synthetic tests cover good and bad ASAR payloads, nested tar payloads, managed
+PE, native foreign formats, exact file/container reviews, changed and stale
+allowlists, false-positive archive signatures, both supported target
+architectures, and every configured resource limit.
 
 Maintainers can audit an unpacked tree or a completed archive directly:
 
 ```sh
 bin/audit-package-architecture --arch aarch64 --reject-foreign \
+  --allowlist pkgbuilds/example/.omarchy/aarch64-audit-allowlist \
   path/to/package.pkg.tar.zst
 ```
+
+Omit `--allowlist` for packages with no reviewed exception; that is the normal
+case.
 
 The targeted commands above used no signing key, rclone credential, production
 remote, or release-train state. They establish package-level behavior, not
@@ -166,6 +201,29 @@ output. The two downstream packages account exactly for the remaining two
 archives, 30 regular files, and one AArch64 ELF, so they do not mask a missing
 or misclassified upstream package. No package archive, baseline, credential, or
 result was uploaded, and neither GitHub Actions nor QEMU was used.
+
+That acceptance run predates the recursive multi-format gate. It proves native
+construction, direct ELF architecture, signing, repository completeness, and
+dependency solvability, but it is not evidence that every nested ASAR/JAR or
+non-ELF payload was clean. A later read-only audit of the 147 published fork
+archives recursively expanded 288,990 files (21.8 GB) and 424 containers. It
+found the Typora defect, four Electron/Node packages with removable foreign
+prebuilds, Gradle and Heroic's deliberate cross-platform runtime data, normal
+.NET managed assemblies, and one `file(1)` false positive on Limine's
+`ESP_PATH` configuration. Those findings produced the package cleanups,
+managed-PE classification, explicit container signatures, and exact reviewed
+exceptions described above. Historical published archives remain historical;
+only rebuilt packages passing the new gate qualify as current evidence.
+
+The fork's stable snapshot was audited independently because its 145 archive
+hashes differed from edge and therefore could not reuse that evidence. All 145
+downloads matched the stable Release checksums before scanning. The audit
+expanded 287,417 files (21.8 GB) and 422 containers: 140 archives passed the
+hardened policy, while the five historical Cursor, Copilot CLI, T3 Code,
+Typora, and VS Code archives contained exactly the already identified
+unreachable foreign payloads. There was no stable-only finding. Those archive
+revisions predate the recipe cleanups; replacement packages must still pass
+the build-time gate before they can be published.
 
 The first repository audit rejected one extra `omarchy-chromium` archive. Its
 recipe consumes an official `.pkg.tar.zst` as input, and the generic builder's
@@ -211,8 +269,11 @@ cannot be completed solely by changing an Arch package recipe:
 - Visual Studio Code's ARM64 archive contains ARM64 Copilot `rg` and `tgrep`
   helpers, which the recipe retains, but its optional sandbox runtime carries
   only an x64 `apply-seccomp`. The runtime already treats an absent helper as
-  unsupported and emits a warning; the unusable x64 file is removed. Full
-  seccomp support requires Microsoft to ship the documented ARM64 helper.
+  unsupported and emits a warning. Unpacked foreign helpers are removed; the
+  copy inside Microsoft's ASAR is retained without rewriting the vendor
+  container, but its exact nested path and SHA-256 are reviewed by the build
+  gate. Full seccomp support requires Microsoft to ship the documented ARM64
+  helper.
 
 These limitations are recorded rather than hidden by weakening the package
 architecture audit. Neither package uses emulation, and their x86_64 packaging

@@ -3,7 +3,7 @@
 pkgname=visual-studio-code-bin
 _pkgname=visual-studio-code
 pkgver=1.135.0
-pkgrel=1.1
+pkgrel=1.2
 pkgdesc="Visual Studio Code (vscode): Editor for building and debugging modern web and cloud applications (official binary version)"
 arch=('x86_64' 'aarch64' 'armv7h')
 url="https://code.visualstudio.com/"
@@ -45,6 +45,18 @@ package() {
       }
     done
     rm -rf "$copilot/ripgrep/bin/linux-x64" "$copilot/tgrep/bin/linux-x64"
+
+    find "${app}/extensions/ms-vscode.js-debug/src" -maxdepth 1 -type f \
+      -name '*win32*.node' -delete
+    local mxc="${app}/node_modules.asar.unpacked/@microsoft/mxc-sdk/bin/arm64"
+    for required in linux-test-proxy lxc-exec; do
+      [[ -f "$mxc/$required" ]] || {
+        error "VS Code's ARM64 MXC payload lacks $required"
+        return 1
+      }
+    done
+    find "$mxc" -maxdepth 1 -type f -name '*.exe' -delete
+    rm -f "$mxc/mxc-exec-mac"
 
     # This vendor release lacks an ARM64 apply-seccomp helper. The runtime
     # already treats that as an unsupported optional feature; never retain the

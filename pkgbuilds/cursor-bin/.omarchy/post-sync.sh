@@ -30,6 +30,9 @@ package() {
   bsdtar -xOf "${noextract[0]}" data.tar.xz | tar -xJf - -C "$pkgdir"
   cd "$pkgdir"
   mv usr/share/zsh/{vendor-completions,site-functions}
+  find usr/share/cursor/resources/app/extensions/ms-vscode.js-debug/src \
+    -maxdepth 1 -type f \( -name '*win32*.node' -o -name 'w32appcontainertokens*.node' \) \
+    -delete
   chmod u-s usr/share/cursor/chrome-sandbox
   install -d usr/bin
   ln -sf /usr/share/cursor/cursor usr/bin/cursor

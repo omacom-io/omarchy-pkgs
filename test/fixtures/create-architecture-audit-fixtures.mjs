@@ -68,4 +68,34 @@ pe.writeUInt16LE(0x020b, 0x98);
 pe.writeUInt16LE(3, 0xdc);
 fs.writeFileSync(path.join(output, "x86_64.exe"), pe);
 
+// A minimal PE32 image with an ECMA-335 CLI header. The I386 COFF machine is
+// the normal container used by architecture-neutral IL assemblies; the CLR
+// flags deliberately set ILONLY without 32BITREQUIRED.
+const managed = Buffer.alloc(1024);
+managed.write("MZ", 0, "ascii");
+managed.writeUInt32LE(0x80, 0x3c);
+managed.write("PE\0\0", 0x80, "binary");
+managed.writeUInt16LE(0x014c, 0x84);
+managed.writeUInt16LE(1, 0x86);
+managed.writeUInt16LE(0xe0, 0x94);
+managed.writeUInt16LE(0x2102, 0x96);
+managed.writeUInt16LE(0x010b, 0x98);
+managed.writeUInt32LE(16, 0x98 + 92);
+managed.writeUInt32LE(0x2000, 0x98 + 96 + 14 * 8);
+managed.writeUInt32LE(0x48, 0x98 + 96 + 14 * 8 + 4);
+managed.write(".text\0\0\0", 0x178, "binary");
+managed.writeUInt32LE(0x200, 0x180);
+managed.writeUInt32LE(0x2000, 0x184);
+managed.writeUInt32LE(0x200, 0x188);
+managed.writeUInt32LE(0x200, 0x18c);
+managed.writeUInt32LE(0x60000020, 0x19c);
+managed.writeUInt32LE(0x48, 0x200);
+managed.writeUInt16LE(2, 0x204);
+managed.writeUInt16LE(5, 0x206);
+managed.writeUInt32LE(0x2048, 0x208);
+managed.writeUInt32LE(0x40, 0x20c);
+managed.writeUInt32LE(1, 0x210);
+managed.write("BSJB", 0x248, "ascii");
+fs.writeFileSync(path.join(output, "managed-anycpu.dll"), managed);
+
 fs.writeFileSync(path.join(output, "malformed.asar"), Buffer.alloc(16));

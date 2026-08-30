@@ -1,0 +1,5 @@
+# These x86_64 Windows shims are runtime data for Heroic's Wine integrations;
+# Linux never loads them as host executables. Their upstream source downloads
+# and their final package paths are both checksum-pinned.
+file	1feb21e21e19cbb34e881791c8f2557769f59231e46850915d49a6d0c1ce4583	opt/Heroic/resources/app.asar.unpacked/build/bin/x64/win32/EpicGamesLauncher.exe
+file	abc208076a778ee738cae8451c9be7ab33c9787b0b69b2e7e4ffc70becc39e1e	opt/Heroic/resources/app.asar.unpacked/build/bin/x64/win32/GalaxyCommunication.exe

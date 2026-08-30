@@ -458,6 +458,7 @@ build_package() {
     # declared by makepkg, never every matching file in the working directory.
     local -a built_filenames=()
     local -a package_outputs=()
+    local -A used_audit_allowlists=()
     mapfile -t package_outputs < <(makepkg --packagelist)
     for pkg_file in "${package_outputs[@]}"; do
       [[ -f $pkg_file ]] || {
@@ -468,8 +469,31 @@ build_package() {
       }
       if [[ $ARCH == aarch64 ]]; then
         echo "    Auditing final AArch64 payload: ${pkg_file##*/}"
-        if ! /build/audit-package-architecture.sh --arch aarch64 \
-          --reject-foreign "$pkg_file"; then
+        local -a audit_args=(--arch aarch64 --reject-foreign)
+        local package_output_name output_allowlist generic_allowlist
+        package_output_name=$(bsdtar -xOf "$pkg_file" .PKGINFO |
+          awk -F ' = ' '$1 == "pkgname" { print $2; exit }')
+        [[ $package_output_name =~ ^[A-Za-z0-9@._+-]+$ ]] || {
+          echo "    Cannot determine a safe package name for architecture audit: $pkg_file"
+          FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+          cd "/src/$pkg" || return 1
+          return 1
+        }
+        generic_allowlist=.omarchy/aarch64-audit-allowlist
+        output_allowlist=".omarchy/aarch64-audit-allowlist.$package_output_name"
+        if [[ -f $generic_allowlist && -f $output_allowlist ]]; then
+          echo "    Ambiguous architecture audit allowlists for $package_output_name"
+          FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+          cd "/src/$pkg" || return 1
+          return 1
+        elif [[ -f $output_allowlist ]]; then
+          audit_args+=(--allowlist "$output_allowlist")
+          used_audit_allowlists["$output_allowlist"]=1
+        elif [[ -f $generic_allowlist ]]; then
+          audit_args+=(--allowlist "$generic_allowlist")
+          used_audit_allowlists["$generic_allowlist"]=1
+        fi
+        if ! /build/audit-package-architecture.sh "${audit_args[@]}" "$pkg_file"; then
           echo "    Package architecture audit failed: $pkg_file"
           FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
           cd "/src/$pkg" || return 1
@@ -484,6 +508,19 @@ build_package() {
       fi
       built_filenames+=("${pkg_file##*/}")
     done
+
+    if [[ $ARCH == aarch64 && -d .omarchy ]]; then
+      local configured_allowlist
+      while IFS= read -r configured_allowlist; do
+        [[ -n ${used_audit_allowlists[$configured_allowlist]:-} ]] && continue
+        echo "    Architecture audit allowlist did not match a package output: $configured_allowlist"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        cd "/src/$pkg" || return 1
+        return 1
+      done < <(find .omarchy -maxdepth 1 -type f \
+        \( -name aarch64-audit-allowlist -o -name 'aarch64-audit-allowlist.*' \) \
+        -print | sort)
+    fi
 
     (( ${#built_filenames[@]} > 0 )) || {
       echo "    Makepkg completed without producing a package archive"

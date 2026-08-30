@@ -14,6 +14,8 @@ mkdir -p "$work/good/payload" "$work/bad-asar/payload" \
   "$work/x86-good/payload"
 cp "$work/fixtures/aarch64.elf" "$work/good/payload/native"
 cp "$work/fixtures/nested-aarch64.asar" "$work/good/payload/modules.asar"
+cp "$work/fixtures/managed-anycpu.dll" "$work/good/payload/managed.dll"
+printf 'ESP_PATH="/boot"\n' > "$work/good/payload/default.conf"
 cp "$work/fixtures/nested-x86_64.asar" "$work/bad-asar/payload/modules.asar"
 cp "$work/fixtures/x86_64.node" "$work/foreign/payload/vendor.node"
 cp "$work/fixtures/x86_64.exe" "$work/foreign/payload/vendor.exe"
@@ -37,7 +39,8 @@ good_json=$(
   "$ROOT/bin/audit-package-architecture" --arch aarch64 --reject-foreign \
     --json "$work/good.pkg.tar"
 )
-jq -e '.errors == 0 and .elf_count == 2 and
+jq -e '.errors == 0 and .elf_count == 2 and .non_target_elf_count == 0 and
+       .managed_pe_count == 1 and .reviewed_non_target_elf_count == 0 and
        .nested_archive_count == 1 and .foreign_executable_count == 0' \
   <<<"$good_json" >/dev/null || {
   echo "Good recursive architecture fixture produced unexpected evidence" >&2
@@ -58,6 +61,52 @@ if "$ROOT/bin/audit-package-architecture" --arch aarch64 \
   exit 1
 fi
 grep -Fq 'vendor.tar/hidden-helper' "$work/bad-tar.err"
+
+file_allowlist="$work/file-allowlist.tsv"
+printf 'file\t%s\tpayload/native\n' \
+  "$(sha256sum "$work/fixtures/x86_64.elf" | awk '{ print $1 }')" \
+  > "$file_allowlist"
+reviewed_file_json=$(
+  "$ROOT/bin/audit-package-architecture" --arch aarch64 --reject-foreign \
+    --allowlist "$file_allowlist" --json "$work/x86-good.pkg.tar" \
+    2>"$work/reviewed-file.err"
+)
+jq -e '.errors == 0 and .non_target_elf_count == 1 and
+       .reviewed_non_target_elf_count == 1' <<< "$reviewed_file_json" >/dev/null
+grep -Fq 'REVIEWED: non-aarch64 ELF' "$work/reviewed-file.err"
+
+container_allowlist="$work/container-allowlist.tsv"
+printf 'container\t%s\tpayload/vendor.tar\n' \
+  "$(sha256sum "$work/bad-tar/payload/vendor.tar" | awk '{ print $1 }')" \
+  > "$container_allowlist"
+reviewed_container_json=$(
+  "$ROOT/bin/audit-package-architecture" --arch aarch64 --reject-foreign \
+    --allowlist "$container_allowlist" --json "$work/bad-tar.pkg.tar" \
+    2>"$work/reviewed-container.err"
+)
+jq -e '.errors == 0 and .non_target_elf_count == 1 and
+       .reviewed_non_target_elf_count == 1' \
+  <<< "$reviewed_container_json" >/dev/null
+
+printf 'file\t%064d\tpayload/native\n' 0 > "$work/mismatch-allowlist.tsv"
+if "$ROOT/bin/audit-package-architecture" --arch aarch64 \
+  --allowlist "$work/mismatch-allowlist.tsv" "$work/x86-good.pkg.tar" \
+  >"$work/mismatch.out" 2>"$work/mismatch.err"; then
+  echo "A changed reviewed executable passed its pinned allowlist" >&2
+  exit 1
+fi
+grep -Fq 'audit allowlist digest mismatch' "$work/mismatch.err"
+
+printf 'file\t%s\tpayload/missing\n' \
+  "$(sha256sum "$work/fixtures/x86_64.elf" | awk '{ print $1 }')" \
+  > "$work/stale-allowlist.tsv"
+if "$ROOT/bin/audit-package-architecture" --arch aarch64 \
+  --allowlist "$work/stale-allowlist.tsv" "$work/good.pkg.tar" \
+  >"$work/stale.out" 2>"$work/stale.err"; then
+  echo "An unused architecture exception passed the audit" >&2
+  exit 1
+fi
+grep -Fq 'unused audit allowlist entry' "$work/stale.err"
 
 foreign_json=$(
   "$ROOT/bin/audit-package-architecture" --arch aarch64 --json \

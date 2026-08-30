@@ -211,9 +211,9 @@ grep -Fq '/linux/x64/agent-cli-package.tar.gz' <<< "$cursor_x86_srcinfo" || {
 
 if ! grep -Fq "Copilot's ARM64 package lacks" \
   "$ROOT/pkgbuilds/github-copilot-cli/PKGBUILD" ||
-  ! grep -Fq 'tgrep/bin/linux-x64' \
+  ! grep -Fq "! -name 'clipboard.linux-arm64-gnu.node' -delete" \
     "$ROOT/pkgbuilds/github-copilot-cli/PKGBUILD"; then
-  echo 'GitHub Copilot CLI does not validate native helpers before pruning x64 copies' >&2
+  echo 'GitHub Copilot CLI does not validate native helpers before pruning foreign copies' >&2
   exit 1
 fi
 grep -Fq 'Unexpected Obsidian addon architecture' \
@@ -240,9 +240,17 @@ git -C "$ROOT" apply --reverse --check --directory=pkgbuilds/typora \
   echo 'Typora AUR synchronization patch is malformed or out of date' >&2
   exit 1
 }
-if ! grep -Fq '/build/audit-package-architecture.sh --arch aarch64' \
+if ! grep -Fq 'audit_args=(--arch aarch64 --reject-foreign)' \
   "$ROOT/build/build.sh" ||
-  ! grep -Fq -- '--reject-foreign "$pkg_file"' "$ROOT/build/build.sh"; then
+  ! grep -Fq 'aarch64-audit-allowlist' "$ROOT/build/build.sh" ||
+  ! grep -Fq 'aarch64-audit-allowlist.$package_output_name' \
+    "$ROOT/build/build.sh" ||
+  ! grep -Fq 'Ambiguous architecture audit allowlists' \
+    "$ROOT/build/build.sh" ||
+  ! grep -Fq 'Architecture audit allowlist did not match a package output' \
+    "$ROOT/build/build.sh" ||
+  ! grep -Fq '/build/audit-package-architecture.sh "${audit_args[@]}" "$pkg_file"' \
+    "$ROOT/build/build.sh"; then
   echo 'AArch64 package outputs are not audited before repository indexing' >&2
   exit 1
 fi
@@ -253,11 +261,37 @@ grep -Fq 'ChatGPT prebuild matrix lacks Linux ARM64' \
 }
 if ! grep -Fq "VS Code's ARM64 Copilot payload lacks" \
   "$ROOT/pkgbuilds/visual-studio-code-bin/PKGBUILD" ||
-  ! grep -Fq '! -name arm64' \
+  ! grep -Fq "VS Code's ARM64 MXC payload lacks" \
+    "$ROOT/pkgbuilds/visual-studio-code-bin/PKGBUILD" ||
+  ! grep -Fq -- "-name '*.exe' -delete" \
     "$ROOT/pkgbuilds/visual-studio-code-bin/PKGBUILD"; then
   echo 'VS Code does not validate native helpers before pruning foreign payloads' >&2
   exit 1
 fi
+if ! grep -Fq "T3 Code's ARM64 build lacks its native node-pty binding" \
+  "$ROOT/pkgbuilds/t3code-bin/PKGBUILD" ||
+  ! grep -Fq 'rm -rf "${node_pty}/prebuilds"' \
+    "$ROOT/pkgbuilds/t3code-bin/PKGBUILD"; then
+  echo 'T3 Code does not validate its native node-pty binding before pruning foreign prebuilds' >&2
+  exit 1
+fi
+for package in github-copilot-cli visual-studio-code-bin; do
+  git -C "$ROOT" apply --reverse --check --directory="pkgbuilds/$package" \
+    "pkgbuilds/$package/.omarchy/patches/aarch64.patch" || {
+    echo "AArch64 AUR synchronization patch is malformed or out of date: $package" >&2
+    exit 1
+  }
+done
+for package in gradle heroic-games-launcher-bin visual-studio-code-bin; do
+  [[ -f $ROOT/pkgbuilds/$package/.omarchy/aarch64-audit-allowlist ]] || {
+    echo "Reviewed AArch64 package exception is not recorded: $package" >&2
+    exit 1
+  }
+done
+[[ -f $ROOT/pkgbuilds/dotnet-runtime-bin/.omarchy/aarch64-audit-allowlist.dotnet-sdk-bin ]] || {
+  echo 'The .NET SDK split output audit exception is not recorded' >&2
+  exit 1
+}
 
 # A recipe may consume an official package archive as a source. The builder
 # must copy makepkg's declared outputs, not mistake every .pkg.tar.zst in the

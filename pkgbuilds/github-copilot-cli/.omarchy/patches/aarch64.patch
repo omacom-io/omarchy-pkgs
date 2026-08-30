@@ -1,7 +1,7 @@
 diff --git a/PKGBUILD b/PKGBUILD
 --- a/PKGBUILD
 +++ b/PKGBUILD
-@@ -54,6 +54,24 @@ package() {
+@@ -54,6 +54,27 @@ package() {
  		*)       error "Unsupported architecture: $CARCH"; exit 1 ;;
  	esac
  
@@ -19,6 +19,9 @@ diff --git a/PKGBUILD b/PKGBUILD
 +				return 1
 +			}
 +		done
++		local _clipboard_dir="${_arm_mod}/clipboard/node_modules/@teddyzhu/clipboard"
++		find "${_clipboard_dir}" -maxdepth 1 -type f -name 'clipboard.*.node' \
++			! -name 'clipboard.linux-arm64-gnu.node' -delete
 +		rm -f "${_arm_mod}/clipboard/node_modules/@teddyzhu/clipboard/clipboard.linux-x64-gnu.node"
 +		rm -rf "${_arm_mod}/ripgrep/bin/linux-x64" "${_arm_mod}/tgrep/bin/linux-x64"
 +	fi
