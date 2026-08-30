@@ -16,7 +16,7 @@ source=(
 )
 sha256sums=(
   '3112a6d5fc51a204c96ef9d27187577c6efc80b952e37a77969efbd0124e81d3'
-  'dff3a5ecbe77825b4ea82235d5fd8589832a0462108ab573140488ae54989d23'
+  '70d6838f91cf4b5e51974b9b62b141924cec844a2e60de79607839584ede847f'
 )
 
 build() {
@@ -29,5 +29,5 @@ package() {
 
   install -Dm755 asdcontrol "$pkgdir/usr/bin/asdcontrol"
   install -dm750 "$pkgdir/etc/sudoers.d"
-  install -m440 "$srcdir/asdcontrol.sudoers" "$pkgdir/etc/sudoers.d/zz-asdcontrol"
+  install -m440 "$srcdir/asdcontrol.sudoers" "$pkgdir/etc/sudoers.d/50-asdcontrol"
 }
