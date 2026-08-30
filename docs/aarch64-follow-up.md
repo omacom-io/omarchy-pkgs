@@ -16,6 +16,9 @@ acceptance should be performed on a native AArch64 builder.
   indexing for all split-package outputs.
 - Native ARM container selection for architecture-neutral signing, repository
   database updates, and package removal on an ARM host.
+- An explicit, fingerprint-pinned public-key handoff for incremental builds
+  that must consume a signed repository before its keyring package can be
+  installed from that repository.
 - AArch64 sources, checksums, dependencies, patches, and metadata for the
   package set covered by this pull request.
 - An AArch64 Gradle bootstrap package in the normal build plan so packages such
@@ -133,6 +136,16 @@ output glob had mistaken that input for a makepkg result. The builder now uses
 `makepkg --packagelist`; an isolated native rebuild emitted and indexed only
 `omarchy-chromium-bin`, after which the complete audit passed. This is a generic
 builder correction, not a Chromium-specific release exception.
+
+A signed-baseline rehearsal also exposed the trust bootstrap at the opposite
+end of the build: pacman cannot synchronize an existing repository signed by a
+new publisher until that public key is in the builder image's system keyring.
+The generic builder now accepts `OMARCHY_REPOSITORY_KEY` and an optional pinned
+`OMARCHY_REPOSITORY_KEY_FINGERPRINT`, imports exactly one public key, and
+pins it before repository synchronization. Release backends remain
+responsible for mounting the intended public key and pinning its fingerprint;
+the builder does not embed a downstream key or weaken repository signature
+policy.
 
 The audit also makes the later `arch=('any')` policy work concrete:
 `omarchy-nvim` is declared `any` but its native build produced two AArch64 ELF

@@ -16,6 +16,73 @@ SRC_DIR=${SRC_DIR:-/src}
 
 source "$HELPERS_DIR/package-metadata.sh"
 
+trust_repository_key() {
+  local key=${OMARCHY_REPOSITORY_KEY:-}
+  local expected=${OMARCHY_REPOSITORY_KEY_FINGERPRINT:-}
+  local key_home fingerprint
+  local -a fingerprints=()
+
+  if [[ -z $key ]]; then
+    [[ -z $expected ]] || {
+      echo "==> ERROR: OMARCHY_REPOSITORY_KEY_FINGERPRINT requires OMARCHY_REPOSITORY_KEY"
+      return 1
+    }
+    return 0
+  fi
+  [[ $key != *$'\n'* && -r $key ]] || {
+    echo "==> ERROR: Repository signing key is missing or unreadable: $key"
+    return 1
+  }
+
+  key_home=$(mktemp -d) || {
+    echo "==> ERROR: Cannot create temporary key inspection directory"
+    return 1
+  }
+  chmod 700 "$key_home" || {
+    rm -rf "$key_home"
+    echo "==> ERROR: Cannot protect temporary key inspection directory"
+    return 1
+  }
+  mapfile -t fingerprints < <(
+    GNUPGHOME=$key_home gpg --batch --show-keys --with-colons "$key" 2>/dev/null |
+      awk -F: '$1 == "pub" { want_fingerprint=1; next }
+        want_fingerprint && $1 == "fpr" { print $10; want_fingerprint=0 }'
+  )
+  rm -rf "$key_home"
+  (( ${#fingerprints[@]} == 1 )) || {
+    echo "==> ERROR: Repository signing key must contain exactly one public key"
+    return 1
+  }
+  fingerprint=${fingerprints[0]^^}
+  [[ $fingerprint =~ ^[0-9A-F]{40}$ ]] || {
+    echo "==> ERROR: Repository signing key has an invalid fingerprint"
+    return 1
+  }
+
+  if [[ -n $expected ]]; then
+    expected=$(tr -d '[:space:]' <<< "$expected")
+    expected=${expected^^}
+    [[ $expected =~ ^[0-9A-F]{40}$ ]] || {
+      echo "==> ERROR: Invalid OMARCHY_REPOSITORY_KEY_FINGERPRINT"
+      return 1
+    }
+    [[ $fingerprint == "$expected" ]] || {
+      echo "==> ERROR: Repository signing key fingerprint mismatch"
+      return 1
+    }
+  fi
+
+  sudo pacman-key --add "$key" >/dev/null || {
+    echo "==> ERROR: Cannot import repository signing key"
+    return 1
+  }
+  # The builder image deliberately removes its pacman master private key, so
+  # it cannot locally sign newly imported keys at runtime. The repository
+  # stanza already uses TrustAll; the explicit fingerprint check above is the
+  # trust anchor while pacman still verifies every available signature.
+  echo "  -> imported pinned repository signing key: $fingerprint"
+}
+
 if [[ "$DRY_RUN" != true ]]; then
   # Import GPG keys
   /build/import-gpg-keys.sh || exit 1
@@ -70,6 +137,11 @@ EOF
 
   # Add omarchy repo if it has a database (stable packages)
   if [[ -f "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" ]] || [[ -f "$FINAL_OUTPUT_DIR/omarchy.db" ]]; then
+    # A newly bootstrapped architecture may need to consume a signed Omarchy
+    # repository before its keyring package can be installed from that same
+    # repository. The release backend can hand the public key in explicitly;
+    # the optional fingerprint keeps that trust bootstrap pinned.
+    trust_repository_key || exit 1
     sudo tee -a /etc/pacman.conf > /dev/null <<EOF
 
 [omarchy]

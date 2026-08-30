@@ -418,6 +418,20 @@ grep -Fq 'Cannot initialize the local build repository' "$ROOT/build/build.sh" |
   echo "Builder does not fail closed when its local repository cannot be initialized" >&2
   exit 1
 }
+grep -Fq 'OMARCHY_REPOSITORY_KEY_FINGERPRINT' "$ROOT/bin/build" || {
+  echo "Build entry point does not pass a pinned repository key into the container" >&2
+  exit 1
+}
+for invariant in \
+  'Repository signing key must contain exactly one public key' \
+  'Repository signing key fingerprint mismatch' \
+  'pacman-key --add "$key"' \
+  'imported pinned repository signing key'; do
+  grep -Fq "$invariant" "$ROOT/build/build.sh" || {
+    echo "Builder lost signed-repository trust invariant: $invariant" >&2
+    exit 1
+  }
+done
 
 # Bind-mounted workspaces must remain writable when the host user and the
 # container's builder user have different numeric UIDs. A locally owned
