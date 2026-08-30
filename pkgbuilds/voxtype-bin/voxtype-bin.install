@@ -53,6 +53,14 @@ _install_active_binary() {
 }
 
 _set_default_backend() {
+    # AArch64 is built from source as one generic native binary. The AVX
+    # variants below remain the unchanged x86_64 selection path.
+    if [ -f /usr/lib/voxtype/voxtype-native ]; then
+        _install_active_binary /usr/lib/voxtype/voxtype-native
+        echo "native"
+        return
+    fi
+
     # Set the default CPU backend based on CPU capabilities
     if grep -q avx512f /proc/cpuinfo 2>/dev/null; then
         _install_active_binary /usr/lib/voxtype/voxtype-avx512

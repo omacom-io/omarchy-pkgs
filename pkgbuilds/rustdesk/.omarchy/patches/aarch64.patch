@@ -1,0 +1,116 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -171,7 +171,7 @@ _HBB=( # dates are retrieved from git fetch; tig. Every version gets a specific
+ )
+ _pkgverhbb="$(_fn_VCL "${_pkgver}" -eq "${_HBB[@]}")"; unset _HBB; test "$(_vercmp "${_pkgver}" '1.3.7')" -lt 0 -o ! -z "${_pkgverhbb}" || exit 1
+ pkgdesc='Yet another remote desktop software, written in Rust. Works out of the box, no configuration required. Great alternative to TeamViewer and AnyDesk!'
+-arch=('x86_64')
++arch=('x86_64' 'aarch64')
+ url='https://rustdesk.com/'
+ _giturl='https://github.com/rustdesk/rustdesk'
+ _giturlhbb='https://github.com/rustdesk/hbb_common'
+@@ -198,6 +198,7 @@ if [ "${#_opt_hwcodec_py[@]}" -gt 0 ]; then
+   )
+ fi
+ options=('!lto')
++[[ $CARCH != aarch64 ]] || options+=('!strip' '!debug')
+ _patches=(
+   '0000-disable-update-check@rustdesk.patch'
+   #'0001-extended_text-drop-version-for-flutter.3.22.3@rustdesk.patch' # https://github.com/rustdesk/rustdesk/blob/master/.github/workflows/bridge.yml#L77
+@@ -316,6 +317,14 @@ _vcs=("${_vcs[@]%%::*}")
+ _vcs=("${_vcs[@]##*/}")
+ noextract=("${_vcs[@]}")
+ 
++# The AUR rustdesk-bin recipe uses RustDesk's official RPM on AArch64 because
++# the vendor only publishes its Arch package for x86_64. Keep the existing
++# source build unchanged on x86_64 and follow that established ARM packaging
++# path here.
++_arm_filename="rustdesk-${_pkgver}-0.aarch64.rpm"
++source_aarch64=("${_arm_filename}::${_giturl}/releases/download/${_pkgver}/${_arm_filename}")
++sha256sums_aarch64=('SKIP')
++
+ if ! :; then
+   _srcdir="${_pkgname}"
+   source[0]="git+${_giturl}#tag=${_pkgver}"
+@@ -329,7 +338,38 @@ for _fk in "${!source[@]}"; do
+   fi
+ done
+ unset _fk
+ 
++# The AUR source build is x86_64-only here. Keeping these arrays architecture
++# scoped prevents the native ARM builder from fetching that large toolchain.
++depends_x86_64=("${depends[@]}")
++depends_aarch64=(
++  'gtk3'
++  'xdotool'
++  'libxcb'
++  'libxfixes'
++  'libpulse'
++  'libva'
++  'libvdpau'
++  'pam'
++  'gst-plugins-base'
++  'gst-plugin-pipewire'
++)
++optdepends_x86_64=("${optdepends[@]}")
++optdepends_aarch64=(
++  'libappindicator-gtk3: tray icon'
++  'libayatana-appindicator: tray icon'
++)
++source_x86_64=("${source[@]}")
++md5sums_x86_64=("${md5sums[@]}")
++sha256sums_x86_64=("${sha256sums[@]}")
++makedepends_x86_64=("${makedepends[@]}")
++depends=()
++optdepends=()
++source=()
++md5sums=()
++sha256sums=()
++makedepends=()
++
+ _vcpkg=(libvpx libyuv opus aom)
+ 
+ _prepare_vc() {
+@@ -475,6 +515,8 @@ _fn_setvars() {
+ }
+ 
+ prepare() {
++  [[ $CARCH != aarch64 ]] || return 0
++
+   local -
+   _dpr_check
+   #rm -rf ~/'.cache/vcpkg/archives' ~/'.vcpkg'
+@@ -566,6 +608,8 @@ EOF
+ }
+ 
+ build() {
++  [[ $CARCH != aarch64 ]] || return 0
++
+   local -
+   msg2 'Build vcpkg'
+   set -u
+@@ -623,6 +667,23 @@ check_disabled() {
+ }
+ 
+ package() {
++  if [[ $CARCH == aarch64 ]]; then
++    install -dm755 "$pkgdir/usr/share" "$pkgdir/usr/bin"
++    cp -r "$srcdir/usr/share/rustdesk" "$pkgdir/usr/share/"
++    cp -r "$srcdir/usr/share/icons" "$pkgdir/usr/share/"
++    ln -s /usr/share/rustdesk/rustdesk "$pkgdir/usr/bin/rustdesk"
++
++    install -Dm644 "$srcdir/usr/share/rustdesk/files/rustdesk.service" \
++      "$pkgdir/usr/lib/systemd/system/rustdesk.service"
++    install -Dm644 "$srcdir/usr/share/rustdesk/files/rustdesk.desktop" \
++      "$pkgdir/usr/share/applications/rustdesk.desktop"
++    install -Dm644 "$srcdir/usr/share/rustdesk/files/rustdesk-link.desktop" \
++      "$pkgdir/usr/share/applications/rustdesk-link.desktop"
++
++    rm -r "$pkgdir/usr/share/rustdesk/files"
++    return
++  fi
++
+   local -
+   set -u
+   cd "${_srcdir}"

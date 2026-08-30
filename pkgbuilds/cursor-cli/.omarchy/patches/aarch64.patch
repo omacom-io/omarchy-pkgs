@@ -1,0 +1,21 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -41,6 +41,17 @@ package() {
+     # bundled node and rg runtimes).
+     cp -r "${srcdir}"/dist-package/* "${pkgdir}/opt/cursor-agent/"
+ 
++    if [[ $CARCH == aarch64 ]]; then
++        local tree_sitter_bash="${pkgdir}/opt/cursor-agent/node_modules/tree-sitter-bash"
++        [[ -f "${tree_sitter_bash}/build/Release/tree_sitter_bash_binding.node" ]] || {
++            error "Cursor's ARM64 archive lacks its native tree-sitter-bash binding"
++            return 1
++        }
++        # The ARM64 vendor archive also bundles x86_64, Windows, and macOS
++        # prebuilds. Node uses the native build/Release binding above on ARM.
++        rm -rf -- "${tree_sitter_bash}/prebuilds"
++    fi
++
+     # Create symlink in /usr/bin
+     ln -s "/opt/cursor-agent/cursor-agent" "${pkgdir}/usr/bin/cursor-agent"
+ 

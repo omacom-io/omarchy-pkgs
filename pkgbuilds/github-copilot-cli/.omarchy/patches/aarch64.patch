@@ -1,0 +1,28 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -54,6 +54,24 @@ package() {
+ 		*)       error "Unsupported architecture: $CARCH"; exit 1 ;;
+ 	esac
+ 
++	if [[ $CARCH == aarch64 ]]; then
++		local _arm_mod="${_moddir}/node_modules/@github/copilot-linux-arm64"
++		local _required_arm_files=(
++			"clipboard/node_modules/@teddyzhu/clipboard/clipboard.linux-arm64-gnu.node"
++			"ripgrep/bin/linux-arm64/rg"
++			"tgrep/bin/linux-arm64/tgrep"
++		)
++		local _required
++		for _required in "${_required_arm_files[@]}"; do
++			[[ -f "${_arm_mod}/${_required}" ]] || {
++				error "Copilot's ARM64 package lacks ${_required}"
++				return 1
++			}
++		done
++		rm -f "${_arm_mod}/clipboard/node_modules/@teddyzhu/clipboard/clipboard.linux-x64-gnu.node"
++		rm -rf "${_arm_mod}/ripgrep/bin/linux-x64" "${_arm_mod}/tgrep/bin/linux-x64"
++	fi
++
+ 	msg2 "Cleaning non-native prebuilds for ${_arch}"
+ 	if [ -d "${_moddir}/prebuilds" ]; then
+ 		find "${_moddir}/prebuilds" -mindepth 1 -maxdepth 1 -type d ! -name "linux-${_arch}" -exec rm -rf {} +

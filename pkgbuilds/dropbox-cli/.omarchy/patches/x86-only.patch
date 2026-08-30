@@ -1,0 +1,16 @@
+diff --git a/PKGBUILD b/PKGBUILD
+index c73b821..a963d18 100644
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -9,7 +9,10 @@ pkgname=dropbox-cli
+ pkgver=2024.04.17
+ pkgrel=2
+ pkgdesc="Command line interface for Dropbox"
+-arch=("any")
++# The CLI requires the proprietary Dropbox daemon, which is distributed only
++# for x86_64 Linux. Declaring this architecture-independent would produce an
++# installable-looking but unsatisfiable AArch64 package.
++arch=("x86_64")
+ url="https://www.dropbox.com"
+ license=("GPL-3.0-or-later")
+ makedepends=("gdk-pixbuf2")
