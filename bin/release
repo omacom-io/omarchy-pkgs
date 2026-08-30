@@ -42,8 +42,13 @@ while [[ $# -gt 0 ]]; do
     shift 2
     ;;
   --package)
-    BUILD_ARGS+=("--package" "$2")
-    shift 2
+    # Greedy like bin/build: consume every name up to the next --option.
+    BUILD_ARGS+=("--package")
+    shift
+    while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+      BUILD_ARGS+=("$1")
+      shift
+    done
     ;;
   --sync-remote)
     SYNC_REMOTE="$2"
@@ -64,7 +69,7 @@ while [[ $# -gt 0 ]]; do
     echo "Options:"
     echo "  --arch <arch>         Target architecture (x86_64 or aarch64, default: x86_64)"
     echo "  --mirror <mirror>     Mirror to use (edge, rc, or stable, default: edge)"
-    echo "  --package <name>      Build only the specified package"
+    echo "  --package <names>     Build only the specified package(s) (space-separated)"
     echo "  --sync-remote <path>  Rclone remote for sync (default: pkgs.omarchy.org:omarchy-pkgs)"
     echo "  --skip-prod-check     Skip production environment check during sync
   --dry-run             Show build plan only; do not sign/promote/clean/update/sync"
