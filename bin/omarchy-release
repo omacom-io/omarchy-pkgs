@@ -659,13 +659,13 @@ cmd_rc() {
       pub=$(published_version rc 2>/dev/null) || pub=""
       if [[ "${pub%-*}" == "$pin_ver" ]]; then
         print_success "$pin_ver is already cut from this head and published to rc"
-        maybe_iso "$version" rc "$iso_mode"
+        maybe_iso "$pin_ver" rc "$iso_mode"
         return 0
       fi
       print_info "$pin_ver is pinned from this head but not published yet — re-triggering the build"
       trigger_rc_build || true
       [[ "$wait" == true ]] && wait_for_published rc "$pin_ver"
-      maybe_iso "$version" rc "$iso_mode"
+      maybe_iso "$pin_ver" rc "$iso_mode"
       return 0
     fi
   fi
@@ -683,7 +683,7 @@ cmd_rc() {
   if [[ "$wait" == true ]]; then
     wait_for_published rc "$new_ver" || return 1
   fi
-  maybe_iso "$version" rc "$iso_mode"
+  maybe_iso "$new_ver" rc "$iso_mode"
   echo ""
   print_info "Test the candidate, then: omarchy-release ship  (or pick + rc again)"
 }
