@@ -56,8 +56,8 @@ bin/omarchy-release              # shepherd: status + guided next step
 bin/omarchy-release start 4.0.2  # open the train: branch v4-0-2 + staging PR
 bin/omarchy-release pick         # choose merged PRs to cherry-pick (multi-select)
 bin/omarchy-release rc           # publish the next 4.0.2rcN to the rc channel
-bin/omarchy-release ship         # final pins, promote rc → stable, tag,
-                                 # GitHub release, ISO, website — one swoop
+bin/omarchy-release ship         # tag, final pins, promote rc → stable,
+                                 # draft GitHub release, ISO, website — one swoop
 bin/omarchy-release doctor       # verify credentials/connections up front
 ```
 

@@ -52,7 +52,7 @@ Commands:
   pick [pr#|sha ...] Cherry-pick merged PRs onto the release branch; with no
                      args, choose from a list of merged $DEV_BRANCH PRs
   rc                 Cut the next X.Y.ZrcN into the rc channel
-  ship               Final pins, promote rc -> stable, tag, GitHub release,
+  ship               Tag, final pins, promote rc -> stable, draft GitHub release,
                      ISO (prompted), website bump
   status             Show where the train stands (read-only)
   doctor             Verify every credential and connection the flow needs
@@ -156,6 +156,13 @@ ensure_mirror_clone() {
     git clone --mirror --quiet "$UPSTREAM_URL" "$MIRROR_CLONE"
   fi
   git -C "$MIRROR_CLONE" remote set-url --push origin "$UPSTREAM_PUSH_URL"
+}
+
+# A clone made with `git clone --mirror` sets remote.origin.mirror=true. Git
+# otherwise rejects an explicit SHA:ref push as an invalid combination with
+# mirror mode, so disable that remote setting for narrowly targeted pushes.
+push_upstream_ref() { # push_upstream_ref <source-sha> <destination-ref>
+  git -c remote.origin.mirror=false -C "$MIRROR_CLONE" push --quiet origin "$1:$2"
 }
 
 ensure_work_clone() {
@@ -449,7 +456,7 @@ cmd_start() {
     print_info "Release type: $kind — branching $branch from $base_ref (${base_sha:0:12})"
     confirm "Create branch $branch on $UPSTREAM_REPO?" || exit 1
     ensure_mirror_clone
-    git -C "$MIRROR_CLONE" push --quiet origin "$base_sha:refs/heads/$branch"
+    push_upstream_ref "$base_sha" "refs/heads/$branch"
     print_success "Created $branch"
   fi
 
@@ -756,36 +763,61 @@ cmd_ship() {
 
   echo ""
   print_info "This will, in order (steps already done are skipped):"
-  echo "  1. Pin the final $version from $branch@${pin_commit:0:12} and publish it to rc"
-  echo "  2. Promote the rc channel to stable (packages + signatures + db)"
-  echo "  3. Tag v$version on $UPSTREAM_REPO"
+  echo "  1. Tag v$version at the tested $branch@${pin_commit:0:12} on $UPSTREAM_REPO"
+  echo "  2. Pin the final $version from that tag and publish it to rc"
+  echo "  3. Promote the rc channel to stable (packages + signatures + db)"
   echo "  4. Merge the final pins to master (edge overlap + record)"
-  echo "  5. Create the GitHub release from the staging PR body"
+  echo "  5. Create a draft GitHub release from the staging PR body"
   echo "  6. Build + upload the final ISO (${iso_mode})"
   echo "  7. Point the website at the new ISO"
   echo ""
   confirm "Ship $version?" || exit 1
 
-  # 1. Final pins into rc
+  # 1. Tag the exact commit the tested RC was built from before any final
+  # package metadata is written or published. A pre-existing tag is only safe
+  # to reuse when it resolves to that same commit.
+  local tag_commit
+  if tag_exists "v$version"; then
+    tag_commit=$(resolve_tag_commit "v$version")
+    if [[ "$tag_commit" != "$pin_commit" ]]; then
+      print_error "Tag v$version points to ${tag_commit:0:12}, not the tested ${pin_commit:0:12}"
+      echo "Refusing to publish final package metadata for the wrong source commit."
+      exit 1
+    fi
+    print_success "1/7 Tag v$version already exists at ${pin_commit:0:12}"
+  else
+    ensure_mirror_clone
+    push_upstream_ref "$pin_commit" "refs/tags/v$version"
+    tag_commit=$(resolve_tag_commit "v$version")
+    if [[ "$tag_commit" != "$pin_commit" ]]; then
+      print_error "Tag push completed but v$version resolves to '${tag_commit:-nothing}'"
+      echo "Expected the tested commit $pin_commit; refusing to continue."
+      exit 1
+    fi
+    print_success "1/7 Tagged v$version at ${pin_commit:0:12}"
+  fi
+
+  # 2. Final pins into rc. Resolve the tag we just established so the final
+  # PKGBUILDs record both its provenance and its exact commit.
   local rc_pub stable_pub
   rc_pub=$(published_version rc 2>/dev/null) || rc_pub=""
   if [[ "${rc_pub%-*}" == "$version" ]]; then
-    print_success "1/7 Final $version already published to rc"
+    print_success "2/7 Final $version already published to rc"
   else
     if [[ "$pin_ver" != "$version" ]]; then
-      print_info "1/7 Pinning final $version..."
-      cut_pins "v$version" --commit "$pin_commit"
+      print_info "2/7 Pinning final $version from tag v$version..."
+      cut_pins "v$version"
     else
-      print_info "1/7 Final $version pinned — re-triggering build"
+      print_info "2/7 Final $version pinned — re-triggering build"
     fi
     trigger_rc_build || true
     wait_for_published rc "$version" || exit 1
   fi
 
-  # 2. Promote rc -> stable
+  # 3. Promote rc -> stable
   stable_pub=$(published_version stable 2>/dev/null) || stable_pub=""
   if [[ "${stable_pub%-*}" == "$version" ]]; then
-    print_success "2/7 Stable already serves $version"
+    print_success "3/7 Stable already serves $version"
   else
     host_advance rc stable || exit 1
     stable_pub=$(published_version stable 2>/dev/null) || stable_pub=""
@@ -793,17 +825,7 @@ cmd_ship() {
       print_error "Promotion ran but stable serves '${stable_pub:-nothing}' — investigate before continuing"
       exit 1
     fi
-    print_success "2/7 Promoted to stable: omarchy $stable_pub"
-  fi
-
-  # 3. Tag — at the pinned commit the artifacts were built from, never the
-  # branch head (they can differ on a resumed ship).
-  if tag_exists "v$version"; then
-    print_success "3/7 Tag v$version already exists"
-  else
-    ensure_mirror_clone
-    git -C "$MIRROR_CLONE" push --quiet origin "$pin_commit:refs/tags/v$version"
-    print_success "3/7 Tagged v$version at ${pin_commit:0:12}"
+    print_success "3/7 Promoted to stable: omarchy $stable_pub"
   fi
 
   # 4. Final pins onto master (keeps edge overlap publishing and the repo record)
@@ -830,7 +852,9 @@ cmd_ship() {
     fi
   fi
 
-  # 5. GitHub release from the staging PR body
+  # 5. Draft GitHub release from the staging PR body. Requiring the tag makes
+  # this fail closed if step 1 did not finish instead of letting gh create the
+  # tag from the default branch.
   if gh release view "v$version" --repo "$UPSTREAM_REPO" >/dev/null 2>&1; then
     print_success "5/7 GitHub release v$version already exists"
   else
@@ -840,8 +864,9 @@ cmd_ship() {
       notes="Omarchy $version"
       print_warning "No staging PR body found — using a bare title; edit the release afterwards"
     fi
-    gh release create "v$version" --repo "$UPSTREAM_REPO" --title "v$version" --notes "$notes"
-    print_success "5/7 GitHub release v$version created"
+    gh release create "v$version" --repo "$UPSTREAM_REPO" --title "v$version" \
+      --notes "$notes" --draft --verify-tag
+    print_success "5/7 Draft GitHub release v$version created"
   fi
 
   # 6. ISO
