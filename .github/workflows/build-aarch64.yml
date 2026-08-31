@@ -9,11 +9,22 @@ name: Build aarch64 Packages
 #
 # This builds and uploads packages as artifacts; it deliberately does not
 # publish. Publishing needs the repository signing key and the pkgs.omarchy.org
-# credentials, so promoting these artifacts stays a maintainer step:
+# credentials, so promoting these artifacts stays a maintainer step. Download
+# the artifact into build-output/<mirror>/aarch64, then, with <mirror> matching
+# the mirror the artifact was built against:
 #
-#   bin/repo sign --arch aarch64
-#   bin/repo promote --arch aarch64
-#   bin/repo sync --arch aarch64
+#   bin/repo sign    --arch aarch64 --mirror <mirror>
+#   bin/repo promote --arch aarch64 --mirror <mirror>
+#   bin/repo update  --arch aarch64 --mirror <mirror>
+#   bin/repo sync    --arch aarch64 --mirror <mirror>
+#
+# The update step is not optional. bin/promote-build moves package files into
+# the published tree but deliberately skips omarchy-build.db*, and bin/repo
+# update is the only thing that runs the repo-add that builds omarchy.db.
+# Without it bin/sync-repo uploads packages and no database, and pacman clients
+# pointed at the aarch64 tree resolve nothing. --mirror matters for the same
+# reason: helpers/paths.sh defaults MIRROR to edge, so omitting it while
+# promoting a stable artifact reads and writes the wrong tree.
 #
 # Packages whose PKGBUILD arch=() excludes aarch64 are skipped by
 # should_build_for_arch() in build/build.sh, so hardware-specific x86 packages
@@ -39,8 +50,15 @@ jobs:
   build:
     runs-on: ubuntu-24.04-arm
     # A full unscoped build compiles every aarch64-capable package from source.
-    # GitHub caps a job at 6 hours; if the full set ever outgrows that, drive it
-    # in batches with the packages input rather than raising this.
+    # GitHub caps a job at 6 hours. If the full set ever outgrows that, note
+    # that the packages input is not a general answer: build/build.sh builds
+    # only the names given and resolves inter-package dependencies solely
+    # within that set, and it configures the production [omarchy] repo only
+    # when a database already exists -- which on a clean runner it does not. So
+    # a batch has to be dependency-closed to succeed. pkgbuilds/omarchy, for
+    # instance, pins omarchy-settings=${pkgver} and fails at makepkg -s without
+    # it. The input is for targeted rebuilds; splitting a full build needs the
+    # batches chosen with that in mind.
     timeout-minutes: 360
     permissions:
       contents: read
@@ -124,15 +142,6 @@ jobs:
           name: omarchy-aarch64-${{ inputs.mirror }}-${{ github.run_id }}
           path: build-output/${{ inputs.mirror }}/aarch64
           if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload build logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs-${{ github.run_id }}
-          path: logs/
-          if-no-files-found: ignore
           retention-days: 14
 
       - name: Notify Basecamp on failure
