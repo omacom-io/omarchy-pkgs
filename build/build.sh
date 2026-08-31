@@ -540,7 +540,12 @@ build_package() {
       return 1
     fi
     ln -sf omarchy-build.db.tar.zst omarchy-build.db
-    sudo pacman -Sy >/dev/null 2>&1
+    if ! sudo pacman -Sy >/dev/null; then
+      echo "    Failed to synchronize the updated local build repository"
+      FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+      cd "/src/$pkg" || return 1
+      return 1
+    fi
 
     cd /src/$pkg
 

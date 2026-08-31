@@ -131,6 +131,7 @@ RUN pacman -Syu --noconfirm && \
         curl \
         jq \
         nodejs \
+        squashfs-tools \
         gnupg && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*

@@ -11,7 +11,9 @@ node "$ROOT/test/fixtures/create-architecture-audit-fixtures.mjs" "$work/fixture
 mkdir -p "$work/good/payload" "$work/bad-asar/payload" \
   "$work/bad-tar/payload" "$work/depth/payload" \
   "$work/foreign/payload" "$work/malformed/payload" \
-  "$work/x86-good/payload"
+  "$work/x86-good/payload" "$work/good-appimage/payload" \
+  "$work/bad-appimage/payload" "$work/malformed-appimage/payload" \
+  "$work/bin"
 cp "$work/fixtures/aarch64.elf" "$work/good/payload/native"
 cp "$work/fixtures/nested-aarch64.asar" "$work/good/payload/modules.asar"
 cp "$work/fixtures/managed-anycpu.dll" "$work/good/payload/managed.dll"
@@ -22,6 +24,24 @@ cp "$work/fixtures/x86_64.exe" "$work/foreign/payload/vendor.exe"
 cp "$work/fixtures/malformed.asar" "$work/malformed/payload/modules.asar"
 cp "$work/fixtures/x86_64.elf" "$work/x86-good/payload/native"
 
+# A type-2 AppImage is an ELF runtime followed by a SquashFS filesystem. The
+# fixture stub validates that the scanner discovers the embedded offset and
+# recursively audits the extracted tree without executing the AppImage.
+cp "$work/fixtures/aarch64.elf" "$work/good-appimage/payload/good.AppImage"
+printf 'hsqs' >> "$work/good-appimage/payload/good.AppImage"
+cp "$work/fixtures/aarch64.elf" "$work/bad-appimage/payload/bad.AppImage"
+printf 'hsqs' >> "$work/bad-appimage/payload/bad.AppImage"
+cp "$work/fixtures/aarch64.elf" \
+  "$work/malformed-appimage/payload/malformed.AppImage"
+cp "$ROOT/test/fixtures/unsquashfs-stub" "$work/bin/unsquashfs"
+chmod +x "$work/bin/unsquashfs"
+export PATH="$work/bin:$PATH"
+export APPIMAGE_TEST_OFFSET
+APPIMAGE_TEST_OFFSET=$(LC_ALL=C grep -abo hsqs \
+  "$work/good-appimage/payload/good.AppImage" | cut -d: -f1)
+export APPIMAGE_GOOD_PAYLOAD="$work/fixtures/aarch64.elf"
+export APPIMAGE_BAD_PAYLOAD="$work/fixtures/x86_64.elf"
+
 mkdir -p "$work/tar-contents"
 cp "$work/fixtures/x86_64.elf" "$work/tar-contents/hidden-helper"
 bsdtar -cf "$work/bad-tar/payload/vendor.tar" -C "$work/tar-contents" .
@@ -31,7 +51,8 @@ cp "$work/fixtures/aarch64.elf" "$work/depth-inner/native"
 bsdtar -cf "$work/depth-middle/layer-2.tar" -C "$work/depth-inner" .
 bsdtar -cf "$work/depth/payload/layer-1.tar" -C "$work/depth-middle" .
 
-for package in good bad-asar bad-tar depth foreign malformed x86-good; do
+for package in good bad-asar bad-tar depth foreign malformed x86-good \
+  good-appimage bad-appimage malformed-appimage; do
   bsdtar -cf "$work/$package.pkg.tar" -C "$work/$package" .
 done
 
@@ -61,6 +82,34 @@ if "$ROOT/bin/audit-package-architecture" --arch aarch64 \
   exit 1
 fi
 grep -Fq 'vendor.tar/hidden-helper' "$work/bad-tar.err"
+
+good_appimage_json=$(
+  "$ROOT/bin/audit-package-architecture" --arch aarch64 --reject-foreign \
+    --json "$work/good-appimage.pkg.tar"
+)
+jq -e '.errors == 0 and .elf_count == 2 and
+       .non_target_elf_count == 0 and .nested_archive_count == 1' \
+  <<< "$good_appimage_json" >/dev/null || {
+  echo "Good AppImage fixture produced unexpected evidence" >&2
+  exit 1
+}
+
+if "$ROOT/bin/audit-package-architecture" --arch aarch64 \
+  "$work/bad-appimage.pkg.tar" \
+  >"$work/bad-appimage.out" 2>"$work/bad-appimage.err"; then
+  echo "x86_64 ELF in an AppImage passed the AArch64 audit" >&2
+  exit 1
+fi
+grep -Fq 'bad.AppImage/squashfs-root/native' "$work/bad-appimage.err"
+
+if "$ROOT/bin/audit-package-architecture" --arch aarch64 \
+  "$work/malformed-appimage.pkg.tar" \
+  >"$work/malformed-appimage.out" 2>"$work/malformed-appimage.err"; then
+  echo "Malformed AppImage passed the recursive audit" >&2
+  exit 1
+fi
+grep -Fq 'exactly one valid SquashFS filesystem' \
+  "$work/malformed-appimage.err"
 
 file_allowlist="$work/file-allowlist.tsv"
 printf 'file\t%s\tpayload/native\n' \

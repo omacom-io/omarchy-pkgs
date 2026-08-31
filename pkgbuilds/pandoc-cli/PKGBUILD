@@ -1,5 +1,5 @@
 pkgname=pandoc-cli
-pkgver=3.10.2
+pkgver=3.11
 pkgrel=1
 pkgdesc='Universal markup converter (official ARM64 binary)'
 arch=('aarch64')
@@ -9,7 +9,7 @@ provides=('pandoc')
 conflicts=('pandoc')
 options=('!strip' '!debug')
 source_aarch64=("pandoc-$pkgver-linux-arm64.tar.gz::https://github.com/jgm/pandoc/releases/download/$pkgver/pandoc-$pkgver-linux-arm64.tar.gz")
-sha256sums_aarch64=('1c4d69f2a092bd47cb180e58a4aab7b9637101ced928252458c7d41a7f7fa71d')
+sha256sums_aarch64=('56ed5566ec41d22ec9ee0704e6ac0b98ba102e92384efd5306173a22d314c79a')
 
 package() {
   cd "pandoc-$pkgver"

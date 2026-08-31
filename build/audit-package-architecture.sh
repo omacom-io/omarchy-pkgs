@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Recursively audit final package payloads for target-architecture executables.
-# Nested ASAR and libarchive-supported containers are opened with bounded
-# recursion. Wrong-architecture ELF files fail unless an exact reviewed
+# Nested ASAR, SquashFS/AppImage, and libarchive-supported containers are
+# opened with bounded recursion. Wrong-architecture ELF files fail unless an exact reviewed
 # exception covers them; native non-Linux formats are reported and may be
 # rejected with --reject-foreign. Managed ECMA-335 assemblies are counted
 # separately from native PE files.
@@ -280,6 +280,64 @@ extract_libarchive() {
   ' _ "$blocks" "$archive" "$destination"
 }
 
+find_squashfs_offset() {
+  local archive=$1 match offset
+  local -a valid_offsets=()
+
+  # Type-2 AppImages prepend an ELF runtime to their SquashFS. Find candidate
+  # little-endian superblock magics and let unsquashfs validate them; do not
+  # execute the vendor-provided AppImage runtime merely to ask for its offset.
+  while IFS= read -r match; do
+    offset=${match%%:*}
+    [[ $offset =~ ^[0-9]+$ ]] || continue
+    if timeout 30 unsquashfs -o "$offset" -s "$archive" >/dev/null 2>&1; then
+      valid_offsets+=("$offset")
+    fi
+  done < <(LC_ALL=C grep -abo 'hsqs' -- "$archive" || true)
+
+  if ((${#valid_offsets[@]} != 1)); then
+    echo "ERROR: expected exactly one valid SquashFS filesystem in $archive; found ${#valid_offsets[@]}" >&2
+    return 1
+  fi
+  printf '%s\n' "${valid_offsets[0]}"
+}
+
+extract_squashfs() {
+  local archive=$1 destination=$2 remaining_files=$3 remaining_bytes=$4
+  local offset inventory entries expanded_bytes blocks
+
+  command -v unsquashfs >/dev/null || {
+    echo "ERROR: unsquashfs is required to inspect SquashFS/AppImage payload: $archive" >&2
+    return 1
+  }
+  offset=$(find_squashfs_offset "$archive") || return 1
+
+  inventory=$(LC_ALL=C timeout 60 unsquashfs -o "$offset" -lln "$archive" |
+    awk 'NF >= 6 && $3 ~ /^[0-9]+$/ { entries += 1; bytes += $3 }
+      END { printf "%d %.0f\n", entries, bytes }') || return 1
+  read -r entries expanded_bytes <<< "$inventory"
+  [[ $entries =~ ^[0-9]+$ && $expanded_bytes =~ ^[0-9]+$ ]] || {
+    echo "ERROR: cannot determine SquashFS extraction budget: $archive" >&2
+    return 1
+  }
+  if ((entries > remaining_files)); then
+    echo "ERROR: SquashFS file limit would be exceeded: $entries > $remaining_files" >&2
+    return 1
+  fi
+  if ((expanded_bytes > remaining_bytes)); then
+    echo "ERROR: SquashFS byte limit would be exceeded: $expanded_bytes > $remaining_bytes" >&2
+    return 1
+  fi
+
+  blocks=$(((remaining_bytes + 511) / 512))
+  mkdir -p "$destination"
+  timeout 120 bash -c '
+    ulimit -f "$1"
+    exec unsquashfs -no-progress -no-xattrs -processors 1 \
+      -o "$2" -d "$3" "$4"
+  ' _ "$blocks" "$offset" "$destination" "$archive" >/dev/null
+}
+
 is_nested_archive() {
   local candidate=$1 type=$2
   case $type in
@@ -290,7 +348,7 @@ is_nested_archive() {
   esac
   case ${candidate,,} in
   *.asar | *.zip | *.jar | *.tar | *.tgz | *.tar.gz | *.tar.xz | *.tar.zst | \
-    *.deb | *.rpm) return 0 ;;
+    *.deb | *.rpm | *.appimage) return 0 ;;
   esac
   return 1
 }
@@ -391,7 +449,14 @@ scan_tree() {
       continue
     fi
 
-    if [[ $type == *'Electron ASAR archive'* || ${candidate,,} == *.asar ]]; then
+    if [[ $type == *'Squashfs filesystem'* || ${candidate,,} == *.appimage ]]; then
+      if ! extract_squashfs "$candidate" "$destination" \
+        "$remaining_files" "$remaining_bytes"; then
+        echo "ERROR: cannot extract nested SquashFS/AppImage: $display_root/$relative" >&2
+        ((errors += 1))
+        continue
+      fi
+    elif [[ $type == *'Electron ASAR archive'* || ${candidate,,} == *.asar ]]; then
       command -v node >/dev/null || {
         echo "ERROR: node is required to inspect ASAR archive: $display_root/$relative" >&2
         ((errors += 1))
@@ -406,7 +471,7 @@ scan_tree() {
     elif ! extract_libarchive "$candidate" "$destination"; then
       case $type:${candidate,,} in
       *archive*:* | *filesystem*:* | *:*.zip | *:*.jar | *:*.tar | *:*.tgz | \
-        *:*.tar.gz | *:*.tar.xz | *:*.tar.zst | *:*.deb | *:*.rpm)
+        *:*.tar.gz | *:*.tar.xz | *:*.tar.zst | *:*.deb | *:*.rpm | *:*.appimage)
         echo "ERROR: cannot extract nested archive: $display_root/$relative" >&2
         ((errors += 1))
         ;;

@@ -25,7 +25,7 @@ jobs:
             -w /workspace \
             archlinux:base-devel bash -lc '
               set -euo pipefail
-              pacman -Syu --noconfirm jq nodejs
+              pacman -Syu --noconfirm git jq nodejs
               ./bin/sync-upstream self-test
               ./bin/omarchy-pkgs self-test
               ./bin/omarchy-release self-test

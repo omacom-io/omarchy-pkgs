@@ -1,17 +1,18 @@
-diff --git a/PKGBUILD b/PKGBUILD
-index 54a995c..59a9003 100644
 --- a/PKGBUILD
 +++ b/PKGBUILD
-@@ -3,7 +3,7 @@ pkgname=voxtype-bin
- pkgver=0.7.5
- pkgrel=1
+@@ -1,9 +1,9 @@
+ # Maintainer: Peter Jackson <pete@peteonrails.com>
+ pkgname=voxtype-bin
+ pkgver=1.0.0
+-pkgrel=2
++pkgrel=2.1
  pkgdesc="Push-to-talk voice-to-text for Linux (pre-built binaries)"
 -arch=('x86_64')
 +arch=('x86_64' 'aarch64')
  url="https://voxtype.io"
  license=('MIT')
  depends=(
-@@ -12,6 +12,20 @@ depends=(
+@@ -12,6 +12,20 @@
      'gcc-libs'
      'glibc'
  )
@@ -32,7 +33,7 @@ index 54a995c..59a9003 100644
  optdepends=(
      'wtype: keyboard simulation for Wayland (recommended, best CJK support)'
      'dotool: keyboard simulation with layout support (KDE/GNOME compatible)'
-@@ -47,7 +61,7 @@ validpgpkeys=(
+@@ -47,7 +61,7 @@
      '9CCF7915B750CAE8B095ED1AA3FC9F33FD209279'
  )
  _github="https://github.com/peteonrails/voxtype/releases/download/v$pkgver"
@@ -41,17 +42,17 @@ index 54a995c..59a9003 100644
      # Whisper binaries
      "voxtype-$pkgver-avx2::$_github/voxtype-$pkgver-linux-x86_64-avx2"
      "voxtype-$pkgver-avx2.asc::$_github/voxtype-$pkgver-linux-x86_64-avx2.asc"
-@@ -123,7 +137,7 @@ source=(
+@@ -123,7 +137,7 @@
      "quickshell-voxtype-shared-AudioBridge-$pkgver.qml::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/quickshell/voxtype-shared/AudioBridge.qml"
      "quickshell-voxtype-shared-qmldir-$pkgver::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/quickshell/voxtype-shared/qmldir"
  )
 -sha256sums=(
 +sha256sums_x86_64=(
      # Whisper binaries
-     '18ae0510d0c964689f8c9b7119c0b9a45569985e82977dc4f1ef4d76fddd887c'  # voxtype-avx2
+     '7323514a48aee6a73c0124463bd0276aad2d77f61c537ae753ca527700860572'  # voxtype-avx2
      'SKIP'                                                             # voxtype-avx2.asc
-@@ -184,7 +198,148 @@ sha256sums=(
-     'd7b265088a399dbafa400692ce95d7c2b570d1ff4a01cd9ea708bbeaa87dfb40'  # quickshell/voxtype-shared/qmldir
+@@ -184,7 +198,148 @@
+     '41b894baa1487e47db5f9ec4baeea9c02b6a76d3c8198b4700a88e2cb7ec0b62'  # quickshell/voxtype-shared/qmldir
  )
  
 +_archive="voxtype-$pkgver"
@@ -60,7 +61,7 @@ index 54a995c..59a9003 100644
 +    "$_archive.tar.gz.asc::https://github.com/peteonrails/voxtype/releases/download/v$pkgver/$_archive.tar.gz.asc"
 +)
 +sha256sums_aarch64=(
-+    'SKIP'
++    '20ba2661139bf9e8f2d7ea30db78d7935a50ae961aa3b898464e2685ebe72d94'
 +    'SKIP'
 +)
 +
@@ -199,11 +200,9 @@ index 54a995c..59a9003 100644
      # Install Whisper CPU binaries to /usr/lib/voxtype/
      install -Dm755 "$srcdir/voxtype-$pkgver-avx2" "$pkgdir/usr/lib/voxtype/voxtype-avx2"
      install -Dm755 "$srcdir/voxtype-$pkgver-avx512" "$pkgdir/usr/lib/voxtype/voxtype-avx512"
-diff --git a/voxtype-bin.install b/voxtype-bin.install
-index 433236d..bdbcd51 100644
 --- a/voxtype-bin.install
 +++ b/voxtype-bin.install
-@@ -53,6 +53,14 @@ _install_active_binary() {
+@@ -53,6 +53,14 @@
  }
  
  _set_default_backend() {

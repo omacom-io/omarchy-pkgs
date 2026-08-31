@@ -136,6 +136,43 @@ fi
   exit 1
 }
 
+# The AUR xpadneo recipe names Omarchy's x86_64 kernel-header placeholder.
+# Preserve that existing build path, but do not leak the x86-only provider into
+# the AArch64 dependency graph.
+xpadneo_arm_srcinfo=$(print_srcinfo "$ROOT/pkgbuilds/xpadneo-dkms" aarch64)
+if grep -Fq 'checkdepends = LINUX-HEADERS' <<< "$xpadneo_arm_srcinfo"; then
+  echo 'xpadneo AArch64 metadata retains the x86_64 kernel-header placeholder' >&2
+  exit 1
+fi
+xpadneo_x86_srcinfo=$(print_srcinfo "$ROOT/pkgbuilds/xpadneo-dkms" x86_64)
+grep -Fq 'checkdepends = LINUX-HEADERS' <<< "$xpadneo_x86_srcinfo" || {
+  echo 'xpadneo x86_64 metadata lost its existing kernel-header placeholder' >&2
+  exit 1
+}
+grep -Fq "if [[ \$CARCH == x86_64 ]]; then" \
+  "$ROOT/pkgbuilds/xpadneo-dkms/PKGBUILD" || {
+  echo 'xpadneo AArch64 adaptation changed the existing x86_64 header path' >&2
+  exit 1
+}
+grep -Fq "if [[ \\\$CARCH == x86_64 ]]; then" \
+  "$ROOT/pkgbuilds/xpadneo-dkms/.omarchy/post-sync.sh" || {
+  echo 'xpadneo AUR synchronization would discard the scoped header dependency' >&2
+  exit 1
+}
+xpadneo_sync_work="$metadata_work/xpadneo-sync"
+mkdir -p "$xpadneo_sync_work"
+printf '%s\n' "checkdepends=('dkms' 'fakeroot' 'LINUX-HEADERS')" \
+  > "$xpadneo_sync_work/PKGBUILD"
+(
+  cd "$xpadneo_sync_work"
+  "$ROOT/pkgbuilds/xpadneo-dkms/.omarchy/post-sync.sh"
+)
+grep -Fq 'if [[ $CARCH == x86_64 ]]; then' \
+  "$xpadneo_sync_work/PKGBUILD" || {
+  echo 'xpadneo post-sync did not produce the architecture guard' >&2
+  exit 1
+}
+
 # Ghostty fetches a pinned Zig dependency graph before building. A transient
 # mirror failure must be retried, but never indefinitely.
 ghostty_pkgbuild="$ROOT/pkgbuilds/ghostty/PKGBUILD"
@@ -150,6 +187,17 @@ for recipe in "$ghostty_pkgbuild" "$ghostty_post_sync"; do
 done
 grep -Fq 'Upstream Ghostty dependency-fetch command changed' "$ghostty_post_sync" || {
   echo 'Ghostty post-sync does not fail closed when its upstream baseline changes' >&2
+  exit 1
+}
+
+# LM Studio's asset path contains the AUR/vendor pkgrel. Omarchy's local
+# rebuild suffix must not change that vendor URL.
+grep -Eq '^_vendor_pkgrel=[0-9]+$' "$ROOT/pkgbuilds/lmstudio-bin/PKGBUILD" &&
+  grep -Fq '_pkgver=${pkgver}-${_vendor_pkgrel}' \
+    "$ROOT/pkgbuilds/lmstudio-bin/PKGBUILD" &&
+  grep -Fq '_vendor_pkgrel=${vendor_pkgrel}' \
+    "$ROOT/pkgbuilds/lmstudio-bin/.omarchy/post-sync.sh" || {
+  echo 'LM Studio local pkgrel suffix can leak into the vendor asset URL' >&2
   exit 1
 }
 
@@ -211,7 +259,9 @@ grep -Fq '/linux/x64/agent-cli-package.tar.gz' <<< "$cursor_x86_srcinfo" || {
 
 if ! grep -Fq "Copilot's ARM64 package lacks" \
   "$ROOT/pkgbuilds/github-copilot-cli/PKGBUILD" ||
-  ! grep -Fq "! -name 'clipboard.linux-arm64-gnu.node' -delete" \
+  ! grep -Fq 'prebuilds/linux-arm64/copilot-runtime' \
+    "$ROOT/pkgbuilds/github-copilot-cli/PKGBUILD" ||
+  ! grep -Fq 'rm -rf "${_arm_mod}/ripgrep/bin/linux-x64"' \
     "$ROOT/pkgbuilds/github-copilot-cli/PKGBUILD"; then
   echo 'GitHub Copilot CLI does not validate native helpers before pruning foreign copies' >&2
   exit 1
@@ -388,9 +438,10 @@ for package in heroic-games-launcher-bin rustdesk voxtype-bin; do
   }
 done
 
-# Limine's AUR recipe already compiles on ARM but its installed shell runtime
-# assumes x86_64 UEFI filenames and Arch's /usr/lib/modules/*/pkgbase layout.
-# Keep the runtime correction package-local and make it survive every AUR sync.
+# Limine 1.38 gained native multi-architecture UEFI selection. The remaining
+# package-local correction maps Arch Linux ARM's generic kernel package to its
+# /boot/Image and stable `linux` entry name, and fixes rEFInd's AA64 filename.
+# Keep only that residual delta and make it survive every AUR sync.
 limine_dir="$ROOT/pkgbuilds/limine-mkinitcpio-hook"
 jq -e '.source == "aur"' "$limine_dir/.omarchy/package.json" >/dev/null || {
   echo 'Limine no longer follows its AUR source' >&2
@@ -413,14 +464,26 @@ grep -Fq "$limine_patch_sum" \
   echo 'Limine AUR synchronization would write a stale runtime patch checksum' >&2
   exit 1
 }
-for invariant in BOOTAA64.EFI 'etc/mkinitcpio.d/*.preset' is_supported_uefi_arch; do
-  grep -Fq "$invariant" "$limine_dir/limine-entry-tool-aarch64.patch" || {
+for invariant in \
+  'aarch64:linux-aarch64' \
+  'KERNEL_IMAGE=/boot/Image' \
+  '--kernelimage "$KERNEL_IMAGE"' \
+  'refind_$(limine_efi_arch'; do
+  grep -Fq -- "$invariant" "$limine_dir/limine-entry-tool-aarch64.patch" || {
     echo "Limine runtime patch lost AArch64 invariant: $invariant" >&2
     exit 1
   }
 done
+if grep -R -q 'LIMINE_FORCE_UEFI' "$limine_dir"; then
+  echo 'Limine AArch64 support must preserve native UEFI detection' >&2
+  exit 1
+fi
 grep -Eq '^pkgrel=[0-9]+\.1$' "$limine_dir/PKGBUILD" || {
   echo 'Limine runtime patch does not carry an Omarchy package revision' >&2
+  exit 1
+}
+grep -Fq '_pkgver=1.38.0' "$limine_dir/PKGBUILD" || {
+  echo 'Limine must retain the upstream release that absorbed generic AArch64 UEFI support' >&2
   exit 1
 }
 
@@ -476,6 +539,11 @@ grep -Fq 'repo-add omarchy-build.db.tar.zst "${built_filenames[@]}"' "$ROOT/buil
 }
 grep -Fq 'Cannot initialize the local build repository' "$ROOT/build/build.sh" || {
   echo "Builder does not fail closed when its local repository cannot be initialized" >&2
+  exit 1
+}
+grep -Fq 'Failed to synchronize the updated local build repository' \
+  "$ROOT/build/build.sh" || {
+  echo "Builder ignores a failed local repository refresh" >&2
   exit 1
 }
 grep -Fq 'OMARCHY_REPOSITORY_KEY_FINGERPRINT' "$ROOT/bin/build" || {
