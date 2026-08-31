@@ -3,8 +3,34 @@
 OmniVision **OV05C10** sensor on an Intel **IPU7** ISP. This package makes the
 camera work in Chrome, Firefox, OBS and the Omarchy screen recorder.
 
-**It is a bypass of Intel's CamHAL, not a fix.** Read "Trade-offs" before
-assuming it behaves like a normal webcam stack.
+## 2.0.0: two engines, hardware ISP by default
+
+Since 2.0.0 the daemon has two frame engines behind one unchanged contract
+(permanent `/dev/video50` writer, black frames while idle, LED only while an
+app uses the camera):
+
+- **camhal** (default): Intel's hardware ISP through the pinned runtime in
+  `/usr/lib/hp-elitebook-x-g2i-camhal` (release set `20260327_1`, the pairing
+  intel/ipu7-camera-hal issue #48 reports working — newer tags are the broken
+  ones, see "Why CamHAL is not used" below for the history). Proper AIQ
+  processing with HP's tuning, near-zero CPU. Two consecutive failures switch
+  the boot to softisp, loudly, recorded in
+  `/run/hp-elitebook-x-g2i-camera.camhal-fallback`.
+- **softisp**: the 1.x libcamera SoftISP path described by the rest of this
+  README, kept unchanged as the fallback.
+
+Knobs live in `/etc/hp-elitebook-x-g2i-camera.conf`: `HPCAM_ENGINE=camhal|softisp`,
+`HPCAM_NR_STRENGTH` (ISP noise reduction, shipped at -60), and the 1.x tuning
+variables. A local AIQ tuning file at
+`/etc/hp-elitebook-x-g2i/OV05C10_CJFPE50_PTL.aiqb` overrides the packaged one
+at the next sensor start.
+
+Everything below this line is the 1.x record. It stays because the softisp
+engine is still exactly that code, and because the diagnosis explains why the
+CamHAL runtime must stay pinned.
+
+**The softisp engine is a bypass of Intel's CamHAL, not a fix.** Read
+"Trade-offs" before assuming it behaves like a normal webcam stack.
 
 ## Why CamHAL is not used
 

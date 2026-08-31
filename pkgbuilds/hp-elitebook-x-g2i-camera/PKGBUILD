@@ -2,31 +2,33 @@
 #
 # Webcam support for the HP EliteBook X G2i (Panther Lake, IPU7 + OV05C10).
 #
-# This is a bypass of Intel's CamHAL, not a fix.
+# 2.0.0: the hardware ISP is back, as the default engine. 1.x bypassed CamHAL
+# because the then-current release set delivered black frames (the 2944x1632
+# graph-settings mismatch, diagnosed August 2026 and still true of current
+# tags). The pinned release set 20260327_1 - the one intel/ipu7-camera-hal
+# issue #48 reports working - predates that graph change and was verified on
+# this machine; hp-elitebook-x-g2i-camhal-runtime carries it in a private
+# prefix. The daemon now has two engines behind one unchanged contract
+# (loopback ownership, black idle frames, LED semantics):
 #
-# CamHAL does not produce usable frames from this camera, and the cause is not
-# established. With cameraDebug=0xFF, psys completes frames and logs
-# "frame id N is done", but the output is uniformly black:
+#   camhal  (default) spawn gst-launch icamerasrc out of the pinned runtime,
+#           relay NV12 frames from a pipe into the loopback writer. Intel AIQ
+#           with HP's aiqb: proper NR, CCM, lens shading, and ~0 CPU cost.
+#           Falls back to softisp for the rest of the boot after two
+#           consecutive failures, loudly, via a /run flag.
+#   softisp the 1.x libcamera SoftISP path, unchanged, as the fallback and as
+#           HPCAM_ENGINE=softisp.
 #
-#   GraphConfig: <out w="2944" h="1632">
-#   PlatformData: Isp raw crop [0, 88, -56, 88], wxh [2944 x 1632]
+# Engine choice and tuning live in /etc/hp-elitebook-x-g2i-camera.conf.
+# A local AIQ tuning drop-in at /etc/hp-elitebook-x-g2i/OV05C10_CJFPE50_PTL.aiqb
+# overrides the packaged one at every sensor start (for the Windows-extracted
+# tuning, which measures better NR but cannot be redistributed).
 #
-# That log line looks like a readout mismatch and is not one. The graph settings
-# declare a 2888x1808 input, matching what ov05c10 exposes; 2944 is that width
-# padded to 64-byte alignment (2888 % 64 = 8, 2944 % 64 = 0), and the -56 is the
-# crop "right" field, which the HAL prints but never consumes. Intel ships the
-# same idiom for OV08X40 (3856 -> 3904) where it works, and HP's Windows graph
-# settings contain the identical record.
+# The 1.x story, kept because the softisp engine is still that code:
 #
-# Tested August 2026 against intel-ipu7-camera-hal-git r84, whose graph binary is
-# byte-identical to current upstream. Not retested since. This package is the
-# bypass that makes the camera usable meanwhile; CamHAL is an open problem here,
-# not a proven dead end.
-#
-# The package runs the ISP in userspace instead:
 #   ov05c10 -> CSI2 -> ISYS (raw Bayer) -> debayer, AE, WB -> v4l2loopback
 #
-# Two things it deliberately does not carry:
+# Two things this package deliberately does not carry:
 #
 #   - The IPU7 kernel drivers. They come from intel-ipu7-drivers, which this
 #     depends on. Mainline has no ipu7 driver at all, so without that package
@@ -42,15 +44,12 @@
 # hardware ISP, and its install gate already excludes this machine.
 
 pkgname=hp-elitebook-x-g2i-camera
-pkgver=1.2.0
+pkgver=2.0.0
 pkgrel=1
-pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL bypass)"
+pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL or SoftISP engine)"
 arch=('x86_64')
 url="https://github.com/omacom-io/omarchy-pkgs"
 license=('GPL-2.0-or-later')
-# ffmpeg does the debayer and scale. v4l-utils provides v4l2-ctl and media-ctl,
-# which configure the ISYS pipeline and are also how the daemon discovers it.
-# psmisc provides fuser, used to count consumers of the loopback device.
 makedepends=('gcc' 'pkgconf')
 
 depends=(
@@ -62,6 +61,12 @@ depends=(
   'v4l2loopback-dkms'
   'dkms'
   'linux-headers'
+  # the camhal engine: the pinned runtime, gst-launch-1.0 + fdsink
+  # (gstreamer), and the base/good plugin sets around icamerasrc
+  'hp-elitebook-x-g2i-camhal-runtime'
+  'gstreamer'
+  'gst-plugins-base'
+  'gst-plugins-good'
 )
 # Both packages drive the same IPU7 and would fight over /dev/video50 and the
 # sensor; intel-ipu7-camera also starts v4l2-relayd. They are gated on different
@@ -84,16 +89,21 @@ source=(
   'hpcam-lc.cpp'
   'hp-elitebook-x-g2i-camera.install'
   'hp-elitebook-x-g2i-camera.service'
+  'hp-elitebook-x-g2i-camera.conf'
   'ov05c10.yaml'
   '50-hp-elitebook-x-g2i-disable-libcamera.conf'
 )
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 # Calibration data, not user configuration, but it lives in /etc because that is
 # where libcamera looks first. backup= gets this right either way: pacman
 # replaces the file on upgrade while it still matches the version this package
 # shipped, and only falls back to .pacnew once someone has edited it by hand.
-backup=('etc/libcamera/ipa/simple/ov05c10.yaml')
+# The daemon conf is ordinary user configuration and gets the same treatment.
+backup=(
+  'etc/libcamera/ipa/simple/ov05c10.yaml'
+  'etc/hp-elitebook-x-g2i-camera.conf'
+)
 
 build() {
   # The daemon links the private-prefix libcamera, not Arch's: it needs the
@@ -111,6 +121,14 @@ build() {
 package() {
   install -Dm755 hp-elitebook-x-g2i-camera "${pkgdir}/usr/bin/hp-elitebook-x-g2i-camera"
   install -Dm644 hp-elitebook-x-g2i-camera.service "${pkgdir}/usr/lib/systemd/system/hp-elitebook-x-g2i-camera.service"
+
+  # Engine choice and tuning; read by the unit as an EnvironmentFile.
+  install -Dm644 hp-elitebook-x-g2i-camera.conf "${pkgdir}/etc/hp-elitebook-x-g2i-camera.conf"
+
+  # Where the local aiqb tuning drop-in goes (see the conf file). The package
+  # deliberately ships only the empty directory: the better-measured tuning is
+  # Windows-extracted and cannot be redistributed.
+  install -dm755 "${pkgdir}/etc/hp-elitebook-x-g2i"
 
   # INT3472 is the camera PMIC that owns the sensor's 19.2 MHz clock and rails.
   # It and intel_cvs must load before intel_ipu7, or the sensor is never clocked.

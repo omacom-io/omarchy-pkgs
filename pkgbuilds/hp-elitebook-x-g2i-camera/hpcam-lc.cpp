@@ -50,6 +50,59 @@
 // mode never delivers a buffer on this machine and wedges the ISYS node (two
 // hard wedges paid for that lesson). Request the native 2888x1808 mode and do
 // the downscale here.
+//
+// V2: TWO ENGINES, ONE CONTRACT. Everything above still holds. What 2.0.0
+// changes is where active-state frames come from; the loopback fd, the black
+// idle frames, the consumer polling and the LED rules are byte-identical.
+//
+//   Engine A, "camhal" (default): Intel's hardware ISP through the pinned
+//   CamHAL runtime in /usr/lib/hp-elitebook-x-g2i-camhal (HAL + bins release
+//   set 20260327_1, icamerasrc 94e99776 — the pairing intel/ipu7-camera-hal#48
+//   reports working with this sensor; newer tags are the broken ones). When a
+//   consumer appears the daemon spawns
+//
+//     gst-launch-1.0 -q icamerasrc device-name=ov05c10-uf
+//       ! video/x-raw,format=NV12,width=W,height=H ! fdsink fd=3
+//
+//   with LD_LIBRARY_PATH / GST_PLUGIN_PATH / CAMERA_CFG_PATH pointing into
+//   that prefix, and relays frames from the pipe into writeFrame(). CamHAL
+//   only ever sees a pipe; the daemon still owns the loopback and its format.
+//   Frames travel on fd 3, not stdout, because CamHAL logs to stdout and one
+//   stray log line in a raw NV12 stream desyncs every frame after it.
+//
+//   icamerasrc's buffers are the HAL's frame size, not GStreamer's: NV12 is
+//   laid out at stride ALIGN64(W) with a tail of max(ALIGN64(W)*3/2, 1024)
+//   spare bytes for PSYS (CameraUtils::getFrameSize() in the pinned HAL;
+//   measured 3113280 per 1920x1080 frame against GStreamer's 3110400). The
+//   reader consumes exactly one such chunk per frame and forwards only the
+//   payload, so the loopback keeps receiving whole, exact-sizeimage frames.
+//
+//   Engine B, "softisp": the libcamera path below, unchanged. It takes over
+//   for the rest of the boot after two consecutive CamHAL failures (process
+//   exit, no first frame, frame stall), recorded in a /run flag so a
+//   Restart=always crash loop cannot re-wedge CamHAL every five seconds. A
+//   failed CamHAL process gets SIGKILL and never SIGTERM: a TERM'd CamHAL
+//   keeps the IPU7 device nodes open and poisons every later attempt
+//   (recovery-ladder record, 2026-08-05/06).
+//
+//   HPCAM_ENGINE=camhal|softisp overrides the default. An explicit camhal
+//   also ignores the fallback flag and never falls back — that is the
+//   debugging mode. Engine B's libcamera is initialised lazily, on first use:
+//   the simple pipeline handler opens every media-graph entity while
+//   enumerating, and two ISP stacks holding IPU7 nodes at once is exactly the
+//   kind of sharing this hardware punishes.
+//
+//   AIQB OVERRIDE. The runtime package ships the stock Intel Linux tuning
+//   (OV05C10_CJFPE50_PTL.aiqb, 779,910 bytes). A better-measured tuning exists
+//   (extracted from HP's Windows driver) but cannot be redistributed, so it is
+//   a local drop-in: if /etc/hp-elitebook-x-g2i/OV05C10_CJFPE50_PTL.aiqb is a
+//   regular file at engine start, the daemon copies the whole config dir into
+//   the unit's RuntimeDirectory, overlays that file, and points
+//   CAMERA_CFG_PATH at the copy. A copy, not a symlink farm: the HAL walks the
+//   dir with readdir and this keeps the overlay byte-for-byte the layout the
+//   prefix was proven with. 4.1 MB into tmpfs per sensor start is noise. The
+//   overlay is rebuilt on every start, so dropping the file in (or deleting
+//   it) takes effect on the next camera use, no restart needed.
 
 #include <algorithm>
 #include <atomic>
@@ -65,6 +118,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <dirent.h>
@@ -74,8 +128,10 @@
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -85,6 +141,8 @@ extern "C" {
 #include <libavutil/pixfmt.h>
 #include <libswscale/swscale.h>
 }
+
+extern char **environ;
 
 using namespace libcamera;
 
@@ -156,6 +214,109 @@ uint64_t monoMs()
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return uint64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* ------------------------------------------------------- config dir staging
+ *
+ * Plain recursive copy/remove for the aiqb-override overlay (see the header).
+ * The CamHAL config dir is regular files in two levels of subdirectory, and
+ * this deliberately handles exactly that: directories and regular files,
+ * nothing else. It stages into the unit's private RuntimeDirectory, so there
+ * are no hostile symlinks to defend against.
+ */
+
+bool copyFile(const std::string &src, const std::string &dst)
+{
+	int in = open(src.c_str(), O_RDONLY | O_CLOEXEC);
+	if (in < 0)
+		return false;
+	int out = open(dst.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+	if (out < 0) {
+		close(in);
+		return false;
+	}
+	char buf[65536];
+	bool ok = true;
+	for (;;) {
+		ssize_t n = read(in, buf, sizeof(buf));
+		if (n == 0)
+			break;
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			ok = false;
+			break;
+		}
+		char *p = buf;
+		while (n > 0) {
+			ssize_t w = write(out, p, n);
+			if (w < 0) {
+				if (errno == EINTR)
+					continue;
+				ok = false;
+				break;
+			}
+			p += w;
+			n -= w;
+		}
+		if (!ok)
+			break;
+	}
+	close(in);
+	if (close(out) < 0)
+		ok = false;
+	return ok;
+}
+
+bool copyTree(const std::string &src, const std::string &dst)
+{
+	if (mkdir(dst.c_str(), 0755) < 0 && errno != EEXIST)
+		return false;
+	DIR *d = opendir(src.c_str());
+	if (!d)
+		return false;
+	bool ok = true;
+	while (struct dirent *e = readdir(d)) {
+		if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+			continue;
+		std::string s = src + "/" + e->d_name;
+		std::string t = dst + "/" + e->d_name;
+		struct stat st;
+		if (stat(s.c_str(), &st) < 0) {
+			ok = false;
+			break;
+		}
+		if (S_ISDIR(st.st_mode))
+			ok = copyTree(s, t);
+		else if (S_ISREG(st.st_mode))
+			ok = copyFile(s, t);
+		/* anything else: skip silently, the config dir has none */
+		if (!ok)
+			break;
+	}
+	closedir(d);
+	return ok;
+}
+
+void removeTree(const std::string &path)
+{
+	DIR *d = opendir(path.c_str());
+	if (d) {
+		while (struct dirent *e = readdir(d)) {
+			if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+				continue;
+			std::string p = path + "/" + e->d_name;
+			struct stat st;
+			if (lstat(p.c_str(), &st) < 0)
+				continue;
+			if (S_ISDIR(st.st_mode))
+				removeTree(p);
+			else
+				unlink(p.c_str());
+		}
+		closedir(d);
+	}
+	rmdir(path.c_str());
 }
 
 /* ------------------------------------------------------- media graph probing
@@ -314,6 +475,15 @@ bool findGraph(MediaGraph &g)
 
 /* ------------------------------------------------------------ configuration */
 
+enum class Engine { CamHal, SoftIsp };
+
+/* Outside RuntimeDirectory= on purpose: systemd wipes that directory on every
+ * service stop, and this flag has to survive Restart=always cycles to mean
+ * "for the rest of the boot". /run itself dies with the boot, which is the
+ * other half of the meaning. */
+constexpr const char *kCamhalFallbackFlag =
+	"/run/hp-elitebook-x-g2i-camera.camhal-fallback";
+
 struct Config {
 	std::string loop;
 	unsigned int outW, outH;	 /* what the loopback advertises */
@@ -328,6 +498,13 @@ struct Config {
 	int swsFlags;
 	bool haveGamma, haveContrast, haveSaturation;
 	double gamma, contrast, saturation;
+	Engine engine;			 /* HPCAM_ENGINE, default camhal */
+	bool engineForced;		 /* HPCAM_ENGINE was set explicitly */
+	std::string camhalPrefix;	 /* the pinned runtime */
+	std::string camhalSensor;	 /* icamerasrc device-name */
+	int camhalStartMs;		 /* engine start -> first frame deadline */
+	std::string aiqbOverride;	 /* local tuning drop-in, see the header */
+	int nrStrength;			 /* HPCAM_NR_STRENGTH, forwarded to CamHAL */
 };
 
 int swsFlagsFromName(const std::string &n)
@@ -395,6 +572,33 @@ Config loadConfig()
 	c.contrast = envDouble("CONTRAST", 1.0);
 	c.saturation = envDouble("SATURATION", 1.0);
 
+	std::string eng = envStr("HPCAM_ENGINE", "camhal");
+	if (eng == "softisp") {
+		c.engine = Engine::SoftIsp;
+	} else {
+		if (eng != "camhal")
+			logf("HPCAM_ENGINE=%s not understood — using camhal",
+			     eng.c_str());
+		c.engine = Engine::CamHal;
+	}
+	c.engineForced = envHas("HPCAM_ENGINE");
+	c.camhalPrefix = envStr("CAMHAL_PREFIX", "/usr/lib/hp-elitebook-x-g2i-camhal");
+	c.camhalSensor = envStr("CAMHAL_SENSOR", "ov05c10-uf");
+	c.camhalStartMs = (int)envLong("CAMHAL_START_TIMEOUT", 10) * 1000;
+	c.aiqbOverride = envStr("CAMHAL_AIQB_OVERRIDE",
+				"/etc/hp-elitebook-x-g2i/OV05C10_CJFPE50_PTL.aiqb");
+	/* Noise-reduction strength for the runtime's patched HAL. Same scale as
+	 * the HAL's own presets: LEVEL3 = -60, LEVEL4 = -120, default LEVEL2 = 0.
+	 * -60 measured ~28% less within-frame dark-scene noise, -120 ~45%; the
+	 * shipped default stays at the conservative -60 until -120 has passed a
+	 * daylight check. 0 is the HAL's untouched behaviour. */
+	c.nrStrength = (int)envLong("HPCAM_NR_STRENGTH", -60);
+	if (c.nrStrength < -128 || c.nrStrength > 127) {
+		logf("HPCAM_NR_STRENGTH=%d out of the HAL's signed-char range — "
+		     "using -60", c.nrStrength);
+		c.nrStrength = -60;
+	}
+
 	if (c.outW % 2 || c.outH % 2) {
 		logf("OUT_W/OUT_H must be even (NV12); got %ux%u", c.outW, c.outH);
 		exit(1);
@@ -424,6 +628,18 @@ private:
 	void cameraStop(const char *why);
 	void requestComplete(Request *request);
 
+	/* engine dispatch: A = camhal (gst subprocess), B = softisp (libcamera) */
+	bool engineStart();
+	void engineStop(const char *why);
+	const char *engineName() const;
+	bool softispStart();
+	bool camhalStart();
+	void camhalStop(const char *why);
+	void camhalReader();
+	size_t camhalChunkSize() const;
+	void camhalAccountFailure(const char *what);
+	std::string camhalCfgPath();
+
 	unsigned int countConsumers();
 
 	Config cfg_;
@@ -450,6 +666,17 @@ private:
 	std::atomic<uint64_t> lastCameraFrame_{ 0 };
 	std::atomic<uint64_t> cameraFrames_{ 0 };
 	std::atomic<bool> writeFailed_{ false };
+	std::atomic<bool> fatal_{ false };
+
+	/* engine A state */
+	Engine engine_ = Engine::CamHal;
+	bool camhalFellBack_ = false;
+	unsigned int camhalFailures_ = 0;	/* consecutive; 2 => fallback */
+	pid_t gstPid_ = -1;
+	int gstFd_ = -1;			/* read end of the frame pipe */
+	std::thread gstThread_;
+	std::atomic<bool> gstEof_{ false };
+	std::atomic<uint64_t> sessionFrames_{ 0 };
 	/* Set before Camera::stop(). Requests that complete during the stop are
 	 * dropped rather than re-queued: libcamera reports FrameSuccess for
 	 * buffers already in flight, and queueRequest() on a camera in the
@@ -491,10 +718,10 @@ std::string Daemon::statusLine() const
 					       std::to_string(sensorH_)
 				     : std::string("off");
 	snprintf(buf, sizeof(buf),
-		 "status: state=%s reason=\"%s\" for=%llus consumers=%u led=%s "
+		 "status: state=%s engine=%s reason=\"%s\" for=%llus consumers=%u led=%s "
 		 "loop=%s out=%ux%u sensor=%s fps=%.1f frames=%llu "
 		 "sensor_starts=%u sensor_failures=%u uptime=%llus pid=%d",
-		 state_ == State::Active ? "active" : "idle", reason_.c_str(),
+		 state_ == State::Active ? "active" : "idle", engineName(), reason_.c_str(),
 		 (unsigned long long)((now - stateSince_) / 1000), consumers_,
 		 state_ == State::Active ? "on" : "off", cfg_.loop.c_str(),
 		 cfg_.outW, cfg_.outH, sensor.c_str(), fps_, (unsigned long long)cameraFrames_.load(), sensorStarts_,
@@ -520,6 +747,9 @@ void Daemon::publishStatus()
 		return;
 	uint64_t now = monoMs();
 	fprintf(f, "state=%s\n", state_ == State::Active ? "active" : "idle");
+	fprintf(f, "engine=%s\n", engineName());
+	fprintf(f, "engine_fallback=%s\n", camhalFellBack_ ? "yes" : "no");
+	fprintf(f, "camhal_failures=%u\n", camhalFailures_);
 	fprintf(f, "reason=%s\n", reason_.c_str());
 	fprintf(f, "state_seconds=%llu\n",
 		(unsigned long long)((now - stateSince_) / 1000));
@@ -976,6 +1206,287 @@ void Daemon::requestComplete(Request *request)
 	camera_->queueRequest(request);
 }
 
+/* --------------------------------------------------------- engine dispatch */
+
+const char *Daemon::engineName() const
+{
+	if (engine_ == Engine::CamHal)
+		return "camhal";
+	return camhalFellBack_ ? "softisp-fallback" : "softisp";
+}
+
+bool Daemon::engineStart()
+{
+	return engine_ == Engine::CamHal ? camhalStart() : softispStart();
+}
+
+void Daemon::engineStop(const char *why)
+{
+	if (engine_ == Engine::CamHal)
+		camhalStop(why);
+	else
+		cameraStop(why);
+}
+
+/* Engine B start. libcamera is initialised here, not at daemon startup,
+ * because in camhal mode it must never run at all (see the header). */
+bool Daemon::softispStart()
+{
+	if (!cm_ && !cameraInit()) {
+		logf("libcamera init failed at softisp start — exiting so systemd "
+		     "restarts us (the fallback flag, if set, keeps us on softisp)");
+		fatal_ = true;
+		return false;
+	}
+	return cameraStart();
+}
+
+/* Called after every failed camhal attempt. Two strikes and softisp owns the
+ * rest of the boot. Not when HPCAM_ENGINE=camhal was forced: that is the
+ * debugging mode, and silently switching engines under a debugger is worse
+ * than failing visibly forever. */
+void Daemon::camhalAccountFailure(const char *what)
+{
+	camhalFailures_++;
+	logf("camhal engine failure %u (fallback at 2): %s", camhalFailures_, what);
+	if (camhalFailures_ < 2)
+		return;
+	if (cfg_.engineForced) {
+		logf("HPCAM_ENGINE=camhal is forced — not falling back, will keep "
+		     "retrying with backoff");
+		return;
+	}
+	engine_ = Engine::SoftIsp;
+	camhalFellBack_ = true;
+	FILE *f = fopen(kCamhalFallbackFlag, "w");
+	if (f) {
+		fprintf(f, "%s\n", what);
+		fclose(f);
+	}
+	logf("ENGINE FALLBACK: CamHAL failed twice in a row — using the SoftISP "
+	     "engine for the rest of this boot. Re-arm: rm %s and restart the "
+	     "service, or set HPCAM_ENGINE=camhal.", kCamhalFallbackFlag);
+}
+
+/* ------------------------------------------------- engine A: CamHAL via gst
+ *
+ * icamerasrc hands fdsink buffers of the HAL's frame size, not GStreamer's:
+ * gstcamerasrcbufferpool.cpp sizes its pool from get_frame_size(), and for
+ * NV12 that is stride ALIGN64(W), the W*H*3/2 payload laid out at that
+ * stride, plus a spare tail of max(stride*3/2, 1024) bytes that PSYS kernels
+ * are allowed to touch (CameraUtils::getFrameSize(), needExtraSize defaults
+ * true, in the PINNED HAL this math must track). Verified against the HAL's
+ * own log: 3113280 bytes per 1920x1080 frame vs GStreamer's 3110400. The
+ * reader consumes exactly one chunk per frame and forwards only the payload,
+ * so writeFrame() still writes whole, exact-sizeimage frames.
+ */
+size_t Daemon::camhalChunkSize() const
+{
+	size_t stride = (size_t(cfg_.outW) + 63) & ~size_t(63);
+	size_t payload = stride * cfg_.outH * 3 / 2;
+	size_t extra = std::max(stride * 3 / 2, size_t(1024));
+	return payload + extra;
+}
+
+void Daemon::camhalReader()
+{
+	const size_t chunk = camhalChunkSize();
+	const size_t stride = (size_t(cfg_.outW) + 63) & ~size_t(63);
+	std::vector<uint8_t> buf(chunk);
+	std::vector<uint8_t> packed;
+	if (stride != cfg_.outW)
+		packed.resize(frameSize_);
+	size_t have = 0;
+
+	for (;;) {
+		ssize_t n = read(gstFd_, buf.data() + have, chunk - have);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		if (n == 0)
+			break;
+		have += size_t(n);
+		if (have < chunk)
+			continue;
+		have = 0;
+
+		if (stride == cfg_.outW) {
+			/* 1920 is 64-aligned, so the default config lands here
+			 * and the payload is a contiguous prefix of the chunk. */
+			writeFrame(buf.data(), frameSize_);
+		} else {
+			/* De-stride row by row; Y and UV rows both carry outW
+			 * useful bytes at the same stride. Only reachable with
+			 * a non-64-aligned OUT_W override. */
+			const unsigned int rows = cfg_.outH * 3 / 2;
+			for (unsigned int r = 0; r < rows; r++)
+				memcpy(packed.data() + size_t(r) * cfg_.outW,
+				       buf.data() + size_t(r) * stride, cfg_.outW);
+			writeFrame(packed.data(), frameSize_);
+		}
+		lastCameraFrame_ = monoMs();
+		cameraFrames_++;
+		sessionFrames_++;
+	}
+	/* EOF or error: the subprocess is gone (or its fd 3 is). A partial
+	 * chunk is discarded here, never written, so the loopback cannot see a
+	 * torn frame in this direction either. */
+	gstEof_ = true;
+}
+
+/* The CAMERA_CFG_PATH the subprocess gets. The stock tuning lives in the
+ * runtime prefix; a local aiqb drop-in promotes it to an overlay copy in the
+ * RuntimeDirectory (see the header). Always ends in the trailing slash the
+ * HAL requires. Re-evaluated on every engine start on purpose. */
+std::string Daemon::camhalCfgPath()
+{
+	std::string base = cfg_.camhalPrefix + "/etc/camera/ipu75xa";
+	struct stat st;
+	if (stat(cfg_.aiqbOverride.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+		return base + "/";
+	if (rundir_.empty()) {
+		logf("aiqb override %s present but there is no runtime directory "
+		     "to stage the overlay in — using the stock tuning",
+		     cfg_.aiqbOverride.c_str());
+		return base + "/";
+	}
+	std::string overlay = rundir_ + "/camera-cfg";
+	removeTree(overlay);
+	if (!copyTree(base, overlay) ||
+	    !copyFile(cfg_.aiqbOverride, overlay + "/OV05C10_CJFPE50_PTL.aiqb")) {
+		logf("aiqb override %s present but staging the overlay in %s "
+		     "failed (%s) — using the stock tuning",
+		     cfg_.aiqbOverride.c_str(), overlay.c_str(), strerror(errno));
+		removeTree(overlay);
+		return base + "/";
+	}
+	logf("AIQB OVERRIDE: %s (%lld bytes) replaces the stock "
+	     "OV05C10_CJFPE50_PTL.aiqb for this session, staged in %s",
+	     cfg_.aiqbOverride.c_str(), (long long)st.st_size, overlay.c_str());
+	return overlay + "/";
+}
+
+bool Daemon::camhalStart()
+{
+	char caps[96];
+	snprintf(caps, sizeof(caps), "video/x-raw,format=NV12,width=%u,height=%u",
+		 cfg_.outW, cfg_.outH);
+	std::string devArg = "device-name=" + cfg_.camhalSensor;
+
+	int pfd[2];
+	if (pipe2(pfd, O_CLOEXEC) < 0) {
+		logf("pipe2: %s", strerror(errno));
+		return false;
+	}
+	/* Fewer wakeups for 3 MB frames. Best effort; the 64k default works. */
+	(void)fcntl(pfd[0], F_SETPIPE_SZ, 1 << 20);
+
+	/* The environment that makes gst-launch load the pinned runtime rather
+	 * than anything system-wide. CAMERA_CFG_PATH keeps its trailing slash:
+	 * the HAL appends "gcss/" to it verbatim. GST_REGISTRY keeps root's
+	 * plugin cache out of /root/.cache. Built before fork so the child does
+	 * nothing but exec. */
+	std::string cfgPath = camhalCfgPath();
+	std::vector<std::string> envs;
+	for (char **e = environ; e && *e; e++) {
+		if (!strncmp(*e, "LD_LIBRARY_PATH=", 16) ||
+		    !strncmp(*e, "GST_PLUGIN_PATH=", 16) ||
+		    !strncmp(*e, "CAMERA_CFG_PATH=", 16) ||
+		    !strncmp(*e, "GST_REGISTRY=", 13) ||
+		    !strncmp(*e, "HPCAM_NR_STRENGTH=", 18))
+			continue;
+		envs.push_back(*e);
+	}
+	envs.push_back("LD_LIBRARY_PATH=" + cfg_.camhalPrefix + "/lib");
+	envs.push_back("GST_PLUGIN_PATH=" + cfg_.camhalPrefix + "/lib/gstreamer-1.0");
+	envs.push_back("CAMERA_CFG_PATH=" + cfgPath);
+	/* The runtime's HAL carries a local patch that reads this (the config
+	 * knob is validated in loadConfig; re-exported so the value the child
+	 * sees is always the one the daemon logged). */
+	envs.push_back("HPCAM_NR_STRENGTH=" + std::to_string(cfg_.nrStrength));
+	if (!rundir_.empty())
+		envs.push_back("GST_REGISTRY=" + rundir_ + "/gst-registry.bin");
+	std::vector<char *> envp;
+	for (auto &s : envs)
+		envp.push_back(s.data());
+	envp.push_back(nullptr);
+
+	/* Frames go to fd 3, never stdout: CamHAL and GStreamer both log to
+	 * stdout, and one stray line in a raw NV12 stream desyncs everything
+	 * after it. -q silences gst-launch's own progress chatter anyway. */
+	const char *argv[] = { "gst-launch-1.0", "-q",
+			       "icamerasrc", devArg.c_str(),
+			       "!", caps,
+			       "!", "fdsink", "fd=3", nullptr };
+
+	pid_t pid = fork();
+	if (pid < 0) {
+		logf("fork: %s", strerror(errno));
+		close(pfd[0]);
+		close(pfd[1]);
+		return false;
+	}
+	if (pid == 0) {
+		/* Child. In camhal mode no libcamera threads exist, so this is
+		 * a single-threaded fork and the libc calls below are safe. If
+		 * the daemon dies without cleanup, take CamHAL down with it
+		 * rather than leave it holding the IPU7 nodes. */
+		prctl(PR_SET_PDEATHSIG, SIGKILL);
+		/* SIG_IGN survives execve; give gst-launch its SIGPIPE back so
+		 * a vanished reader kills it instead of looping on EPIPE. */
+		signal(SIGPIPE, SIG_DFL);
+		if (pfd[1] == 3)
+			fcntl(3, F_SETFD, 0);	/* clear CLOEXEC in place */
+		else if (dup2(pfd[1], 3) < 0)
+			_exit(127);
+		dup2(2, 1);	/* CamHAL logs on stdout -> the journal */
+		execve("/usr/bin/gst-launch-1.0",
+		       const_cast<char *const *>(argv), envp.data());
+		_exit(127);
+	}
+	close(pfd[1]);
+	gstPid_ = pid;
+	gstFd_ = pfd[0];
+	gstEof_ = false;
+	sessionFrames_ = 0;
+	lastCameraFrame_ = monoMs();
+	gstThread_ = std::thread(&Daemon::camhalReader, this);
+	logf("consumer present — camhal engine started (pid %d): icamerasrc %s "
+	     "! %s ! fdsink fd=3 (sensor on, LED on), nr_strength=%d",
+	     (int)pid, devArg.c_str(), caps, cfg_.nrStrength);
+	return true;
+}
+
+void Daemon::camhalStop(const char *why)
+{
+	if (gstPid_ > 0) {
+		/* SIGKILL, never SIGTERM: a wedged CamHAL that is merely TERM'd
+		 * keeps the IPU7 device nodes open and poisons every later
+		 * attempt (recovery-ladder record, 2026-08-05/06). */
+		kill(gstPid_, SIGKILL);
+		int st = 0;
+		waitpid(gstPid_, &st, 0);
+		if (WIFEXITED(st))
+			logf("camhal subprocess had already exited with status %d",
+			     WEXITSTATUS(st));
+		else if (WIFSIGNALED(st) && WTERMSIG(st) != SIGKILL)
+			logf("camhal subprocess had died on signal %d", WTERMSIG(st));
+		gstPid_ = -1;
+	}
+	/* The child's death closed the pipe's write end, so the reader sees
+	 * EOF and exits; join cannot hang. Close our end only after the join —
+	 * the reader owns gstFd_ until then. */
+	if (gstThread_.joinable())
+		gstThread_.join();
+	if (gstFd_ >= 0) {
+		close(gstFd_);
+		gstFd_ = -1;
+	}
+	logf("%s — camhal engine stopped, sensor off (LED off), feeding black", why);
+}
+
 int Daemon::run()
 {
 	self_ = getpid();
@@ -1025,7 +1536,35 @@ int Daemon::run()
 	if (!openLoopback())
 		return 1;
 
-	if (!cameraInit())
+	engine_ = cfg_.engine;
+	if (engine_ == Engine::CamHal) {
+		std::string plugin =
+			cfg_.camhalPrefix + "/lib/gstreamer-1.0/libgsticamerasrc.so";
+		if (access(kCamhalFallbackFlag, F_OK) == 0 && !cfg_.engineForced) {
+			logf("camhal fallback flag %s present — starting on the "
+			     "SoftISP engine (rm the flag and restart the service "
+			     "to re-arm CamHAL)", kCamhalFallbackFlag);
+			engine_ = Engine::SoftIsp;
+			camhalFellBack_ = true;
+		} else if (access(plugin.c_str(), F_OK) != 0) {
+			logf("camhal runtime incomplete (%s missing) — is "
+			     "hp-elitebook-x-g2i-camhal-runtime installed? Using "
+			     "the SoftISP engine.", plugin.c_str());
+			engine_ = Engine::SoftIsp;
+		} else {
+			logf("engine: camhal (runtime %s, sensor %s), softisp "
+			     "fallback armed", cfg_.camhalPrefix.c_str(),
+			     cfg_.camhalSensor.c_str());
+		}
+	} else {
+		logf("engine: softisp (HPCAM_ENGINE override)");
+	}
+
+	/* In camhal mode libcamera must not start at all — the simple pipeline
+	 * handler opens every media-graph entity while enumerating, and two ISP
+	 * stacks holding IPU7 nodes at once is the kind of sharing this
+	 * hardware punishes. softispStart() initialises it lazily instead. */
+	if (engine_ == Engine::SoftIsp && !cameraInit())
 		return 1;
 
 	/* Take the output token immediately: until a frame has been written the
@@ -1052,29 +1591,60 @@ int Daemon::run()
 			logf("loopback write failed — exiting so systemd restarts us");
 			break;
 		}
+		if (fatal_)
+			break;
 
 		if (state_ == State::Idle && now - lastBlack >= (uint64_t)cfg_.blackMs) {
 			writeFrame(black_.data(), black_.size());
 			lastBlack = now;
 		}
 
-		if (state_ == State::Active &&
-		    now - lastCameraFrame_.load() > (uint64_t)cfg_.frameTimeoutMs) {
-			backoffMs = backoffMs ? std::min(backoffMs * 2, 30000) : 2000;
-			backoffUntil = now + backoffMs;
-			char why[96];
-			snprintf(why, sizeof(why),
-				 "no sensor frame for %ds, retrying in %dms",
-				 cfg_.frameTimeoutMs / 1000, backoffMs);
-			cameraStop(why);
-			state_ = State::Idle;
-			stateSince_ = now;
-			reason_ = why;
-			sensorFailures_++;
-			lastBlack = 0;
-			publishStatus();
-			logf("%s", statusLine().c_str());
-			continue;
+		if (state_ == State::Active) {
+			const bool camhal = engine_ == Engine::CamHal;
+			/* Engine A has one extra failure mode the frame timeout
+			 * would catch 5 s late: the subprocess dying outright.
+			 * And its start deadline is its own, because CamHAL
+			 * legitimately takes ~2 s to the first frame (longer on
+			 * the first run of a boot while gst builds a registry). */
+			const bool exited = camhal && gstEof_.load();
+			uint64_t tmo = (uint64_t)cfg_.frameTimeoutMs;
+			if (camhal && sessionFrames_.load() == 0)
+				tmo = (uint64_t)cfg_.camhalStartMs;
+			if (camhal && camhalFailures_ > 0 &&
+			    sessionFrames_.load() >= 30) {
+				logf("camhal delivering again — failure count reset");
+				camhalFailures_ = 0;
+			}
+			if (exited || now - lastCameraFrame_.load() > tmo) {
+				backoffMs = backoffMs ? std::min(backoffMs * 2, 30000)
+						      : 2000;
+				backoffUntil = now + backoffMs;
+				char why[128];
+				if (exited)
+					snprintf(why, sizeof(why),
+						 "camhal subprocess exited after %llu frames, retrying in %dms",
+						 (unsigned long long)sessionFrames_.load(),
+						 backoffMs);
+				else
+					snprintf(why, sizeof(why),
+						 "no sensor frame for %llus, retrying in %dms",
+						 (unsigned long long)(tmo / 1000),
+						 backoffMs);
+				engineStop(why);
+				if (camhal)
+					camhalAccountFailure(
+						exited ? "subprocess exited" :
+						sessionFrames_.load() ? "frame stall" :
+									"no first frame");
+				state_ = State::Idle;
+				stateSince_ = now;
+				reason_ = why;
+				sensorFailures_++;
+				lastBlack = 0;
+				publishStatus();
+				logf("%s", statusLine().c_str());
+				continue;
+			}
 		}
 
 		if (now - lastPoll < (uint64_t)cfg_.pollMs)
@@ -1096,16 +1666,26 @@ int Daemon::run()
 			idleFor = 0;
 			if (state_ == State::Idle && now >= backoffUntil) {
 				sensorStarts_++;
-				if (cameraStart()) {
+				if (engineStart()) {
 					state_ = State::Active;
 					stateSince_ = monoMs();
-					sensorW_ = srcW_;
-					sensorH_ = srcH_;
+					if (engine_ == Engine::CamHal) {
+						/* CamHAL runs the sensor at its
+						 * native mode internally and
+						 * delivers the output size. */
+						sensorW_ = cfg_.outW;
+						sensorH_ = cfg_.outH;
+					} else {
+						sensorW_ = srcW_;
+						sensorH_ = srcH_;
+					}
 					reason_ = "consumer reading the loopback";
 					backoffMs = 0;
 					transitioned = true;
 				} else {
 					sensorFailures_++;
+					if (engine_ == Engine::CamHal)
+						camhalAccountFailure("engine failed to start");
 					backoffMs = backoffMs ? std::min(backoffMs * 2, 30000)
 							      : 2000;
 					backoffUntil = monoMs() + backoffMs;
@@ -1120,7 +1700,7 @@ int Daemon::run()
 			if (idleFor >= cfg_.idleStop) {
 				char why[80];
 				snprintf(why, sizeof(why), "no consumers for %ds", idleFor);
-				cameraStop(why);
+				engineStop(why);
 				state_ = State::Idle;
 				stateSince_ = monoMs();
 				reason_ = why;
@@ -1141,7 +1721,7 @@ int Daemon::run()
 	}
 
 	if (state_ == State::Active)
-		cameraStop("shutting down");
+		engineStop("shutting down");
 	state_ = State::Idle;
 	reason_ = "stopped";
 	publishStatus();
@@ -1156,7 +1736,7 @@ int Daemon::run()
 		close(loopFd_);
 	logf("stopped after %llu sensor frames, %u sensor starts, %u failures",
 	     (unsigned long long)cameraFrames_.load(), sensorStarts_, sensorFailures_);
-	return writeFailed_ ? 1 : 0;
+	return (writeFailed_ || fatal_) ? 1 : 0;
 }
 
 } /* namespace */
