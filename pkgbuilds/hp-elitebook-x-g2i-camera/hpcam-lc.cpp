@@ -77,6 +77,27 @@
 //   reader consumes exactly one such chunk per frame and forwards only the
 //   payload, so the loopback keeps receiving whole, exact-sizeimage frames.
 //
+//   2.0.2: HPCAM_DENOISE > 0 (default 8) inserts a temporal denoise stage
+//   between icamerasrc and fdsink:
+//
+//     ! vapostproc denoise=N ! video/x-raw,format=NV12,width=W,height=H
+//
+//   vapostproc is the SYSTEM gst-plugin-va, not the pinned runtime:
+//   GST_PLUGIN_PATH is additive, so it and the prefix's icamerasrc load into
+//   one pipeline, and the prefix ships no GStreamer core libs for
+//   LD_LIBRARY_PATH to shadow (both verified with gst-inspect-1.0 under the
+//   child's exact environment). It runs the Intel GPU's VEBOX fixed-function
+//   motion-adaptive filter via /dev/dri/renderD* — no LIBVA_* variables, near
+//   zero CPU — which is the measured fix for the residual temporally-white
+//   4-16px noise blobs the ISP leaves behind. THE READER CONTRACT MOVES WITH
+//   THE FILTER: fdsink is then fed by vapostproc, whose buffers are packed
+//   NV12 at the negotiated caps, exactly W*H*3/2 — no HAL stride, no spare
+//   tail — so camhalChunkSize() is conditional on the filter being present.
+//   HPCAM_DENOISE=0 removes the element and restores the 2.0.1 pipeline and
+//   chunk math byte-identically. HPCAM_EXPOSURE_RANGE / HPCAM_GAIN_RANGE
+//   ("min~max") pass through as icamerasrc properties to clamp its AE; unset
+//   means the HAL's own limits.
+//
 //   Engine B, "softisp": the libcamera path below, unchanged. It takes over
 //   for the rest of the boot after two consecutive CamHAL failures (process
 //   exit, no first frame, frame stall), recorded in a /run flag so a
@@ -106,6 +127,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <cstdarg>
@@ -505,6 +527,9 @@ struct Config {
 	int camhalStartMs;		 /* engine start -> first frame deadline */
 	std::string aiqbOverride;	 /* local tuning drop-in, see the header */
 	int nrStrength;			 /* HPCAM_NR_STRENGTH, forwarded to CamHAL */
+	double denoise;			 /* HPCAM_DENOISE: vapostproc strength, 0 = no filter */
+	std::string exposureRange;	 /* HPCAM_EXPOSURE_RANGE "min~max" us, empty = HAL AE */
+	std::string gainRange;		 /* HPCAM_GAIN_RANGE "min~max", empty = HAL AE */
 };
 
 int swsFlagsFromName(const std::string &n)
@@ -547,6 +572,26 @@ double gammaForAeTarget(double target)
 	target = std::clamp(target, 8.0, 250.0);
 	double g = 2.2 * std::log(105.0 / 255.0) / std::log(target / 255.0);
 	return std::clamp(g, 0.1, 10.0);
+}
+
+/* "min~max" with both sides plain non-negative decimals — the only shape
+ * icamerasrc's exposure-time-range/gain-range properties parse. The value goes
+ * into the child's argv verbatim, so anything else is refused here, loudly,
+ * rather than handed to a subprocess whose failure mode is the two-strikes
+ * engine fallback. */
+bool validRangeSpec(const std::string &s)
+{
+	size_t tilde = s.find('~');
+	if (tilde == std::string::npos || tilde == 0 || tilde + 1 == s.size())
+		return false;
+	for (size_t i = 0; i < s.size(); i++) {
+		if (i == tilde)
+			continue;
+		unsigned char ch = s[i];
+		if (!isdigit(ch) && ch != '.')
+			return false;
+	}
+	return true;
 }
 
 Config loadConfig()
@@ -597,6 +642,37 @@ Config loadConfig()
 		logf("HPCAM_NR_STRENGTH=%d out of the HAL's signed-char range — "
 		     "using -60", c.nrStrength);
 		c.nrStrength = -60;
+	}
+
+	/* GPU temporal denoise (Intel VEBOX, via the system vapostproc). The
+	 * range is vapostproc's own: float 0-64, its default 0. 0 removes the
+	 * filter element entirely, which restores the 2.0.1 pipeline and reader
+	 * byte-identically; see the header. */
+	c.denoise = envDouble("HPCAM_DENOISE", 8.0);
+	if (std::isnan(c.denoise)) {
+		logf("HPCAM_DENOISE is not a number — using 8");
+		c.denoise = 8.0;
+	} else if (c.denoise < 0.0 || c.denoise > 64.0) {
+		double clamped = std::clamp(c.denoise, 0.0, 64.0);
+		logf("HPCAM_DENOISE=%g outside vapostproc's 0-64 range — "
+		     "clamping to %g", c.denoise, clamped);
+		c.denoise = clamped;
+	}
+
+	/* Optional AE clamps, handed to icamerasrc verbatim. Empty means the
+	 * HAL's own AE limits — which on this machine pin exposure at 33ms and
+	 * ride 12.5-15.5x analog gain; see the conf file. */
+	c.exposureRange = envStr("HPCAM_EXPOSURE_RANGE", "");
+	if (!c.exposureRange.empty() && !validRangeSpec(c.exposureRange)) {
+		logf("HPCAM_EXPOSURE_RANGE=%s is not min~max — ignoring",
+		     c.exposureRange.c_str());
+		c.exposureRange.clear();
+	}
+	c.gainRange = envStr("HPCAM_GAIN_RANGE", "");
+	if (!c.gainRange.empty() && !validRangeSpec(c.gainRange)) {
+		logf("HPCAM_GAIN_RANGE=%s is not min~max — ignoring",
+		     c.gainRange.c_str());
+		c.gainRange.clear();
 	}
 
 	if (c.outW % 2 || c.outH % 2) {
@@ -1282,6 +1358,13 @@ void Daemon::camhalAccountFailure(const char *what)
  */
 size_t Daemon::camhalChunkSize() const
 {
+	/* With the denoise filter in the chain (HPCAM_DENOISE > 0) fdsink is
+	 * fed by vapostproc, not icamerasrc, and vapostproc's buffers are the
+	 * negotiated caps exactly: packed NV12, W*H*3/2, no HAL stride and no
+	 * spare tail. The padded math below describes icamerasrc's buffers
+	 * only, so it applies only to the filterless pipeline. */
+	if (cfg_.denoise > 0)
+		return frameSize_;
 	size_t stride = (size_t(cfg_.outW) + 63) & ~size_t(63);
 	size_t payload = stride * cfg_.outH * 3 / 2;
 	size_t extra = std::max(stride * 3 / 2, size_t(1024));
@@ -1291,7 +1374,13 @@ size_t Daemon::camhalChunkSize() const
 void Daemon::camhalReader()
 {
 	const size_t chunk = camhalChunkSize();
-	const size_t stride = (size_t(cfg_.outW) + 63) & ~size_t(63);
+	/* Packed frames when the denoise filter feeds fdsink (chunk is exactly
+	 * frameSize_ and the fast path below forwards it whole); the HAL's
+	 * 64-aligned stride otherwise. Either way one chunk is one frame, and a
+	 * partial chunk at EOF is discarded, never written. */
+	const size_t stride = cfg_.denoise > 0
+				      ? size_t(cfg_.outW)
+				      : (size_t(cfg_.outW) + 63) & ~size_t(63);
 	std::vector<uint8_t> buf(chunk);
 	std::vector<uint8_t> packed;
 	if (stride != cfg_.outW)
@@ -1373,7 +1462,42 @@ bool Daemon::camhalStart()
 	char caps[96];
 	snprintf(caps, sizeof(caps), "video/x-raw,format=NV12,width=%u,height=%u",
 		 cfg_.outW, cfg_.outH);
-	std::string devArg = "device-name=" + cfg_.camhalSensor;
+
+	/* The pipeline, one token per argv slot. HPCAM_DENOISE > 0 adds the
+	 * VEBOX temporal denoise stage, and its trailing capsfilter pins the
+	 * output to packed NV12 at the same size — the contract behind the
+	 * conditional camhalChunkSize(). The AE range knobs were validated in
+	 * loadConfig and pass through verbatim. With everything at its default
+	 * except HPCAM_DENOISE=0 this argv is byte-identical to 2.0.1's. */
+	std::vector<std::string> args = { "gst-launch-1.0", "-q",
+					  "icamerasrc",
+					  "device-name=" + cfg_.camhalSensor };
+	if (!cfg_.exposureRange.empty()) {
+		args.push_back("exposure-time-range=" + cfg_.exposureRange);
+		logf("AE knob: exposure-time-range=%s us applied to icamerasrc",
+		     cfg_.exposureRange.c_str());
+	}
+	if (!cfg_.gainRange.empty()) {
+		args.push_back("gain-range=" + cfg_.gainRange);
+		logf("AE knob: gain-range=%s applied to icamerasrc",
+		     cfg_.gainRange.c_str());
+	}
+	args.push_back("!");
+	args.push_back(caps);
+	if (cfg_.denoise > 0) {
+		char dn[32];
+		snprintf(dn, sizeof(dn), "denoise=%g", cfg_.denoise);
+		args.insert(args.end(), { "!", "vapostproc", dn, "!", caps });
+	}
+	args.insert(args.end(), { "!", "fdsink", "fd=3" });
+
+	/* The same tokens as one string, for the start log and the journal. */
+	std::string pipeline;
+	for (size_t i = 2; i < args.size(); i++) {
+		if (i > 2)
+			pipeline += " ";
+		pipeline += args[i];
+	}
 
 	int pfd[2];
 	if (pipe2(pfd, O_CLOEXEC) < 0) {
@@ -1399,6 +1523,13 @@ bool Daemon::camhalStart()
 			continue;
 		envs.push_back(*e);
 	}
+	/* GST_PLUGIN_PATH is additive — the system plugin dirs are still
+	 * scanned — which is how the denoise stage's vapostproc (system
+	 * gst-plugin-va) loads next to the prefix's icamerasrc in one pipeline.
+	 * gst-va opens /dev/dri/renderD* directly (we run as root) and needs no
+	 * LIBVA_* variables, and the prefix ships no GStreamer core libs for
+	 * LD_LIBRARY_PATH to shadow. Both facts verified with gst-inspect-1.0
+	 * under exactly this environment, 2026-08-31. */
 	envs.push_back("LD_LIBRARY_PATH=" + cfg_.camhalPrefix + "/lib");
 	envs.push_back("GST_PLUGIN_PATH=" + cfg_.camhalPrefix + "/lib/gstreamer-1.0");
 	envs.push_back("CAMERA_CFG_PATH=" + cfgPath);
@@ -1416,10 +1547,10 @@ bool Daemon::camhalStart()
 	/* Frames go to fd 3, never stdout: CamHAL and GStreamer both log to
 	 * stdout, and one stray line in a raw NV12 stream desyncs everything
 	 * after it. -q silences gst-launch's own progress chatter anyway. */
-	const char *argv[] = { "gst-launch-1.0", "-q",
-			       "icamerasrc", devArg.c_str(),
-			       "!", caps,
-			       "!", "fdsink", "fd=3", nullptr };
+	std::vector<char *> argvp;
+	for (auto &s : args)
+		argvp.push_back(s.data());
+	argvp.push_back(nullptr);
 
 	pid_t pid = fork();
 	if (pid < 0) {
@@ -1442,8 +1573,7 @@ bool Daemon::camhalStart()
 		else if (dup2(pfd[1], 3) < 0)
 			_exit(127);
 		dup2(2, 1);	/* CamHAL logs on stdout -> the journal */
-		execve("/usr/bin/gst-launch-1.0",
-		       const_cast<char *const *>(argv), envp.data());
+		execve("/usr/bin/gst-launch-1.0", argvp.data(), envp.data());
 		_exit(127);
 	}
 	close(pfd[1]);
@@ -1453,9 +1583,9 @@ bool Daemon::camhalStart()
 	sessionFrames_ = 0;
 	lastCameraFrame_ = monoMs();
 	gstThread_ = std::thread(&Daemon::camhalReader, this);
-	logf("consumer present — camhal engine started (pid %d): icamerasrc %s "
-	     "! %s ! fdsink fd=3 (sensor on, LED on), nr_strength=%d",
-	     (int)pid, devArg.c_str(), caps, cfg_.nrStrength);
+	logf("consumer present — camhal engine started (pid %d): %s "
+	     "(sensor on, LED on), nr_strength=%d denoise=%g",
+	     (int)pid, pipeline.c_str(), cfg_.nrStrength, cfg_.denoise);
 	return true;
 }
 

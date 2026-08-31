@@ -191,3 +191,69 @@ daemon ignores the v2 conf file and the /etc/hp-elitebook-x-g2i directory
 by hand if tidiness matters). Verify the 1.2.0 baseline: service active,
 camera works, LED follows use. No reboot is required in either direction;
 kernel-side pieces are identical across 1.2.0 and 2.0.0.
+
+## 7. 2.0.2: GPU temporal denoise and AE clamps
+
+Artifact: `hp-elitebook-x-g2i-camera-2.0.2-1-x86_64.pkg.tar.zst`. New knobs:
+`HPCAM_DENOISE` (default 8), `HPCAM_EXPOSURE_RANGE`, `HPCAM_GAIN_RANGE`.
+The reader's chunk size follows the filter, so tearing or green/magenta bands
+in either mode is a reader bug, not a tuning problem — report it, do not tune
+around it.
+
+Filter active (the default). Open the camera, then:
+
+```
+journalctl -u hp-elitebook-x-g2i-camera -b | grep 'camhal engine started' | tail -1
+```
+
+Expect the vapostproc stage in the pipeline and the value at the end:
+
+```
+... icamerasrc device-name=ov05c10-uf ! video/x-raw,format=NV12,width=1920,height=1080 ! vapostproc denoise=8 ! video/x-raw,format=NV12,width=1920,height=1080 ! fdsink fd=3 (sensor on, LED on), nr_strength=-120 denoise=8
+```
+
+Cross-check the real child cmdline while the camera is open (the journal line
+is built from the same tokens, but this is the ground truth):
+
+```
+tr '\0' ' ' </proc/$(pgrep -f 'gst-launch-1.0 -q icamerasrc')/cmdline; echo
+```
+
+Live checks: frames arrive (status file `fps=` near 30), noise blobs in a dim
+room visibly calmer than 2.0.1, CPU of the gst child still near zero
+(the filter runs on the GPU's VEBOX block), no ghost trails when waving a
+hand (at denoise=8; higher values may ghost).
+
+Bypass drill (denoise=0 must be byte-identical to 2.0.1):
+
+```
+# set HPCAM_DENOISE=0 in /etc/hp-elitebook-x-g2i-camera.conf
+sudo systemctl restart hp-elitebook-x-g2i-camera
+```
+
+Reopen the camera. The start line must show the 2.0.1 pipeline — no
+vapostproc element — ending `denoise=0`, and the image must be clean, no
+tearing: this exercises the padded-chunk reader path. Then restore the
+default (comment the line out) and restart; the filter line returns.
+
+AE knob drill:
+
+```
+# set HPCAM_EXPOSURE_RANGE=100~50000 in the conf
+sudo systemctl restart hp-elitebook-x-g2i-camera
+```
+
+Reopen the camera and expect both the dedicated line and the property in the
+pipeline:
+
+```
+AE knob: exposure-time-range=100~50000 us applied to icamerasrc
+... icamerasrc device-name=ov05c10-uf exposure-time-range=100~50000 ! ...
+```
+
+In a dim room the status file `fps=` may drop below 30 and motion blurs —
+that is the documented trade, not a fault. Validation drill: set
+`HPCAM_EXPOSURE_RANGE=abc`, restart, reopen; expect
+`HPCAM_EXPOSURE_RANGE=abc is not min~max — ignoring` in the journal and a
+pipeline without the property. Same drill applies to `HPCAM_GAIN_RANGE`.
+Unset both and restart to finish.

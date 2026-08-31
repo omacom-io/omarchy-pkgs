@@ -20,10 +20,22 @@ app uses the camera):
   README, kept unchanged as the fallback.
 
 Knobs live in `/etc/hp-elitebook-x-g2i-camera.conf`: `HPCAM_ENGINE=camhal|softisp`,
-`HPCAM_NR_STRENGTH` (ISP noise reduction, shipped at -60), and the 1.x tuning
+`HPCAM_NR_STRENGTH` (ISP noise reduction, shipped at -120), and the 1.x tuning
 variables. A local AIQ tuning file at
 `/etc/hp-elitebook-x-g2i/OV05C10_CJFPE50_PTL.aiqb` overrides the packaged one
 at the next sensor start.
+
+Since 2.0.2 the camhal pipeline can add a GPU temporal denoise stage:
+`HPCAM_DENOISE` (default 8, range 0-64) inserts
+`vapostproc denoise=N` — the Intel GPU's VEBOX motion-adaptive temporal
+filter, from the system gst-plugin-va, near-zero CPU — between icamerasrc and
+the frame pipe. It targets the residual noise the ISP leaves: temporally
+white 4-16px blobs, which within-frame NR cannot remove. `HPCAM_DENOISE=0`
+removes the element and the pipeline is byte-identical to 2.0.1. Two optional
+AE clamps, `HPCAM_EXPOSURE_RANGE` and `HPCAM_GAIN_RANGE` (`min~max`, passed
+to icamerasrc verbatim), can widen the exposure ceiling so AE stops riding
+12.5-15.5x analog gain at the 33ms/30fps pin; longer exposure trades fps and
+motion blur for noise. All three are documented in the conf file.
 
 Everything below this line is the 1.x record. It stays because the softisp
 engine is still exactly that code, and because the diagnosis explains why the

@@ -44,7 +44,7 @@
 # hardware ISP, and its install gate already excludes this machine.
 
 pkgname=hp-elitebook-x-g2i-camera
-pkgver=2.0.0
+pkgver=2.0.2
 pkgrel=1
 pkgdesc="Webcam support for HP EliteBook X G2i (IPU7 + OV05C10, CamHAL or SoftISP engine)"
 arch=('x86_64')
@@ -67,6 +67,9 @@ depends=(
   'gstreamer'
   'gst-plugins-base'
   'gst-plugins-good'
+  # 2.0.2: the default-on HPCAM_DENOISE stage is vapostproc from the SYSTEM
+  # gstreamer (GST_PLUGIN_PATH is additive), Intel VEBOX temporal denoise.
+  'gst-plugin-va'
 )
 # Both packages drive the same IPU7 and would fight over /dev/video50 and the
 # sensor; intel-ipu7-camera also starts v4l2-relayd. They are gated on different
