@@ -10,6 +10,12 @@ set -euo pipefail
 # arrangement upstream ships, and the only one that starts.
 export HERMES_DESKTOP_IGNORE_EXISTING=1
 
+# Chromium cannot reliably infer the Secret Service password-store backend
+# from a Hyprland session, even when GNOME Keyring is already providing it.
+# Keep an explicit user choice (such as KWallet), otherwise select the
+# libsecret backend that this package depends on.
+export HERMES_DESKTOP_PASSWORD_STORE="${HERMES_DESKTOP_PASSWORD_STORE:-gnome-libsecret}"
+
 # Reconcile every launch rather than trusting whatever installed us. A plain
 # `pacman -S hermes-desktop`, or an install interrupted partway, leaves any
 # Hermes the terminal agent had built still sitting there, and by then the
