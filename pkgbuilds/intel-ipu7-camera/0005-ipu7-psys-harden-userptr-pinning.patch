@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Afonso Oliveira <afonso.oliveira707@gmail.com>
+Date: Tue, 1 Sep 2026 21:50:00 +0100
+Subject: [PATCH] media: intel/ipu7: harden PSYS userptr pinning
+
+Reject invalid and oversized userptr ranges before allocating their page
+arrays. Keep the page count in size_t, use overflow-checked allocation,
+remove FOLL_FORCE, and require the entire range to be pinned before
+publishing attachment state.
+---
+ drivers/media/pci/intel/ipu7/psys/ipu-psys.c | 66 ++++++++++++----------
+ 1 file changed, 36 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/media/pci/intel/ipu7/psys/ipu-psys.c b/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
+index 227ec22..f39ae5a 100644
+--- a/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
++++ b/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
+@@ -15,0 +16 @@
++#include <linux/overflow.h>
+@@ -52,3 +53,2 @@
+-	struct vm_area_struct *vma;
+-	unsigned long start, end;
+-	int npages, array_size;
++	unsigned long start, last;
++	size_t npages;
+@@ -58,3 +58,9 @@
+-	int nr = 0;
+-	u32 flags;
+-
++	long nr;
++	u32 flags;
++
++	if (WARN_ON_ONCE(attach->pages || attach->npages || attach->sgt))
++		return -EINVAL;
++
++	if (!attach->userptr || !attach->len || attach->len > MAX_RW_COUNT)
++		return -EINVAL;
++
+@@ -62,3 +68,6 @@
+-	end = PAGE_ALIGN(start + attach->len);
+-	npages = PHYS_PFN(end - (start & PAGE_MASK));
+-	array_size = npages * sizeof(struct page *);
++	if (check_add_overflow(start, (unsigned long)attach->len - 1, &last))
++		return -EOVERFLOW;
++
++	npages = (((last & PAGE_MASK) - (start & PAGE_MASK)) >> PAGE_SHIFT) + 1;
++	if (!npages || npages > INT_MAX)
++		return -E2BIG;
+@@ -70,3 +79 @@
+-	WARN_ON_ONCE(attach->npages);
+-
+-	pages = kvzalloc(array_size, GFP_KERNEL);
++	pages = kvmalloc_array(npages, sizeof(*pages), GFP_KERNEL);
+@@ -76,9 +83 @@
+-	mmap_read_lock(current->mm);
+-	vma = vma_lookup(current->mm, start);
+-	if (unlikely(!vma)) {
+-		ret = -EFAULT;
+-		goto error_up_read;
+-	}
+-	mmap_read_unlock(current->mm);
+-
+-	flags = FOLL_WRITE | FOLL_FORCE | FOLL_LONGTERM;
++	flags = FOLL_WRITE | FOLL_LONGTERM;
+@@ -87,5 +86,8 @@
+-	if (nr < npages)
+-		goto error;
+-
+-	attach->pages = pages;
+-	attach->npages = npages;
++	if (nr < 0) {
++		ret = nr;
++		goto unpin_pages;
++	}
++	if ((size_t)nr != npages) {
++		ret = -EFAULT;
++		goto unpin_pages;
++	}
+@@ -97 +99 @@
+-		goto error;
++		goto unpin_pages;
+@@ -98,0 +101,2 @@
++	attach->pages = pages;
++	attach->npages = npages;
+@@ -103,4 +107,2 @@
+-error_up_read:
+-	mmap_read_unlock(current->mm);
+-error:
+-	if (nr)
++unpin_pages:
++	if (nr > 0)
+@@ -108 +109,0 @@
+-
+@@ -579,0 +581,5 @@
++		return -EINVAL;
++	}
++
++	if (!buf->len || buf->len > MAX_RW_COUNT) {
++		dev_err(dev, "Invalid userptr buffer length\n");
