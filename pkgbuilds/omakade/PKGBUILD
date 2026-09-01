@@ -1,5 +1,5 @@
 pkgname=omakade
-pkgver=1.2.0
+pkgver=1.2.3
 pkgrel=1
 pkgdesc='A beautiful, local-first game library for Omarchy'
 arch=('x86_64')
@@ -9,7 +9,7 @@ depends=('glib2' 'libsecret' 'qt6-base' 'qt6-declarative' 'qt6-wayland' 'sdl3')
 makedepends=('cmake' 'ninja' 'pkgconf')
 options=('!debug')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/tsouth89/omakade/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
-sha256sums=('292b62b7598e2f27dabe46aaa131d33180f49082ed09efc5727a7925e365edac')
+sha256sums=('dcbb57caf982317ae0fd75a1a97c48b80d2b02f92d65b38030876a172eb25606')
 
 build() {
   cmake -S "$pkgname-$pkgver" -B build -G Ninja \
