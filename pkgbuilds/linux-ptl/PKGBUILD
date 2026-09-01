@@ -2,9 +2,9 @@
 # Based on Arch Linux linux package by Jan Alexander Steffens (heftig)
 
 pkgbase=linux-ptl
-pkgver=7.1.8.arch1
-pkgrel=2
-pkgdesc='Linux for Panther Lake with Panel Replay power and OLED VRR fixes'
+pkgver=7.2.2.arch1
+pkgrel=1
+pkgdesc='Linux for Panther Lake with Panel Replay power and OLED VRR fixes and Xe opportunistic compaction'
 url='https://github.com/archlinux/linux'
 arch=(
   x86_64
@@ -43,6 +43,8 @@ source=(
   0020-drm-i915-alpm-limit-pr-alpm-to-panel-replay.patch
   0028-drm-i915-psr-exit-Panel-Replay-for-ALPM-lag.patch
   0029-drm-edid-populate-monitor-range-from-displayid-adaptive-sync.patch
+  1001-mm-opportunistic-compaction.patch
+  1002-xe-opportunistic-compaction.patch
 )
 source_x86_64=(config.x86_64)
 validpgpkeys=(
@@ -50,23 +52,27 @@ validpgpkeys=(
   647F28654894E3BD457199BE38DBBDC86092693E  # Greg Kroah-Hartman
   83BC8889351B5DEBBB68416EB8AC08600F108CDF  # Jan Alexander Steffens (heftig)
 )
-b2sums=('84b59e5572d91f5ea1bb603aa7691851bd9549e1bf18a6bec8e27eb8a6e2de2e33da2ad3e3aad501c793e9756e70245a16545e76b65a44ee52b33ccf5c3dd8e7'
+b2sums=('7d3904933ddca054bc085d34c2941d0ed74280c3691716b55369197a0f40dad8d116abaca22fcea71476bd52e9396d80d066d3e859bc945dfdb9e305baff59ab'
         'SKIP'
-        '308952977c15ac3ad976ff1d99d0d186814d4b03e1c8512fc3a4c0ac1ecce3f74be8f3900a7fd286492d4f930bedc089674bf713a278fa80c35413e0e6339f97'
+        '3953137079a786967230b6f5f2b4ccaa7cb5a2b09ef533ea5b9b8ca83fa4d8795a2fd8430bb5fc1dd280396571685e3fa06fe6aaa4fc64ad9484008457218713'
         'SKIP'
-        'e672cd8d1f48756cf1062f84b83b4f676504cc6b44496511816a670435e00ccc22720fcbc36d013fd9b393389b955de5ec90715429ddbdcea860e1be80ab13fd'
-        '82b976261ed6f9c9ab4e30466eb91c74e94d38b489628d2de5b9974a0406a38bdec493112b84ed9f4b917662c871e70b1ea1c626d467eda245eaf7bfd973848b'
-        'ed167ad347e83f072316b0d980ad192d97d0c4a69f6d1841a96089aa17caa0e57cb785214ed9297290f034420b5d0838dc75f84c7e9a9459eb49fd9dc22f3a3e')
-b2sums_x86_64=('b10d80423aa3eb65e2046bf5b1998f9a7bdbc97494c6881881f50ffcdb5fe2e242782f59dbb6402cd77ce64b988dbf295fd9fa54f20180c76fbe88b82e1dbc9d')
+        'e51efb1a8ea6b94227823942ebfb450e5586964ecc2dc3bdbda25b88729c46f6a3b8e443505bb9082c60a302cf6ffbe0fd212870cd9c1750fbf5f3223f22265a'
+        'f2ac5e6c8be09093eb1e9ad5862956705387af594bae0166b03adf58da85d8c3a0822de9a3378b20b8b498a93e06d93675ec4cdcd0eb28d8da552f32c2ce0827'
+        'd29a70f9d2177534e57c7af8f8fc1af1670bad4e81fea0cf39279c96798e40834c6be0e24a6b460c8688dc646ef5525dbda76c092bcf608a490461fa6784eba4'
+        '8afd787e21243209c0ac169db4a75a72a48b376ec7570f727f62f3722880833e4b3064a5a7ae0ac84cbec0be420eeecec0beb0d22ff23deca665a33a47281ca9'
+        '1390b6ef358dac6d934dafd2b8a6daeb23c8d4601a041d51dc9a6c96d4911f215f563a298c1ef36d4be4a18a0be324acc374ab91c183f00f6c1ee56d25e6609c')
+b2sums_x86_64=('829f887f9867135dc8977d536ef31f9b1c42418f05ef5552443955e23cf0d60dad2b5d9ac138670f976e4ab71e982fbf25dbb3be654fcfcd54ca22ef0fb72ed3')
 
 # https://www.kernel.org/pub/linux/kernel/v7.x/sha256sums.asc
-sha256sums=('ff01dcb449279d5b4cfccdb01fee639cf5ff1803f1749a77844dd33915422c49'
+sha256sums=('7d0e7ce14f98c43efe880cffbf354a59be45928fdf7170d7333c374ae91c0d83'
             'SKIP'
-            '351cfb04db323bf5dd55ae8ce626650d20ba61441d202cadd8e198c6b9ef8f36'
+            'e8f3e197bd64985922150873c4af09301088a7437217f519243ce74ba6a691f4'
             'SKIP'
-            '150f059eaf36580f9ca8eff4f917d8c3ee4eb5493507cbc29ce8e91b3ec56a93'
-            '4a1f12817a985361c7497965b7474efb5dd8dcc36d47d04d1bb98fd1941b5901'
-            '1a0bebfba76248bbda67f8812278835de71754412369454ce60f4dde0bd81916')
+            'b14444ba30d82fae92e8b17eb391a9b7fe9d3b8b447bd1ab725287528150fc30'
+            'bd34bca8bca804484c621669667d5690ce98b0fd208ca3d1ebf3b4be1a3fb97e'
+            '1be1de875710d261b13290fe0050209123d835eced599d59acabbc75daf6c3e7'
+            '856920a846a0460d24796235269e6c51d752e306bbd09909587b3bc980eadcc5'
+            '71cf42f38b5ea84be6387fcad75dd5cc7ca6ac48ab81dd3b5ad581f80f0537c2')
 
 export KBUILD_BUILD_HOST=archlinux
 export KBUILD_BUILD_USER=$pkgbase

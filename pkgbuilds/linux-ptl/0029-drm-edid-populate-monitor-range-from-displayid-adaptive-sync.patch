@@ -16,11 +16,11 @@ Backfill monitor_range from the DisplayID 2.x Adaptive Sync data block
 when the legacy descriptor did not provide a range.
 ---
  drivers/gpu/drm/drm_displayid_internal.h |  1 +
- drivers/gpu/drm/drm_edid.c               | 86 ++++++++++++++++++++----
- 2 files changed, 74 insertions(+), 13 deletions(-)
+ drivers/gpu/drm/drm_edid.c               | 79 ++++++++++++++++++++----
+ 2 files changed, 67 insertions(+), 13 deletions(-)
 
 diff --git a/drivers/gpu/drm/drm_displayid_internal.h b/drivers/gpu/drm/drm_displayid_internal.h
-index 4590d6a..dbdc205 100644
+index 4590d6a3d..dbdc20533 100644
 --- a/drivers/gpu/drm/drm_displayid_internal.h
 +++ b/drivers/gpu/drm/drm_displayid_internal.h
 @@ -67,6 +67,7 @@ struct drm_edid;
@@ -32,10 +32,10 @@ index 4590d6a..dbdc205 100644
  #define DATA_BLOCK_2_CTA_DISPLAY_ID		0x81
  
 diff --git a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
-index df3c25b..354d4ff 100644
+index df3c25bac..1c687aeef 100644
 --- a/drivers/gpu/drm/drm_edid.c
 +++ b/drivers/gpu/drm/drm_edid.c
-@@ -6598,6 +6598,49 @@ static void drm_get_monitor_range(struct drm_connector *connector,
+@@ -6598,6 +6598,42 @@ static void drm_get_monitor_range(struct drm_connector *connector,
  		    info->monitor_range.min_vfreq, info->monitor_range.max_vfreq);
  }
  
@@ -46,36 +46,29 @@ index df3c25b..354d4ff 100644
 +{
 +	struct drm_monitor_range_info *range = &connector->display_info.monitor_range;
 +	const u8 *data = (const u8 *)(block + 1);
-+	u16 best_min = 0, best_max = 0;
-+	unsigned int best_span = 0;
 +	int i;
 +
 +	if (block->rev != 0 || block->num_bytes < DISPLAYID_ADAPTIVE_SYNC_DESC_SIZE ||
 +	    block->num_bytes % DISPLAYID_ADAPTIVE_SYNC_DESC_SIZE)
 +		return false;
 +
++	/*
++	 * Descriptor 0 describes the panel's primary Adaptive Sync operating
++	 * range; subsequent descriptors describe alternate operation modes
++	 * whose ranges may not be sustainable in normal operation. Use the
++	 * first valid descriptor rather than the widest advertised range.
++	 */
 +	for (i = 0; i < block->num_bytes; i += DISPLAYID_ADAPTIVE_SYNC_DESC_SIZE) {
 +		const u8 *desc = &data[i];
 +		u16 min_vfreq = desc[2];
 +		u16 max_vfreq = ((((u16)desc[4]) & 0x3) << 8) | desc[3];
-+		unsigned int span;
 +
 +		max_vfreq += 1;
 +		if (!min_vfreq || max_vfreq <= min_vfreq)
 +			continue;
 +
-+		span = max_vfreq - min_vfreq;
-+		if (span <= best_span)
-+			continue;
-+
-+		best_min = min_vfreq;
-+		best_max = max_vfreq;
-+		best_span = span;
-+	}
-+
-+	if (best_span) {
-+		range->min_vfreq = best_min;
-+		range->max_vfreq = best_max;
++		range->min_vfreq = min_vfreq;
++		range->max_vfreq = max_vfreq;
 +		return true;
 +	}
 +
@@ -85,7 +78,7 @@ index df3c25b..354d4ff 100644
  static void drm_parse_vesa_mso_data(struct drm_connector *connector,
  				    const struct displayid_block *block)
  {
-@@ -6720,26 +6763,43 @@ static void update_displayid_info(struct drm_connector *connector,
+@@ -6720,26 +6756,43 @@ static void update_displayid_info(struct drm_connector *connector,
  {
  	struct drm_display_info *info = &connector->display_info;
  	const struct displayid_block *block;
