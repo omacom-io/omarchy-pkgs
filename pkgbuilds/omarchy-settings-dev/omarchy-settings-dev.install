@@ -47,6 +47,10 @@ post_upgrade() {
 }
 
 post_remove() {
+  # Removing this package also removes the boot-time tmpfiles rule that owns
+  # this namespace, so revoke any live Omarchy grant in the same transaction.
+  rm -f -- /etc/sudoers.d/99-omarchy-nopasswd-*
+
   # Restore the standard Arch selector if removing this package left its exact
   # Omarchy link dangling. During a stable/dev replacement, the incoming
   # package either still supplies the target or replaces this link afterward.
