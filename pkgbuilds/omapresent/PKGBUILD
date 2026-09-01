@@ -1,7 +1,7 @@
 # Maintainer: Jethro Jones <jethro@jethrojones.com>
 
 pkgname=omapresent
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc='Dead-simple, Markdown-only presentation app built with Qt Quick'
 # Only x86_64 has ever been built and tested. aarch64 is plausible (the build
@@ -68,7 +68,7 @@ else
   # ./release-checksums; see pkgbuild/RELEASING.md. The zero placeholder is not
   # a valid checksum for anything, so makepkg refuses to build before that
   # release gate.
-  sha256sums=('4310fd20d8a8bc1145fefd7704ef3e473ff7f8ef8623c7e6a605f9078b272d23')
+  sha256sums=('0bdc12a774f60c471f3f650b176774e99d8929401ab12ba2a64aeb250b6cf6e3')
 fi
 
 prepare() {
