@@ -1,0 +1,103 @@
+# Maintainer: Newton Ramos Garcia <n@newx.sh>
+
+pkgname=omabook
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Book library and reader for EPUB, PDF and MOBI, built with Qt Quick'
+# Only x86_64 has been built and tested. The build is plain qmake6 + make, so
+# aarch64 is plausible, but unproven, and so not claimed here.
+arch=('x86_64')
+url='https://github.com/newx/omabook'
+license=('MIT')
+install='omabook.install'
+# The release binary carries no useful debug symbols, and the split -debug
+# package trips namcap's empty-package rule.
+options=('!debug')
+depends=(
+  'hicolor-icon-theme'
+  # Not optional: pdftotext and pdftoppm are how PDF covers, page text and
+  # text-quality assessment work, and PDFs are half of a typical library.
+  'poppler'
+  'qt6-base'
+  'qt6-declarative'
+  # Some EPUB covers are WebP. Without this, QImageReader decodes them to
+  # nothing and the book gets no cover, with no error anywhere.
+  'qt6-imageformats'
+  'qt6-svg'
+  # The reader is a QWebEngineView talking to C++ over a QWebChannel.
+  'qt6-webchannel'
+  'qt6-webengine'
+  # File dialogs and the light/dark system setting go through the portal.
+  'xdg-desktop-portal'
+)
+makedepends=(
+  'gcc'
+  'make'
+  'qt6-base'
+  'qt6-declarative'
+  'qt6-webchannel'
+  'qt6-webengine'
+)
+
+# The reader engine. foliate-js is a separate project with its own history, so
+# omabook gitignores it rather than vendoring it, which means the release
+# tarball above does not contain it -- and without this second source the
+# package builds cleanly, the library works, and opening a book renders nothing
+# at all. Pinned to the commit this release was developed and tested against;
+# bin/install in the source tree clones HEAD instead, which is right for a
+# working copy and wrong for a package.
+_foliate_commit=78914aef4466eb960965702401634c2cb348e9b1
+
+source=(
+  "$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+  "foliate-js-$_foliate_commit.tar.gz::https://github.com/johnfactotum/foliate-js/archive/$_foliate_commit.tar.gz"
+)
+sha256sums=('31de3b86e8cfa8b3f4c48c409a5cb7549e0972d6aecf528bd62eb213f09a3fcd'
+            '4878cd5f04073af5046ea543da73a963a7f9e1a4b30ddc63ac86cea5adf02f38')
+
+prepare() {
+  # reader.html imports './foliate-js/view.js' relative to itself, so the engine
+  # has to sit inside assets/reader/ under exactly that name.
+  rm -rf "$pkgname-$pkgver/assets/reader/foliate-js"
+  mv "foliate-js-$_foliate_commit" "$pkgname-$pkgver/assets/reader/foliate-js"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  ./bin/build
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  # QtTest over src/core, plus the check that core never reaches for QML. The
+  # script sets QT_QPA_PLATFORM=offscreen itself, so this needs no display.
+  ./bin/test
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  install -Dm755 build/omabook "$pkgdir/usr/bin/omabook"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  # The reader engine ships inside the package, so its licence ships with it.
+  install -Dm644 assets/reader/foliate-js/LICENSE \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE.foliate-js"
+  install -Dm644 pkgbuild/omabook.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/omabook.svg"
+  install -Dm644 pkgbuild/omabook.desktop \
+    "$pkgdir/usr/share/applications/omabook.desktop"
+
+  # The reader loads from disk rather than from qrc:, because a qrc: page cannot
+  # read book files off the filesystem. src/app/assets.cpp resolves this path.
+  install -dm755 "$pkgdir/usr/share/omabook"
+  cp -r assets/reader "$pkgdir/usr/share/omabook/reader"
+
+  # Neither foliate-js's repository metadata nor its test pages are of any use
+  # to someone installing a book reader.
+  local _fj="$pkgdir/usr/share/omabook/reader/foliate-js"
+  rm -rf "$_fj/.git" "$_fj/.github" "$_fj/.gitignore" "$_fj/.gitattributes" \
+         "$_fj/tests" "$_fj/node_modules"
+
+  find "$pkgdir/usr/share/omabook" -type d -exec chmod 755 {} +
+  find "$pkgdir/usr/share/omabook" -type f -exec chmod 644 {} +
+}
