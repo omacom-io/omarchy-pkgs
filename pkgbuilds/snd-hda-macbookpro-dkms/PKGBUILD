@@ -4,7 +4,9 @@
 # The AUR package (snd-hda-macbookpro-dkms-git) copies only a subset of
 # the tree and does not depend on wget, which PRE_BUILD needs to fetch
 # matching kernel sources. This package installs the whole driver and
-# pins the commit verified on MacBookPro14,3 / linux 7.1.8.
+# pins the commit verified on MacBookPro14,3 / linux 7.1.8. The same
+# Apple CS8409 path covers 2017–2019 iMacs (e.g. iMac18,3 subsystem
+# 0x106b1000).
 
 _pkgbase=snd-hda-macbookpro
 # Must match PACKAGE_NAME in upstream dkms.conf. The AUR dest uses hyphens
@@ -14,8 +16,8 @@ _pkgbase=snd-hda-macbookpro
 _srcname=snd_hda_macbookpro
 pkgname=${_pkgbase}-dkms
 pkgver=0.1
-pkgrel=2
-pkgdesc="DKMS driver for Cirrus CS8409 HDA on 2016–2017 MacBook Pros"
+pkgrel=3
+pkgdesc="DKMS driver for Cirrus CS8409 HDA on 2016–2017 MacBook Pros and 2017–2019 iMacs"
 arch=('x86_64')
 url="https://github.com/davidjo/snd_hda_macbookpro"
 license=('GPL-2.0-only')
