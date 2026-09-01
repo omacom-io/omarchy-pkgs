@@ -331,6 +331,20 @@ or the sync fails. A maintainer deliberately shipping inside the window runs
 `BYPASS_MIN_RELEASE_AGE=1 bin/sync-upstream <package>` locally and merges the
 result through a normal PR; scheduled automation never sets the bypass.
 
+Before a release is adopted, the provider confirms the repository serving the
+feed is still the one that was declared. A repository that GitHub reports under a
+different `full_name` was renamed or transferred: the declared name still
+resolves through GitHub's redirect, so nothing else in the sync notices, while
+the abandoned name is free for anyone to register and inherit the feed. And an
+archived repository cannot publish anything, so a feed that appears to ship a new
+release from one is not the feed we believe we are reading. Either fails the
+sync, as does a repository response that cannot be read at all. The check costs
+one API call, made only when a new release is about to be adopted.
+
+Repository age and release count are deliberately not checked. Neither says
+anything about whether an artifact is safe, and a threshold on either would
+reject sound young projects while stopping no attacker willing to wait.
+
 A vendor whose feed fits no convention (a Debian package index, a bare
 version.txt) instead provides `.omarchy/upstream.sh`, a hook that reports the
 newest upstream release as JSON on stdout — declaring both an `upstream` block
@@ -360,7 +374,8 @@ it describes. Hooks honoring `min_release_age` receive the window as
 `MIN_RELEASE_AGE_SECONDS` and report `published_at` alongside `pkgver`.
 
 `bin/sync-upstream self-test` runs offline fixture tests over the release
-selection, quarantine backstop, duration parsing, and manifest validation.
+selection, repository identity, quarantine backstop, duration parsing, and
+manifest validation.
 
 ### Sync Rebuild Triggers
 
