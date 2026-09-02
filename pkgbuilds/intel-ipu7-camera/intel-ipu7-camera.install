@@ -21,15 +21,13 @@ _install_sleep_hook() {
 
 _apply_runtime_permissions() {
     if ! /usr/bin/systemd-tmpfiles --create /usr/lib/tmpfiles.d/camera.conf; then
-        echo ":: Failed to apply secure permissions to /run/camera." >&2
-        return 1
+        echo ":: WARNING: failed to restrict /run/camera; reboot before using the camera." >&2
     fi
 
     if [ -S /run/udev/control ]; then
         if ! /usr/bin/udevadm control --reload-rules ||
            ! /usr/bin/udevadm trigger --action=change --sysname-match=ipu7-psys0; then
-            echo ":: Failed to apply the restricted IPU7 device permissions." >&2
-            return 1
+            echo ":: WARNING: failed to restrict the IPU7 device; reboot before using the camera." >&2
         fi
     fi
 }
@@ -43,7 +41,7 @@ _warn_if_driver_is_loaded() {
 
 post_install() {
     _install_sleep_hook
-    _apply_runtime_permissions || return 1
+    _apply_runtime_permissions
     systemctl daemon-reload
     systemctl disable camera-init.service v4l2-relayd@ipu7.service 2>/dev/null || true
     systemctl enable intel-ipu7-camera.service
@@ -59,7 +57,7 @@ post_install() {
 
 post_upgrade() {
     _install_sleep_hook
-    _apply_runtime_permissions || return 1
+    _apply_runtime_permissions
     _warn_if_driver_is_loaded
     systemctl daemon-reload
     systemctl disable camera-init.service v4l2-relayd@ipu7.service 2>/dev/null || true
