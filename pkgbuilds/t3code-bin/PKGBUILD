@@ -7,7 +7,7 @@
 # from the release feed the app updates itself from.
 
 pkgname=t3code-bin
-pkgver=0.0.37
+pkgver=0.0.38
 pkgrel=1
 pkgdesc="Open-source control plane for coding agents"
 arch=('x86_64')
@@ -61,7 +61,7 @@ noextract=("${_appimage}")
 sha256sums=('cb905ff341372ef2ef6e402cf485959f8bd1df8f0efebee4cda1afdd5e6abc0a'
             'c5b3f2a9f0b14b12cfd973b79319f0f018b7ae49a1d43d8ca346100c3f7de28f'
             '935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43')
-sha256sums_x86_64=('ea88807ccc4b18b2c3f85726ef1235e695b656ab37c8e29c9289f7a28de336c2')
+sha256sums_x86_64=('1f1ccd922b2efaffd50447b028ee0d6e2525502905087cf8ae3fe41efebe346f')
 
 prepare() {
   chmod +x "${srcdir}/${_appimage}"
