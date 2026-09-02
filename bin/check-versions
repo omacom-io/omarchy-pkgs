@@ -1,6 +1,10 @@
 #!/bin/bash
 # Check PKGBUILD versions against published repo versions
-# Creates state files for edge and/or stable if any packages need building
+# Creates a state file per channel and architecture when packages need building
+#
+# Usage: check-versions [--pull] [--arch <arch>]
+#   --pull         pull the repository first (the scheduled run does this)
+#   --arch <arch>  check one architecture; default: every published one
 
 set -e
 
@@ -10,11 +14,27 @@ source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/package-metadata.sh"
 source "$BUILD_ROOT/helpers/lock-helpers.sh"
 
-STATE_DIR="${OMARCHY_STATE_DIR:-/root/.state}"
-ARCH="${ARCH:-x86_64}"
 PULL=false
+ARCHES=""
 
-[[ "${1:-}" == "--pull" ]] && PULL=true
+while [[ $# -gt 0 ]]; do
+  case $1 in
+  --pull)
+    PULL=true
+    shift
+    ;;
+  --arch)
+    require_valid_arch "$2"
+    ARCHES="$2"
+    shift 2
+    ;;
+  *)
+    print_error "Unknown option: $1"
+    exit 1
+    ;;
+  esac
+done
+[[ -n "$ARCHES" ]] || ARCHES=$(published_arches)
 
 mkdir -p "$STATE_DIR"
 
@@ -147,11 +167,12 @@ check_package() {
 
 check_mirror() {
   local mirror="$1"
-  local state_file="$STATE_DIR/.sync-needed-$mirror"
+  local state_file
+  state_file=$(sync_queue_file "$mirror" "$ARCH")
   local needs_build=false
   local packages=()
 
-  print_info "Checking $mirror packages..."
+  print_info "Checking $mirror packages for $ARCH..."
 
   while IFS= read -r pkg; do
     local pkgdir="$PKGBUILDS_DIR/$pkg"
@@ -168,18 +189,23 @@ check_mirror() {
     # this to name the packages in its start report, which is the difference
     # between "a build is running" and "your package is in this build".
     printf '%s\n' "${packages[@]}" >"$state_file"
-    print_success "${mirror^} needs building (${#packages[@]} packages)"
+    print_success "${mirror^} ($ARCH) needs building (${#packages[@]} packages)"
     print_info "Packages: ${packages[*]}"
     print_info "State file created: $state_file"
   else
-    print_info "${mirror^} is up to date"
+    print_info "${mirror^} ($ARCH) is up to date"
   fi
 
   echo ""
 }
 
-check_mirror edge
-check_mirror rc
-check_mirror stable
+# One pass per published architecture: the version comparison reads that
+# architecture's channel databases, and each queue is its own file.
+for ARCH in $ARCHES; do
+  update_arch_paths
+  check_mirror edge
+  check_mirror rc
+  check_mirror stable
+done
 
 print_success "Version check complete!"

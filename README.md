@@ -30,18 +30,44 @@ The filesystem no longer encodes release policy. Instead:
 ## Prerequisites
 ### aarch64 Builds (Optional)
 
-To build ARM64 packages on x86_64, enable QEMU emulation:
+The repository host builds every architecture it publishes on the same
+machine. A foreign architecture runs under QEMU user emulation, which
+`bin/build` sets up on first use (and re-checks after each reboot by
+actually running a container for the target platform):
 
 ```bash
-# Run after each reboot
-docker run --privileged --rm tonistiigi/binfmt --install arm64
-
 # Verify
 docker run --rm --platform linux/arm64 alpine:latest uname -m
 # Should output: aarch64
 ```
 
-**Note**: aarch64 builds use QEMU and slower than native x86_64 builds.
+**Note**: emulated builds are much slower than native ones.
+
+### Published architectures
+
+`helpers/paths.sh` names the architectures this repository publishes:
+
+```bash
+PUBLISHED_ARCHES="${OMARCHY_ARCHES:-x86_64}"
+```
+
+That list drives the whole scheduled pipeline. `check-versions` compares
+PKGBUILDs against each architecture's channel databases and writes one queue
+file per channel and architecture (`.sync-needed-<channel>-<arch>`);
+`auto-release <channel>` works through the queues one architecture at a
+time, each with its own backoff (`.build-failed-<channel>-<arch>`), so a
+failing build on one architecture never holds up the other; and the release
+train advances channels with `--arch all`, so a channel never moves for one
+architecture and not another. The first entry is the reference architecture
+the release train observes channels through.
+
+Adding an architecture is therefore one change to that list (or
+`OMARCHY_ARCHES` in the host's build credentials): the next `check-versions`
+tick queues everything the new architecture lacks, and the next
+`auto-release` tick starts building it. The builder image bootstraps
+`omarchy-keyring` from the x86_64 tree for every architecture, so the first
+build of a new architecture does not depend on a repository that only it can
+create.
 
 ## Quick Start
 
@@ -737,10 +763,13 @@ bin/repo release --package my-package
 - Mirrors: mirror.omarchy.org, rackspace, pkgbuild.com
 
 ### aarch64
-- QEMU emulation required on x86_64 hosts (slower)
-- Uses Arch Linux ARM repositories
+- Built on the repository host like x86_64; under QEMU when the host is x86_64
+- Uses Arch Linux ARM repositories (one mirrorlist for every channel — Arch
+  Linux ARM publishes no dated snapshots to pin a channel's base to)
 - Additional repos: `[alarm]`, `[aur]`
-- Same workflow, just add `--arch aarch64`
+- Same workflow, just add `--arch aarch64`; the scheduled pipeline runs it
+  automatically once `aarch64` is in `PUBLISHED_ARCHES`
+- Packages whose `arch=()` lacks `aarch64` are skipped, not failed
 
 ### Building for Both Architectures
 
@@ -791,8 +820,8 @@ The repository includes GitHub workflows and systemd services for automated rele
 All four units run **every 5 minutes**, staggered by a minute each, so a push
 reaches the mirror in minutes rather than hours:
 
-1. **check-versions** (`*:0/5`): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
-2. **auto-release-edge** (`*:1/5`): If a state file exists, builds all edge packages that need updates
+1. **check-versions** (`*:0/5`): Pulls latest from git, compares PKGBUILD versions to published versions for every published architecture, creates one state file per channel and architecture if builds are needed
+2. **auto-release-edge** (`*:1/5`): For each published architecture with a state file, builds all edge packages that need updates
 3. **auto-release-rc** (`*:2/5`): Builds fast-ring packages for rc, from the main checkout like the other two — natively in the rc image, not copied from another channel. The pinned release pair is built separately by `omarchy-release rc` in the `rc` branch worktree
 4. **auto-release-stable** (`*:3/5`): If a state file exists, builds `release_ring=fast` packages for stable and replicates them to rc
 

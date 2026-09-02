@@ -164,11 +164,15 @@ mkdir -p "$BUILD_OUTPUT_DIR" "$REPO_DIR" "$SRC_DIR"
 # Check Docker is available
 check_docker
 
-# Setup QEMU for aarch64 builds on x86_64 hosts
-if [[ "$(uname -m)" == "x86_64" && "$ARCH" == "aarch64" ]]; then
-  # Check if QEMU is already working
-  if ! docker run --rm --platform linux/arm64 alpine:3.21 /bin/true >/dev/null 2>&1; then
-    print_info "Setting up QEMU for ARM64 emulation..."
+# A foreign target architecture runs under QEMU user emulation. Probe by
+# actually running a container for the target platform: that is the only
+# test that covers both "binfmt not registered" and "registered but broken".
+HOST_ARCH=$(uname -m)
+[[ "$HOST_ARCH" == "arm64" ]] && HOST_ARCH=aarch64
+if [[ "$HOST_ARCH" != "$ARCH" ]]; then
+  # shellcheck disable=SC2086
+  if ! docker run --rm $(get_platform_arg "$ARCH") alpine:3.21 /bin/true >/dev/null 2>&1; then
+    print_info "Setting up QEMU for $ARCH emulation on this $HOST_ARCH host..."
     setup_qemu
   fi
 fi

@@ -114,7 +114,11 @@ BUILT_FILES=""
 # What the scheduled version check queued, when it was the one that asked for
 # this run. Absent for a manual run, which is fine — the report just omits it.
 QUEUED_PACKAGES=""
-QUEUE_FILE="${OMARCHY_STATE_DIR:-/root/.state}/.sync-needed-$MIRROR"
+QUEUE_FILE=$(sync_queue_file "$MIRROR" "$ARCH")
+# A queue written under the pre-architecture name belongs to x86_64.
+if [[ "$ARCH" == "x86_64" && ! -s "$QUEUE_FILE" && -s "$(legacy_sync_queue_file "$MIRROR")" ]]; then
+  QUEUE_FILE=$(legacy_sync_queue_file "$MIRROR")
+fi
 [[ -s "$QUEUE_FILE" ]] && QUEUED_PACKAGES=$(grep -c '' "$QUEUE_FILE")
 
 if [[ "$DRY_RUN" != true ]]; then

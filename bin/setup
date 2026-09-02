@@ -237,6 +237,10 @@ echo ""
 
 # --- release timers ----------------------------------------------------------
 
+print_info "Published architectures: $(published_arches | tr '\n' ' ')"
+echo "    (PUBLISHED_ARCHES in helpers/paths.sh, or OMARCHY_ARCHES in $CREDENTIALS)"
+echo ""
+
 TIMERS=(omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-rc omarchy-auto-release-stable)
 
 if [[ "$SKIP_TIMERS" == true ]]; then

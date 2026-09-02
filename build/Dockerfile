@@ -108,11 +108,16 @@ RUN ln -sf /usr/lib/os-release /etc/os-release && \
 # Setup Omarchy keyring manually before adding repo (avoids keyserver trust issues)
 # Note: Repository is removed at the end since build scripts add it dynamically.
 # The keyring comes from this image's own channel (the bare /$arch path is a
-# stale legacy layout); %s keeps pacman's $arch literal while MIRROR expands.
+# stale legacy layout). It is always taken from the x86_64 tree, whatever the
+# image's own architecture: omarchy-keyring is an arch=any package, and the
+# x86_64 tree is the one that exists before a new architecture has published
+# anything. Bootstrapping from the target's own tree would make the first
+# aarch64 build depend on an aarch64 repository that only that build can
+# create.
 ARG MIRROR=edge
 RUN pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org && \
     pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 && \
-    printf '\n[omarchy]\nSigLevel = Optional\nServer = https://pkgs.omarchy.org/%s/$arch\n' "${MIRROR}" >> /etc/pacman.conf && \
+    printf '\n[omarchy]\nSigLevel = Optional\nServer = https://pkgs.omarchy.org/%s/x86_64\n' "${MIRROR}" >> /etc/pacman.conf && \
     pacman -Sy --noconfirm && \
     pacman -S --noconfirm omarchy-keyring && \
     pacman-key --populate omarchy && \

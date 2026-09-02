@@ -28,7 +28,13 @@ ISO_REPO="${OMARCHY_ISO_REPO:-omacom-io/omarchy-iso}"
 DEV_BRANCH="${OMARCHY_DEV_BRANCH:-quattro}"
 
 PKGS_DB_BASE="${OMARCHY_PKGS_DB_BASE:-https://pkgs.omarchy.org}"
-RC_DB_URL="$PKGS_DB_BASE/rc/x86_64/omarchy.db.tar.zst"
+# The train observes channels through the reference architecture (the first
+# published one). The pair is pinned to one version for every architecture and
+# built for all of them in one rc trigger, so one architecture's database is
+# the state of the release; per-architecture drift is a build failure the
+# scheduled pipeline reports, not something the train has to poll for.
+OBSERVED_ARCH=$(reference_arch)
+RC_DB_URL="$PKGS_DB_BASE/rc/$OBSERVED_ARCH/omarchy.db.tar.zst"
 
 SRCDEST_DIR="$BUILD_ROOT/.srcdest"
 MIRROR_CLONE="$SRCDEST_DIR/omarchy"          # bare mirror (shared with bin/omarchy-pkgs)
@@ -186,7 +192,7 @@ published_version() {
   # A unique query string busts the CDN cache: right after a sync the plain
   # URL can keep serving the previous db for a while, which reads as "not
   # published yet" to status, the wait loop, and ship's pre-checks.
-  if ! curl -sf "$PKGS_DB_BASE/$channel/x86_64/omarchy.db.tar.zst?$(date +%s%N)" -o "$tmp"; then
+  if ! curl -sf "$PKGS_DB_BASE/$channel/$OBSERVED_ARCH/omarchy.db.tar.zst?$(date +%s%N)" -o "$tmp"; then
     rm -f "$tmp"
     return 2
   fi
@@ -251,8 +257,12 @@ fi
 git -C /root/omarchy-pkgs-rc fetch origin rc
 git -C /root/omarchy-pkgs-rc reset --hard origin/rc
 cd /root/omarchy-pkgs-rc
-OMARCHY_RC_PINS=1 OMARCHY_REPO_ROOT=/root/omarchy-pkgs/pkgs.omarchy.org \
-  bin/repo release --mirror rc --package omarchy omarchy-settings --skip-prod-check
+# The pair is built once per published architecture (helpers/paths.sh on the
+# host decides which), so every architecture'"'"'s rc channel carries the pins.
+for arch in $(BUILD_ROOT=/root/omarchy-pkgs-rc bash -c "source helpers/paths.sh; published_arches"); do
+  OMARCHY_RC_PINS=1 OMARCHY_REPO_ROOT=/root/omarchy-pkgs/pkgs.omarchy.org \
+    bin/repo release --mirror rc --arch "$arch" --package omarchy omarchy-settings --skip-prod-check
+done
 '
 
 trigger_rc_build() {
@@ -278,10 +288,12 @@ host_advance() { # host_advance <from> <to> [extra args...]
   # against this machine's (likely stale) local tree would be wrong.
   if ! resolve_repo_host "$REPO_HOST_OVERRIDE" >/dev/null && ! on_repo_host; then
     print_no_host_help "advance $from -> $to" \
-      "  cd /root/omarchy-pkgs && bin/repo advance --from $from --to $to --skip-prod-check $*"
+      "  cd /root/omarchy-pkgs && bin/repo advance --from $from --to $to --arch all --skip-prod-check $*"
     return 1
   fi
-  "$BUILD_ROOT/bin/repo" advance --from "$from" --to "$to" --skip-prod-check "$@"
+  # --arch all: the host advances every architecture it publishes, so a train
+  # never moves a channel for one architecture and not another.
+  "$BUILD_ROOT/bin/repo" advance --from "$from" --to "$to" --arch all --skip-prod-check "$@"
 }
 
 wait_for_published() { # wait_for_published <channel> <version> [timeout-seconds]
