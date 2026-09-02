@@ -55,7 +55,9 @@ got_fpr=$(gpg --batch --with-colons --fingerprint | awk -F: '/^fpr:/{print $10; 
 curl -fsSL -o "$WORK_DIR/InRelease" "$BASE_URL/dists/stable/InRelease" ||
   fail "Could not fetch InRelease"
 
-gpg --batch --verify "$WORK_DIR/InRelease" >/dev/null 2>&1 ||
+# Written out and read back rather than verified in place: gpg reports a good
+# signature on a clearsigned file that carries unsigned text outside the armour.
+gpg --batch --yes --output "$WORK_DIR/Release" --decrypt "$WORK_DIR/InRelease" >/dev/null 2>&1 ||
   fail "InRelease is not signed by Anthropic's release key"
 
 # Each architecture's Packages index, authenticated by the hash InRelease
@@ -70,7 +72,7 @@ fetch_packages() {
     /^SHA256:/                     { in_block = 1; next }
     /^[A-Za-z][A-Za-z0-9-]*:/      { in_block = 0 }
     in_block && $3 == path && length($1) == 64 { print $1; exit }
-  ' "$WORK_DIR/InRelease")
+  ' "$WORK_DIR/Release")
   [[ -n "$want" ]] || fail "InRelease carries no SHA256 for $path"
 
   curl -fsSL -o "$out" "$BASE_URL/dists/stable/$path" ||
