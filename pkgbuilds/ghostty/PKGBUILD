@@ -39,20 +39,9 @@ sha256sums_aarch64=('958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498
 prepare() {
 	cd "$_archive"
 	local zig_path=$PATH
-	local attempt
 	[[ $CARCH != aarch64 ]] || zig_path="$srcdir/zig-aarch64-linux-$_zig_version:$PATH"
-	for attempt in 1 2 3; do
-		if PATH="$zig_path" ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache/" \
-			./nix/build-support/fetch-zig-cache.sh; then
-			return
-		fi
-		(( attempt < 3 )) || {
-			echo "Failed to fetch the Zig dependency cache after 3 attempts" >&2
-			return 1
-		}
-		echo "Retrying the Zig dependency cache fetch ($attempt/3)" >&2
-		sleep $((attempt * 5))
-	done
+	PATH="$zig_path" ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache/" \
+		./nix/build-support/fetch-zig-cache.sh
 }
 
 build() {

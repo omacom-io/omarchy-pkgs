@@ -9,7 +9,8 @@ grep -Fqx $'\tZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache/" ./nix/build-suppo
   echo 'Upstream Ghostty dependency-fetch command changed; update the AArch64 hook deliberately' >&2
   exit 1
 }
-sed -i '/ZIG_GLOBAL_CACHE_DIR=.*fetch-zig-cache.sh/c\	local zig_path=$PATH\n	local attempt\n	[[ $CARCH != aarch64 ]] || zig_path="$srcdir/zig-aarch64-linux-$_zig_version:$PATH"\n	for attempt in 1 2 3; do\n		if PATH="$zig_path" ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache/" \\\n			./nix/build-support/fetch-zig-cache.sh; then\n			return\n		fi\n		(( attempt < 3 )) || {\n			echo "Failed to fetch the Zig dependency cache after 3 attempts" >&2\n			return 1\n		}\n		echo "Retrying the Zig dependency cache fetch ($attempt/3)" >&2\n		sleep $((attempt * 5))\n	done' PKGBUILD
+sed -i '/ZIG_GLOBAL_CACHE_DIR=.*fetch-zig-cache.sh/c\	local zig_path=$PATH\n	[[ $CARCH != aarch64 ]] || zig_path="$srcdir/zig-aarch64-linux-$_zig_version:$PATH"\n	PATH="$zig_path" ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global-cache/" \\
+		./nix/build-support/fetch-zig-cache.sh' PKGBUILD
 sed -i '/^build() {/,/^}/ { /^[[:space:]]*cd "$_archive"$/a\	local zig_cmd=zig\n	[[ $CARCH != aarch64 ]] || zig_cmd="$srcdir/zig-aarch64-linux-$_zig_version/zig"
 }' PKGBUILD
 sed -i 's/DESTDIR=build zig build/DESTDIR=build "$zig_cmd" build/' PKGBUILD

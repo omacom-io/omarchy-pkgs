@@ -86,6 +86,13 @@ justification:
   that new baseline, the remaining delta only declares AArch64 and selects
   electron-builder's `linux-arm64-unpacked` output.
 
+- PPSSPP's generic assets-path patch was rebased against the pinned libretro
+  source revision. Its install path is unchanged, but it now applies without
+  fuzz. The package-local post-sync hook preserves that exact replacement only
+  when the fetched upstream patch still matches the reviewed old digest; a new
+  upstream baseline therefore stops for review instead of silently restoring
+  the stale hunk.
+
 ### Upstream additions reviewed on 2026-09-01
 
 Rebasing onto upstream commit `a3d150e2b02c05fa5f7736d82bd42839516d2a3f`
@@ -150,6 +157,26 @@ foreign executable or audit error. The source tag for T3 Code 0.0.37 still
 declares 0.0.36 in electron-builder's internal artifact name, so the recipe
 selects the unique ARM64 artifact instead of rewriting vendor metadata.
 
+After rebasing this branch onto upstream `master` on 2026-09-03, T3 Code had
+advanced to 0.0.38. Its new source checksum and frozen lockfile verified, and a
+fresh native AArch64 Docker build produced
+`t3code-bin-0.0.38-1-aarch64.pkg.tar.zst`. The recursive audit expanded 14,770
+files (723,185,733 bytes), found 17 AArch64 ELF files and one nested AppImage,
+and reported no wrong-architecture ELF, foreign executable, reviewed exception,
+or extraction error. This tag likewise declares the previous 0.0.37 internally,
+so the version-independent artifact selection was exercised again. No QEMU or
+binfmt emulation was used.
+
+That rebase also replaced the removed x86-only `t3code-patched-bin` recipe with
+upstream's new `strata` source recipe. A native AArch64 build of Strata 0.8.0,
+together with its repository-local `xdg-terminal-exec` dependency, passed all
+375 upstream tests. The final Strata package contained nine files and one
+AArch64 ELF; the recursive audit reported no wrong-architecture ELF, foreign
+executable, reviewed exception, nested container, or extraction error. The
+dependency package also passed its own 24 tests and payload audit. No recipe or
+network-policy change was needed, and neither build used QEMU or binfmt
+emulation.
+
 After upstream advanced during the audit, Hermes Desktop 2026.8.18-2 was
 rebuilt again from the new baseline. Its package expanded to 477 files with
 nine AArch64 ELF files and two nested containers, including the source-built
@@ -166,7 +193,7 @@ no foreign payload or audit error. Neither build used QEMU or binfmt emulation.
 | `asdcontrol` | The upstream recipe unnecessarily restricts the package to x86_64. | `post-sync.sh` extends the architecture declaration only. |
 | `cursor-bin` | ARM64 uses the vendor Debian bundle, while the x86_64 recipe repackages against system Electron. The ARM bundle also contains a Windows x64 JS-debug native module. | `post-sync.sh` adds the ARM source, computes its checksum during sync, separates dependencies, installs the vendor bundle through an ARM-only package function, and removes Windows-only JS-debug modules. |
 | `cursor-cli` | The vendor's ARM64 archive contains a working native `tree-sitter-bash` binding but also bundles unused x86_64, Windows, and macOS prebuilds. | An AUR-sync recipe patch verifies the native binding and removes the foreign prebuild directory only from the AArch64 package. The x86_64 package path is unchanged. |
-| `ghostty` | The Arch Linux ARM toolchain does not supply the same Zig input expected by the upstream recipe. | `post-sync.sh` adds a pinned upstream AArch64 Zig archive and selects it only for the ARM build. The upstream dependency-cache fetch is retried at most three times so a transient download failure does not invalidate an otherwise reproducible build. |
+| `ghostty` | The Arch Linux ARM toolchain does not supply the same Zig input expected by the upstream recipe. | `post-sync.sh` adds a pinned upstream AArch64 Zig archive and selects it only for dependency resolution and the ARM build. |
 | `github-copilot-cli` | The vendor artifact supports ARM64 but the AUR architecture list is narrower, and its ARM npm payload also retains x64 Linux search helpers alongside native copies. | `post-sync.sh` extends the architecture declaration. A recipe patch requires the ARM64 core runtime, native addons, `rg`, and `tgrep`, then removes only the x64 Linux search helpers on AArch64. |
 | `grok-bot` | Vendor download paths and archives differ by architecture. | `post-sync.sh` adds the ARM64 Debian source and computes its checksum during sync. |
 | `heroic-games-launcher-bin` | The AUR package follows Heroic's x86_64 archive, but Heroic does not publish a Linux ARM64 application artifact. Two x86_64 Windows shims are intentional runtime data for its Wine integrations. | A recipe patch preserves the AUR x86_64 path and builds the same tag from source for ARM64. Its `post-sync.sh` scopes the AUR artifact to x86_64, pins the ARM source checksum, and stops for review if Heroic changes any helper-binary version. The two Wine shims are retained only under exact path-and-digest audit entries. |

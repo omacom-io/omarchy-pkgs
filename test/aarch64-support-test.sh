@@ -173,15 +173,18 @@ grep -Fq 'if [[ $CARCH == x86_64 ]]; then' \
   exit 1
 }
 
-# Ghostty fetches a pinned Zig dependency graph before building. A transient
-# mirror failure must be retried, but never indefinitely.
+# Ghostty must use the pinned AArch64 Zig binary for both dependency resolution
+# and compilation. Keep the exact upstream-command guard, without changing the
+# upstream download policy.
 ghostty_pkgbuild="$ROOT/pkgbuilds/ghostty/PKGBUILD"
 ghostty_post_sync="$ROOT/pkgbuilds/ghostty/.omarchy/post-sync.sh"
 for recipe in "$ghostty_pkgbuild" "$ghostty_post_sync"; do
-  grep -Fq 'for attempt in 1 2 3' "$recipe" &&
+  grep -Fq 'local zig_path=$PATH' "$recipe" &&
+    grep -Fq 'zig-aarch64-linux-$_zig_version:$PATH' "$recipe" &&
+    grep -Fq 'PATH="$zig_path" ZIG_GLOBAL_CACHE_DIR=' "$recipe" &&
     grep -Fq 'fetch-zig-cache.sh' "$recipe" &&
-    grep -Fq 'attempt < 3' "$recipe" || {
-    echo "Ghostty lacks a persistent bounded dependency-fetch retry: $recipe" >&2
+    ! grep -Fq 'for attempt in 1 2 3' "$recipe" || {
+    echo "Ghostty does not preserve the architecture-only Zig selection: $recipe" >&2
     exit 1
   }
 done
@@ -190,6 +193,34 @@ grep -Fq 'Upstream Ghostty dependency-fetch command changed' "$ghostty_post_sync
   exit 1
 }
 
+# PPSSPP's upstream assets-path patch predates the pinned source revision.
+# Preserve the exact rebased patch after sync, but only from the reviewed old
+# baseline so a future upstream change fails closed.
+ppsspp_dir="$ROOT/pkgbuilds/libretro-ppsspp"
+cmp -s "$ppsspp_dir/libretro-ppsspp-assets-path.patch" \
+  "$ppsspp_dir/.omarchy/libretro-ppsspp-assets-path.patch" || {
+  echo 'PPSSPP does not persist its rebased assets patch across sync' >&2
+  exit 1
+}
+ppsspp_rebased_digest=d23da7c7b52de9dbc9a72ea05f52071843853f423421bfdbcd56334bcd11d210bc83b177d92b0e752b84be18685f4d78f224cf84c246da271946a3f14e72652d
+printf '%s  %s\n' "$ppsspp_rebased_digest" \
+  "$ppsspp_dir/libretro-ppsspp-assets-path.patch" |
+  b2sum --check --status || {
+  echo 'PPSSPP rebased assets patch does not match its reviewed digest' >&2
+  exit 1
+}
+grep -Fq "$ppsspp_rebased_digest" "$ppsspp_dir/PKGBUILD" || {
+  echo 'PPSSPP PKGBUILD does not pin the rebased assets patch' >&2
+  exit 1
+}
+for digest in \
+  b46c8f4a147f1b8fddb8664982c4568e9cac74afad65cb16adbccaba26b93baf0f59dd51693a422bd64782c4a95cf8e2ff55e848701b2fb1e1e785ca611d1dc6 \
+  "$ppsspp_rebased_digest"; do
+  grep -Fq "$digest" "$ppsspp_dir/.omarchy/post-sync.sh" || {
+    echo "PPSSPP post-sync lacks a reviewed patch digest: $digest" >&2
+    exit 1
+  }
+done
 # LM Studio's asset path contains the AUR/vendor pkgrel. Omarchy's local
 # rebuild suffix must not change that vendor URL.
 grep -Eq '^_vendor_pkgrel=[0-9]+$' "$ROOT/pkgbuilds/lmstudio-bin/PKGBUILD" &&
