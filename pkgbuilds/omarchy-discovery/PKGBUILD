@@ -10,10 +10,10 @@ makedepends=('cargo')
 provides=('omarchy-plugin-workbench')
 conflicts=('omarchy-plugin-workbench')
 
-_commit='5d7af0b7ded2faae3a036f43936c7e338a16d9e9'
+_commit='0d3c38085a0da6021842f29fbd2b6c2bd451d49a'
 _srcdir="omarchy-plugin-workbench-$_commit"
 source=("$pkgname-$_commit.tar.gz::$url/archive/$_commit.tar.gz")
-sha256sums=('dd5d947dacc6a0f74f8df504fc84ab43c34c299d785df3f7f20138dcad054594')
+sha256sums=('1d91e1c3856a54893c9df6a81bd5016fb0cb0f76781e99794a56a9a352d0ed86')
 
 prepare() {
   cd "$_srcdir"
