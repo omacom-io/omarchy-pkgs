@@ -34,5 +34,8 @@ if [[ -z "$sha256" ]]; then
   exit 1
 fi
 
+# The key names the PKGBUILD array to rewrite: the vendor tarball lives in
+# source_x86_64/sha256sums_x86_64, leaving the launcher's own plain sha256sums
+# alone.
 jq -n --arg pkgver "$version" --arg sha256 "$sha256" \
   '{pkgver: $pkgver, sha256sums: {x86_64: [$sha256]}}'
