@@ -10,7 +10,7 @@ pkgver=0.2.3
 pkgrel=1
 pkgdesc="Local-first block notes with a wiki-link graph and a built-in AI research agent"
 arch=('x86_64')
-url="https://github.com/Onefailatatime/slap-notes"
+url="https://slapnotes.com"
 license=('LicenseRef-proprietary')
 depends=(
   'alsa-lib'
