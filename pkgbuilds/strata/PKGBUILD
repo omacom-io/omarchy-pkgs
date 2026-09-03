@@ -1,6 +1,6 @@
 pkgname=strata
 pkgver=0.8.0
-pkgrel=1
+pkgrel=2
 pkgdesc='Fast, keyboard-first file manager for modern Linux desktops'
 arch=('x86_64' 'aarch64')
 url='https://github.com/lgse/strata'
@@ -28,7 +28,7 @@ depends=(
   'util-linux'
   'xdg-terminal-exec'
 )
-makedepends=('cargo' 'glib2-devel' 'pkgconf')
+makedepends=('cargo' 'git' 'glib2-devel' 'pkgconf')
 optdepends=(
   'gvfs-smb: browse SMB network shares'
   'imagemagick: additional camera RAW preview support'
@@ -37,12 +37,19 @@ optdepends=(
 conflicts=('strata-git')
 options=('!debug' '!lto')
 
-_commit='61b4b0bc74a5b8ca262c7c080e9fea57bba65ff5'
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('8a6179ad5673afd8036ff6640c1740f6fa676516a05346c180d67ef98c4a56f7')
 
 prepare() {
   cd "$pkgname-$pkgver"
+
+  local commit
+  if ! commit=$(git get-tar-commit-id < <(gzip -dc "$srcdir/$pkgname-$pkgver.tar.gz")) ||
+    [[ ! $commit =~ ^[0-9a-f]{40}$ ]]; then
+    printf 'Could not recover the release commit from the source archive\n' >&2
+    return 1
+  fi
+  printf '%s\n' "$commit" >.build-commit
 
   cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
 }
@@ -51,7 +58,8 @@ build() {
   cd "$pkgname-$pkgver"
 
   export CARGO_TARGET_DIR=target
-  export STRATA_BUILD_COMMIT="$_commit"
+  export STRATA_BUILD_COMMIT
+  STRATA_BUILD_COMMIT=$(<.build-commit)
   export STRATA_RELEASE_TAG="v$pkgver"
   export STRATA_BUILD_KIND=stable
   cargo build --frozen --release
@@ -61,7 +69,8 @@ check() {
   cd "$pkgname-$pkgver"
 
   export CARGO_TARGET_DIR=target
-  export STRATA_BUILD_COMMIT="$_commit"
+  export STRATA_BUILD_COMMIT
+  STRATA_BUILD_COMMIT=$(<.build-commit)
   export STRATA_RELEASE_TAG="v$pkgver"
   export STRATA_BUILD_KIND=stable
   cargo test --frozen --release --all-targets --all-features
