@@ -1,0 +1,71 @@
+# Maintainer: FunnelFix <linda@sayhellotolinda.com>
+
+pkgname=slap-notes-bin
+_appname=slap-notes
+pkgver=0.2.2
+pkgrel=1
+pkgdesc="Local-first block notes with a wiki-link graph (the Cluster Brain) and a built-in AI research agent"
+arch=('x86_64')
+url="https://slapnotes.com"
+license=('custom:proprietary')
+depends=(
+  'alsa-lib'
+  'at-spi2-core'
+  'cairo'
+  'dbus'
+  'expat'
+  'gcc-libs'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libcups'
+  'libdrm'
+  'libx11'
+  'libxcb'
+  'libxcomposite'
+  'libxdamage'
+  'libxext'
+  'libxfixes'
+  'libxkbcommon'
+  'libxrandr'
+  'mesa'
+  'nspr'
+  'nss'
+  'pango'
+  'systemd-libs'
+  'xdg-utils'
+)
+provides=("${_appname}=${pkgver}")
+conflicts=("${_appname}")
+replaces=("${_appname}")
+# Electron ships prebuilt binaries: stripping them breaks the bundle.
+options=('!strip' '!debug')
+install="${pkgname}.install"
+source=("${pkgname}-${pkgver}.tar.zst::https://github.com/Onefailatatime/slap-notes/releases/download/${pkgver}/${_appname}-${pkgver}-linux-x64.tar.zst")
+sha256sums=('5e78b6b3b61ef2ed59fde7df9f9d64e956e1faae915e28cd2ac23b746d3bb02f')
+
+package() {
+  cd "${srcdir}/${_appname}-${pkgver}"
+
+  install -dm755 "${pkgdir}/opt/${_appname}"
+  cp -a app/. "${pkgdir}/opt/${_appname}/"
+
+  # The sandbox helper stays non-SUID here; the install script raises it only
+  # on kernels without unprivileged user namespaces.
+  chmod 0755 "${pkgdir}/opt/${_appname}/chrome-sandbox"
+
+  install -dm755 "${pkgdir}/usr/bin"
+  ln -s "/opt/${_appname}/${_appname}" "${pkgdir}/usr/bin/${_appname}"
+
+  install -Dm644 "${_appname}.desktop" \
+    "${pkgdir}/usr/share/applications/${_appname}.desktop"
+
+  local size
+  for size in 16 32 48 64 128 256 512 1024; do
+    install -Dm644 "icons/${size}.png" \
+      "${pkgdir}/usr/share/icons/hicolor/${size}x${size}/apps/${_appname}.png"
+  done
+
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
