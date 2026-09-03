@@ -2,7 +2,7 @@
 
 pkgname=flea
 pkgver=0.1.2
-pkgrel=1
+pkgrel=2
 pkgdesc='Fast, keyboard-first file manager for Omarchy'
 arch=('x86_64')
 url='https://github.com/thisisgm/flea'
@@ -110,7 +110,38 @@ check() {
   cd "$pkgname-$pkgver"
 
   export CARGO_TARGET_DIR=target
-  cargo test --frozen --release
+
+  local -a test_args=()
+  if ! /usr/bin/prlimit --cpu=30 --as=1073741824 \
+    /usr/bin/bwrap --unshare-all --die-with-parent --new-session --clearenv \
+    --ro-bind /usr /usr --ro-bind /etc /etc \
+    --symlink usr/lib /lib --symlink usr/lib /lib64 \
+    --symlink usr/bin /bin --symlink usr/bin /sbin \
+    --proc /proc --dev /dev --tmpfs /tmp /usr/bin/true >/dev/null 2>&1; then
+    printf 'Skipping sandbox integration tests: this builder cannot create an unprivileged namespace\n'
+    test_args+=(
+      --skip backend::archiveops::tests::a_tool_that_exits_zero_writing_nothing_is_caught_by_the_predicate
+      --skip backend::archiveops::tests::an_empty_archive_extracts_to_an_empty_directory_and_that_is_success
+      --skip backend::archiveops::tests::only_the_archive_root_extracts_to_nothing_while_nested_directories_do_not
+      --skip backend::archiveops::tests::the_emptiness_check_reads_the_destination_and_the_index_separately
+      --skip backend::thumbs::tests::a_cancelled_job_never_runs
+      --skip backend::thumbs::tests::a_real_file_round_trips_to_a_stamped_cache_entry
+      --skip backend::thumbs::tests::cancel_all_empties_the_queue
+      --skip backend::thumbs::tests::the_queue_is_bounded_and_drops_the_oldest_rather_than_growing
+    )
+  fi
+
+  if [[ ! -x /usr/bin/evince-thumbnailer ]] ||
+    [[ ! -x /usr/bin/ffmpegthumbnailer ]] ||
+    [[ ! -x /usr/bin/glycin-thumbnailer ]]; then
+    printf 'Skipping thumbnailer fixture tests: this builder lacks their optional host programs\n'
+    test_args+=(
+      --skip backend::thumbspec::tests::a_type_two_files_declare_goes_to_the_first_in_path_order
+      --skip backend::thumbspec::tests::the_heaviest_shipped_field_parses
+    )
+  fi
+
+  cargo test --frozen --release -- "${test_args[@]}"
   ./tests/js.sh
   ./tests/keymap-gen.sh
 }
