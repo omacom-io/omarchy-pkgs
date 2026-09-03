@@ -1,8 +1,8 @@
 # Maintainer: GM <gianmarcomorales@icloud.com>
 
 pkgname=flea
-pkgver=0.1.2
-pkgrel=2
+pkgver=0.1.3
+pkgrel=1
 pkgdesc='Fast, keyboard-first file manager for Omarchy'
 arch=('x86_64')
 url='https://github.com/thisisgm/flea'
@@ -49,7 +49,7 @@ source=(
   "security-b4b7ee4.patch::$url/commit/${_security_patches[3]}.patch"
 )
 sha256sums=(
-  '3788a735be2cb6eef0c1770833c82bc6591e20b7681fe02172aaea21c2a2d8fb'
+  '3599ab76253c444dea027f1ebe85b32612d9a174e60eb8aca33ee21d9e2d6973'
   'c610a9f44294b67341940203943c9c567003b65cc436d6013cd36754379183d8'
   'e457ef17e26f70057b1184eeb938fccc5906f48a7c77f1df573d55d13a845425'
   'f8381456a3b5f39d341cc6610bf27beb8354892b17a1c8c6d7882db4e40824c3'
