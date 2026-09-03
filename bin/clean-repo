@@ -33,7 +33,7 @@ clean_packages() {
 
     # Extract package name (remove version and architecture)
     # Format: name-version-release-arch.pkg.tar.*
-    local pkgname=$(echo "$pkg" | sed -E 's/-[0-9]+.*-(any|x86_64|i686)\.pkg\.tar\..*//')
+    local pkgname=$(echo "$pkg" | sed -E 's/-[0-9]+.*-(any|x86_64|i686|aarch64)\.pkg\.tar\..*//')
 
     # Add to array
     if [[ -n "${packages[$pkgname]}" ]]; then

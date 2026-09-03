@@ -5,6 +5,7 @@
 
 # Setup directories
 ARCH=${ARCH:-x86_64}
+export CARCH="$ARCH"
 MIRROR=${MIRROR:-edge}
 DRY_RUN=${DRY_RUN:-false}
 PKGBUILDS_DIR=${PKGBUILDS_DIR:-/pkgbuilds}
@@ -14,6 +15,73 @@ HELPERS_DIR=${HELPERS_DIR:-/helpers}
 SRC_DIR=${SRC_DIR:-/src}
 
 source "$HELPERS_DIR/package-metadata.sh"
+
+trust_repository_key() {
+  local key=${OMARCHY_REPOSITORY_KEY:-}
+  local expected=${OMARCHY_REPOSITORY_KEY_FINGERPRINT:-}
+  local key_home fingerprint
+  local -a fingerprints=()
+
+  if [[ -z $key ]]; then
+    [[ -z $expected ]] || {
+      echo "==> ERROR: OMARCHY_REPOSITORY_KEY_FINGERPRINT requires OMARCHY_REPOSITORY_KEY"
+      return 1
+    }
+    return 0
+  fi
+  [[ $key != *$'\n'* && -r $key ]] || {
+    echo "==> ERROR: Repository signing key is missing or unreadable: $key"
+    return 1
+  }
+
+  key_home=$(mktemp -d) || {
+    echo "==> ERROR: Cannot create temporary key inspection directory"
+    return 1
+  }
+  chmod 700 "$key_home" || {
+    rm -rf "$key_home"
+    echo "==> ERROR: Cannot protect temporary key inspection directory"
+    return 1
+  }
+  mapfile -t fingerprints < <(
+    GNUPGHOME=$key_home gpg --batch --show-keys --with-colons "$key" 2>/dev/null |
+      awk -F: '$1 == "pub" { want_fingerprint=1; next }
+        want_fingerprint && $1 == "fpr" { print $10; want_fingerprint=0 }'
+  )
+  rm -rf "$key_home"
+  (( ${#fingerprints[@]} == 1 )) || {
+    echo "==> ERROR: Repository signing key must contain exactly one public key"
+    return 1
+  }
+  fingerprint=${fingerprints[0]^^}
+  [[ $fingerprint =~ ^[0-9A-F]{40}$ ]] || {
+    echo "==> ERROR: Repository signing key has an invalid fingerprint"
+    return 1
+  }
+
+  if [[ -n $expected ]]; then
+    expected=$(tr -d '[:space:]' <<< "$expected")
+    expected=${expected^^}
+    [[ $expected =~ ^[0-9A-F]{40}$ ]] || {
+      echo "==> ERROR: Invalid OMARCHY_REPOSITORY_KEY_FINGERPRINT"
+      return 1
+    }
+    [[ $fingerprint == "$expected" ]] || {
+      echo "==> ERROR: Repository signing key fingerprint mismatch"
+      return 1
+    }
+  fi
+
+  sudo pacman-key --add "$key" >/dev/null || {
+    echo "==> ERROR: Cannot import repository signing key"
+    return 1
+  }
+  # The builder image deliberately removes its pacman master private key, so
+  # it cannot locally sign newly imported keys at runtime. The repository
+  # stanza already uses TrustAll; the explicit fingerprint check above is the
+  # trust anchor while pacman still verifies every available signature.
+  echo "  -> imported pinned repository signing key: $fingerprint"
+}
 
 if [[ "$DRY_RUN" != true ]]; then
   # Import GPG keys
@@ -46,8 +114,18 @@ EOF
   cd "$BUILD_OUTPUT_DIR"
   if [[ ! -f "omarchy-build.db.tar.zst" ]]; then
     # Create an empty database
-    repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
-    ln -sf omarchy-build.db.tar.zst omarchy-build.db
+    if ! repo-add omarchy-build.db.tar.zst >/dev/null 2>&1; then
+      echo "==> ERROR: Cannot initialize the local build repository"
+      exit 1
+    fi
+    [[ -f omarchy-build.db.tar.zst ]] || {
+      echo "==> ERROR: Local build repository database was not created"
+      exit 1
+    }
+    ln -sf omarchy-build.db.tar.zst omarchy-build.db || {
+      echo "==> ERROR: Cannot create the local build repository alias"
+      exit 1
+    }
   else
     # Database exists, check if we need to rebuild it from packages
     if ls *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | grep -q .; then
@@ -59,6 +137,11 @@ EOF
 
   # Add omarchy repo if it has a database (stable packages)
   if [[ -f "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" ]] || [[ -f "$FINAL_OUTPUT_DIR/omarchy.db" ]]; then
+    # A newly bootstrapped architecture may need to consume a signed Omarchy
+    # repository before its keyring package can be installed from that same
+    # repository. The release backend can hand the public key in explicitly;
+    # the optional fingerprint keeps that trust bootstrap pinned.
+    trust_repository_key || exit 1
     sudo tee -a /etc/pacman.conf > /dev/null <<EOF
 
 [omarchy]
@@ -69,7 +152,10 @@ EOF
   fi
 
   # Sync pacman database
-  sudo pacman -Sy
+  if ! sudo pacman -Sy; then
+    echo "==> ERROR: Cannot synchronize package databases"
+    exit 1
+  fi
 fi
 
 echo "==> Package Builder"
@@ -86,10 +172,91 @@ FAILED_PACKAGES=""
 SUCCESSFUL_PACKAGES=""
 SKIPPED_PACKAGES=""
 
+# Map package names and virtual provides back to the package base that emits
+# them. A zero-baseline build cannot rely on an older repository copy to
+# satisfy dependencies such as `mise`, which is produced by `mise-bin`.
+declare -A DEPENDENCY_PROVIDER=()
+declare -A DEPENDENCY_DIRECT_PROVIDER=()
+
 # Find package directory
 find_package_dir() {
   local pkg="$1"
   package_dir_for_name "$pkg"
+}
+
+package_direct_dependency_names() {
+  local pkg="$1"
+  local pkgdir pkgbuild
+  pkgdir=$(find_package_dir "$pkg") || return 1
+  pkgbuild="$pkgdir/PKGBUILD"
+
+  (
+    cd "$pkgdir" || exit 1
+    source "$pkgbuild" >/dev/null 2>&1 || exit 1
+    printf '%s\n' "$pkg" "${pkgname[@]}"
+  ) | awk 'NF && !seen[$0]++'
+}
+
+package_virtual_dependency_names() {
+  local pkg="$1"
+  local pkgdir pkgbuild
+  pkgdir=$(find_package_dir "$pkg") || return 1
+  pkgbuild="$pkgdir/PKGBUILD"
+
+  (
+    cd "$pkgdir" || exit 1
+    source "$pkgbuild" >/dev/null 2>&1 || exit 1
+    declare -n arch_provides="provides_$ARCH"
+    printf '%s\n' "${provides[@]}" "${arch_provides[@]}"
+  ) | while IFS= read -r name; do
+    # provides entries may pin the version supplied by the package.
+    name=${name%%[<>=]*}
+    [[ -n $name ]] && printf '%s\n' "$name"
+  done
+  return 0
+}
+
+index_dependency_providers() {
+  local pkg name names existing
+  DEPENDENCY_PROVIDER=()
+  DEPENDENCY_DIRECT_PROVIDER=()
+
+  # Real package names always win over virtual provides. This matters when an
+  # edge repository contains mutually exclusive stable/dev variants: the dev
+  # package may provide the stable name, but a dependency that names the real
+  # stable package must still order against that package base.
+  for pkg in "${PACKAGES_TO_BUILD[@]}"; do
+    if ! names=$(package_direct_dependency_names "$pkg"); then
+      echo "ERROR: Cannot read package names for '$pkg'" >&2
+      return 1
+    fi
+    while IFS= read -r name; do
+      existing=${DEPENDENCY_DIRECT_PROVIDER[$name]:-}
+      if [[ -n $existing && $existing != "$pkg" ]]; then
+        echo "ERROR: Multiple local package bases emit '$name': $existing and $pkg" >&2
+        return 1
+      fi
+      DEPENDENCY_DIRECT_PROVIDER[$name]=$pkg
+      DEPENDENCY_PROVIDER[$name]=$pkg
+    done <<< "$names"
+  done
+
+  for pkg in "${PACKAGES_TO_BUILD[@]}"; do
+    if ! names=$(package_virtual_dependency_names "$pkg"); then
+      echo "ERROR: Cannot read virtual providers for '$pkg'" >&2
+      return 1
+    fi
+    while IFS= read -r name; do
+      [[ -n $name ]] || continue
+      [[ -z ${DEPENDENCY_DIRECT_PROVIDER[$name]:-} ]] || continue
+      existing=${DEPENDENCY_PROVIDER[$name]:-}
+      if [[ -n $existing && $existing != "$pkg" ]]; then
+        echo "ERROR: Ambiguous virtual provider for '$name': $existing and $pkg" >&2
+        return 1
+      fi
+      DEPENDENCY_PROVIDER[$name]=$pkg
+    done <<< "$names"
+  done
 }
 
 # Get version from final output (production packages)
@@ -286,19 +453,98 @@ build_package() {
     # Ensure output directory exists
     mkdir -p "$BUILD_OUTPUT_DIR"
     
-    for pkg_file in *.pkg.tar.*; do
-      [[ -f "$pkg_file" ]] && cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
+    # A source archive is allowed to end in .pkg.tar.zst (for example, a
+    # recipe that repackages an official Arch package). Copy only the outputs
+    # declared by makepkg, never every matching file in the working directory.
+    local -a built_filenames=()
+    local -a package_outputs=()
+    local -A used_audit_allowlists=()
+    mapfile -t package_outputs < <(makepkg --packagelist)
+    for pkg_file in "${package_outputs[@]}"; do
+      [[ -f $pkg_file ]] || {
+        echo "    Declared package output is missing: $pkg_file"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        cd "/src/$pkg" || return 1
+        return 1
+      }
+      if [[ $ARCH == aarch64 ]]; then
+        echo "    Auditing final AArch64 payload: ${pkg_file##*/}"
+        local -a audit_args=(--arch aarch64 --reject-foreign)
+        local package_output_name output_allowlist generic_allowlist
+        package_output_name=$(bsdtar -xOf "$pkg_file" .PKGINFO |
+          awk -F ' = ' '$1 == "pkgname" { print $2; exit }')
+        [[ $package_output_name =~ ^[A-Za-z0-9@._+-]+$ ]] || {
+          echo "    Cannot determine a safe package name for architecture audit: $pkg_file"
+          FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+          cd "/src/$pkg" || return 1
+          return 1
+        }
+        generic_allowlist=.omarchy/aarch64-audit-allowlist
+        output_allowlist=".omarchy/aarch64-audit-allowlist.$package_output_name"
+        if [[ -f $generic_allowlist && -f $output_allowlist ]]; then
+          echo "    Ambiguous architecture audit allowlists for $package_output_name"
+          FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+          cd "/src/$pkg" || return 1
+          return 1
+        elif [[ -f $output_allowlist ]]; then
+          audit_args+=(--allowlist "$output_allowlist")
+          used_audit_allowlists["$output_allowlist"]=1
+        elif [[ -f $generic_allowlist ]]; then
+          audit_args+=(--allowlist "$generic_allowlist")
+          used_audit_allowlists["$generic_allowlist"]=1
+        fi
+        if ! /build/audit-package-architecture.sh "${audit_args[@]}" "$pkg_file"; then
+          echo "    Package architecture audit failed: $pkg_file"
+          FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+          cd "/src/$pkg" || return 1
+          return 1
+        fi
+      fi
+      if ! cp "$pkg_file" "$BUILD_OUTPUT_DIR/"; then
+        echo "    Failed to copy $pkg_file to $BUILD_OUTPUT_DIR"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        cd "/src/$pkg" || return 1
+        return 1
+      fi
+      built_filenames+=("${pkg_file##*/}")
     done
+
+    if [[ $ARCH == aarch64 && -d .omarchy ]]; then
+      local configured_allowlist
+      while IFS= read -r configured_allowlist; do
+        [[ -n ${used_audit_allowlists[$configured_allowlist]:-} ]] && continue
+        echo "    Architecture audit allowlist did not match a package output: $configured_allowlist"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        cd "/src/$pkg" || return 1
+        return 1
+      done < <(find .omarchy -maxdepth 1 -type f \
+        \( -name aarch64-audit-allowlist -o -name 'aarch64-audit-allowlist.*' \) \
+        -print | sort)
+    fi
+
+    (( ${#built_filenames[@]} > 0 )) || {
+      echo "    Makepkg completed without producing a package archive"
+      FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+      cd "/src/$pkg" || return 1
+      return 1
+    }
 
     cd "$BUILD_OUTPUT_DIR"
 
-    # Find ALL package files (handles split packages)
-    local new_pkgs=($(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db'))
-
-    if [[ ${#new_pkgs[@]} -gt 0 ]]; then
-      repo-add omarchy-build.db.tar.zst "${new_pkgs[@]}" >/dev/null 2>&1
-      ln -sf omarchy-build.db.tar.zst omarchy-build.db
-      sudo pacman -Sy >/dev/null 2>&1
+    # A package base may emit split packages whose names do not share the
+    # package directory prefix. Index the files makepkg actually produced.
+    if ! repo-add omarchy-build.db.tar.zst "${built_filenames[@]}" >/dev/null 2>&1; then
+      echo "    Failed to index package outputs"
+      FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+      cd "/src/$pkg" || return 1
+      return 1
+    fi
+    ln -sf omarchy-build.db.tar.zst omarchy-build.db
+    if ! sudo pacman -Sy >/dev/null; then
+      echo "    Failed to synchronize the updated local build repository"
+      FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+      cd "/src/$pkg" || return 1
+      return 1
     fi
 
     cd /src/$pkg
@@ -325,15 +571,23 @@ get_package_deps() {
     return
   fi
 
-  # Extract depends and makedepends, filter for packages in our pkgbuilds/
+  # Include target-specific dependency arrays when ordering local packages.
   (
     source "$pkgbuild" 2>/dev/null
-    echo "${depends[@]} ${makedepends[@]}"
+    declare -n arch_depends="depends_$ARCH"
+    declare -n arch_makedepends="makedepends_$ARCH"
+    declare -n arch_checkdepends="checkdepends_$ARCH"
+    echo "${depends[*]} ${makedepends[*]} ${checkdepends[*]} ${arch_depends[*]} ${arch_makedepends[*]} ${arch_checkdepends[*]}"
   ) | tr ' ' '\n' | while read -r dep; do
     # Strip version constraints (e.g., 'hyprshade>=1.0' -> 'hyprshade')
     dep=$(echo "$dep" | sed 's/[<>=].*$//')
-    # Check if this dependency exists in our pkgbuilds
-    if find_package_dir "$dep" >/dev/null 2>&1; then
+    [[ -n $dep ]] || continue
+    # Resolve both real package names and virtual provides to the package base
+    # selected for this build. Fall back to the historical direct-directory
+    # lookup for callers that have not initialized the provider index.
+    if [[ -n ${DEPENDENCY_PROVIDER[$dep]:-} ]]; then
+      echo "${DEPENDENCY_PROVIDER[$dep]}"
+    elif find_package_dir "$dep" >/dev/null 2>&1; then
       echo "$dep"
     fi
   done
@@ -494,6 +748,8 @@ if [[ ${#PACKAGES_TO_BUILD[@]} -eq 0 ]]; then
 else
   echo "==> ${#PACKAGES_TO_BUILD[@]} package(s) need building: ${PACKAGES_TO_BUILD[@]}"
   echo "==> Determining build order based on dependencies..."
+
+  index_dependency_providers || exit 1
 
   # Second pass: order only the packages that need building
   # Strategy: build packages with no unmet dependencies first

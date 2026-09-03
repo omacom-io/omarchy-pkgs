@@ -1,0 +1,6 @@
+diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
+--- a/libretro/libretro.cpp
++++ b/libretro/libretro.cpp
+@@ -1269 +1269 @@ void retro_init(void)
+-   g_VFS.Register("", new DirectoryReader(retro_base_dir));
++   g_VFS.Register("", new DirectoryReader(Path("/usr/share/ppsspp/assets")));

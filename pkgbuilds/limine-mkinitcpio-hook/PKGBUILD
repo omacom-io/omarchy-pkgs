@@ -4,11 +4,12 @@ pkgname="limine-mkinitcpio-hook"
 _pkgver=1.38.0
 _extver=""
 pkgver="${_pkgver}${_extver}"
-pkgrel=1
+pkgrel=1.1
 pkgdesc="Install kernels for the Limine bootloader."
 arch=('x86_64' 'aarch64')
 url="https://gitlab.com/Zesko/limine-entry-tool"
-source=("${_pkgname}::git+${url}.git#tag=${pkgver}")
+source=("${_pkgname}::git+${url}.git#tag=${pkgver}"
+	"limine-entry-tool-aarch64.patch")
 source_x86_64=("https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.2.4/graalvm-community-jdk-25i2-25.0.4_linux-x64_bin.tar.gz")
 source_aarch64=("https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.2.4/graalvm-community-jdk-25i2-25.0.4_linux-aarch64_bin.tar.gz")
 license=("GPL3")
@@ -30,13 +31,15 @@ optdepends=(
 makedepends=('git' 'gradle')
 backup=(etc/limine-entry-tool.conf)
 conflicts=('limine-entry-tool')
-sha256sums=('11dd8211898585f79d8361d97606965bb2ca214dccace5b133dc5121e4bb4d01')
+sha256sums=('11dd8211898585f79d8361d97606965bb2ca214dccace5b133dc5121e4bb4d01'
+	'233dd99df7b587ef641766cbe4efc77190c68973118a5fbc7c71685d6457962d')
 sha256sums_x86_64=('3f4a89de8eaa96f2ed677f09957c7e872cd8467aad3537f8b5394c1b8c4b942e')
 sha256sums_aarch64=('22286f7ecd21b9aedb3226b9bf797469e1bd3eefc491e12ef3dd49b452d230b7')
 
 prepare() {
 	[[ -d "${_graalvm_version}" ]] && rm -rf "${_graalvm_version}"
 	mv graalvm-community-*/ "${_graalvm_version}"
+	patch -Np1 -d "$srcdir/${_pkgname}" -i "$srcdir/limine-entry-tool-aarch64.patch"
 	if ! command -v "${_graalvm_version}"/bin/javac >/dev/null 2>&1; then
 		echo "Error: ${_graalvm_version}/bin/javac not found." >&2
 		return 1

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -euo pipefail
+
+BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
+exec "$BUILD_ROOT/build/audit-package-architecture.sh" "$@"

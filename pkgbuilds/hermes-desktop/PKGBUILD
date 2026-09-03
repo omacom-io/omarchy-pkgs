@@ -21,7 +21,7 @@ pkgname=hermes-desktop
 pkgver=2026.8.18
 pkgrel=2
 pkgdesc='Native desktop shell for Hermes Agent'
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url='https://github.com/NousResearch/hermes-agent'
 license=('MIT')
 
@@ -101,7 +101,9 @@ build() {
 }
 
 package() {
-  cd "${srcdir}/${_srcdir}/apps/desktop/release/linux-unpacked"
+  local unpacked_dir='linux-unpacked'
+  [[ $CARCH != aarch64 ]] || unpacked_dir='linux-arm64-unpacked'
+  cd "${srcdir}/${_srcdir}/apps/desktop/release/${unpacked_dir}"
 
   install -dm755 "${pkgdir}/opt/${pkgname}"
   cp -a . "${pkgdir}/opt/${pkgname}/"

@@ -1,0 +1,219 @@
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -1,9 +1,9 @@
+ # Maintainer: Peter Jackson <pete@peteonrails.com>
+ pkgname=voxtype-bin
+ pkgver=1.0.0
+-pkgrel=2
++pkgrel=2.1
+ pkgdesc="Push-to-talk voice-to-text for Linux (pre-built binaries)"
+-arch=('x86_64')
++arch=('x86_64' 'aarch64')
+ url="https://voxtype.io"
+ license=('MIT')
+ depends=(
+@@ -12,6 +12,20 @@
+     'gcc-libs'
+     'glibc'
+ )
++makedepends_aarch64=(
++    'rust'
++    'clang'
++    'cmake'
++    'git'
++    'gtk4'
++    'gtk4-layer-shell'
++    'make'
++    'pkgconf'
++    'python'
++    'shaderc'
++    'vulkan-headers'
++    'vulkan-icd-loader'
++)
+ optdepends=(
+     'wtype: keyboard simulation for Wayland (recommended, best CJK support)'
+     'dotool: keyboard simulation with layout support (KDE/GNOME compatible)'
+@@ -47,7 +61,7 @@
+     '9CCF7915B750CAE8B095ED1AA3FC9F33FD209279'
+ )
+ _github="https://github.com/peteonrails/voxtype/releases/download/v$pkgver"
+-source=(
++source_x86_64=(
+     # Whisper binaries
+     "voxtype-$pkgver-avx2::$_github/voxtype-$pkgver-linux-x86_64-avx2"
+     "voxtype-$pkgver-avx2.asc::$_github/voxtype-$pkgver-linux-x86_64-avx2.asc"
+@@ -123,7 +137,7 @@
+     "quickshell-voxtype-shared-AudioBridge-$pkgver.qml::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/quickshell/voxtype-shared/AudioBridge.qml"
+     "quickshell-voxtype-shared-qmldir-$pkgver::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/quickshell/voxtype-shared/qmldir"
+ )
+-sha256sums=(
++sha256sums_x86_64=(
+     # Whisper binaries
+     '7323514a48aee6a73c0124463bd0276aad2d77f61c537ae753ca527700860572'  # voxtype-avx2
+     'SKIP'                                                             # voxtype-avx2.asc
+@@ -184,7 +198,148 @@
+     '41b894baa1487e47db5f9ec4baeea9c02b6a76d3c8198b4700a88e2cb7ec0b62'  # quickshell/voxtype-shared/qmldir
+ )
+ 
++_archive="voxtype-$pkgver"
++source_aarch64=(
++    "$_archive.tar.gz::https://github.com/peteonrails/voxtype/archive/refs/tags/v$pkgver.tar.gz"
++    "$_archive.tar.gz.asc::https://github.com/peteonrails/voxtype/releases/download/v$pkgver/$_archive.tar.gz.asc"
++)
++sha256sums_aarch64=(
++    '20ba2661139bf9e8f2d7ea30db78d7935a50ae961aa3b898464e2685ebe72d94'
++    'SKIP'
++)
++
++prepare() {
++    [[ $CARCH == aarch64 ]] || return 0
++    cd "$_archive"
++    export CARGO_HOME="$srcdir/cargo-home"
++    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
++}
++
++build() {
++    [[ $CARCH == aarch64 ]] || return 0
++    cd "$_archive"
++
++    export CARGO_HOME="$srcdir/cargo-home"
++    export CARGO_TARGET_DIR=target
++
++    # makepkg's global flags can break whisper.cpp's nested CMake build. Add
++    # reproducible path remapping back after clearing them.
++    unset RUSTFLAGS DEBUG_RUSTFLAGS CFLAGS CXXFLAGS LDFLAGS
++    local source_root="$srcdir/$_archive"
++    export RUSTFLAGS="--remap-path-prefix=$source_root/= --remap-path-prefix=${CARGO_HOME}/registry/src/=cargo/"
++    export CFLAGS="-ffile-prefix-map=$source_root/="
++    export CXXFLAGS="-ffile-prefix-map=$source_root/="
++    export CC=clang
++    export CXX=clang++
++    export CMAKE_BUILD_PARALLEL_LEVEL=4
++    export MAKEFLAGS=-j4
++
++    # Upstream's release profile enables LTO; disabling it avoids known link
++    # hangs in the embedded whisper.cpp build without changing features.
++    cargo build --frozen --release \
++        --config 'profile.release.lto=false' \
++        --config 'profile.release.codegen-units=8'
++    cp target/release/voxtype voxtype-native
++
++    cargo clean
++    cargo build --frozen --release --features gpu-vulkan \
++        --config 'profile.release.lto=false' \
++        --config 'profile.release.codegen-units=8'
++    cp target/release/voxtype voxtype-vulkan
++
++    # ONNX is optional upstream. Build it only when the system runtime is
++    # deliberately present in the clean chroot.
++    if pacman -Q onnxruntime &>/dev/null; then
++        export ORT_STRATEGY=system
++        cargo clean
++        cargo build --frozen --release \
++            --features parakeet-load-dynamic,moonshine,sensevoice,paraformer,dolphin,omnilingual,cohere \
++            --config 'profile.release.lto=false' \
++            --config 'profile.release.codegen-units=8'
++        cp target/release/voxtype voxtype-onnx
++    fi
++
++    cargo clean
++    cargo build --frozen --release \
++        --bin voxtype-osd \
++        --bin voxtype-osd-gtk4 \
++        --bin voxtype-osd-native \
++        --bin voxtype-osd-quickshell \
++        --bin voxtype-audio-bridge \
++        --features osd-gtk4,osd-native \
++        --config 'profile.release.lto=false' \
++        --config 'profile.release.codegen-units=8'
++    cp target/release/voxtype-osd voxtype-osd
++    cp target/release/voxtype-osd-gtk4 voxtype-osd-gtk4
++    cp target/release/voxtype-osd-native voxtype-osd-native
++    cp target/release/voxtype-osd-quickshell voxtype-osd-quickshell
++    cp target/release/voxtype-audio-bridge voxtype-audio-bridge
++}
++
++check() {
++    [[ $CARCH == aarch64 ]] || return 0
++    cd "$_archive"
++    export CARGO_HOME="$srcdir/cargo-home"
++    cargo test --frozen --lib --bins --tests
++}
++
+ package() {
++    if [[ $CARCH == aarch64 ]]; then
++        cd "$_archive"
++
++        install -Dm755 voxtype-native "$pkgdir/usr/lib/voxtype/voxtype-native"
++        install -Dm755 voxtype-vulkan "$pkgdir/usr/lib/voxtype/voxtype-vulkan"
++        [[ ! -f voxtype-onnx ]] || \
++            install -Dm755 voxtype-onnx "$pkgdir/usr/lib/voxtype/voxtype-onnx"
++
++        install -d "$pkgdir/usr/bin"
++        ln -sf /usr/lib/voxtype/voxtype-native "$pkgdir/usr/bin/voxtype"
++        install -Dm755 voxtype-osd "$pkgdir/usr/lib/voxtype/voxtype-osd"
++        install -Dm755 voxtype-osd-gtk4 "$pkgdir/usr/lib/voxtype/voxtype-osd-gtk4"
++        install -Dm755 voxtype-osd-native "$pkgdir/usr/lib/voxtype/voxtype-osd-native"
++        install -Dm755 voxtype-osd-quickshell "$pkgdir/usr/lib/voxtype/voxtype-osd-quickshell"
++        ln -sf /usr/lib/voxtype/voxtype-osd "$pkgdir/usr/bin/voxtype-osd"
++        install -Dm755 voxtype-audio-bridge "$pkgdir/usr/bin/voxtype-audio-bridge"
++
++        install -Dm644 quickshell/shell.qml "$pkgdir/usr/share/voxtype/quickshell/shell.qml"
++        install -Dm644 quickshell/OsdSurface.qml "$pkgdir/usr/share/voxtype/quickshell/OsdSurface.qml"
++        install -Dm644 quickshell/EnginePicker.qml "$pkgdir/usr/share/voxtype/quickshell/EnginePicker.qml"
++        install -Dm644 quickshell/MeetingControls.qml "$pkgdir/usr/share/voxtype/quickshell/MeetingControls.qml"
++        install -Dm644 quickshell/voxtype-shared/Theme.qml \
++            "$pkgdir/usr/share/voxtype/quickshell/voxtype-shared/Theme.qml"
++        install -Dm644 quickshell/voxtype-shared/StateReader.qml \
++            "$pkgdir/usr/share/voxtype/quickshell/voxtype-shared/StateReader.qml"
++        install -Dm644 quickshell/voxtype-shared/AudioBridge.qml \
++            "$pkgdir/usr/share/voxtype/quickshell/voxtype-shared/AudioBridge.qml"
++        install -Dm644 quickshell/voxtype-shared/qmldir \
++            "$pkgdir/usr/share/voxtype/quickshell/voxtype-shared/qmldir"
++
++        install -Dm755 packaging/scripts/voxtype-configure-launcher \
++            "$pkgdir/usr/bin/voxtype-configure-launcher"
++        install -Dm644 packaging/voxtype-configure.desktop \
++            "$pkgdir/usr/share/applications/voxtype-configure.desktop"
++        install -Dm644 config/default.toml "$pkgdir/etc/voxtype/config.toml"
++        install -Dm644 packaging/systemd/voxtype.service \
++            "$pkgdir/usr/lib/systemd/user/voxtype.service"
++        install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
++        install -Dm644 docs/INSTALL.md "$pkgdir/usr/share/doc/$pkgname/INSTALL.md"
++        install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
++        install -Dm644 packaging/completions/voxtype.bash \
++            "$pkgdir/usr/share/bash-completion/completions/voxtype"
++        install -Dm644 packaging/completions/voxtype.zsh \
++            "$pkgdir/usr/share/zsh/site-functions/_voxtype"
++        install -Dm644 packaging/completions/voxtype.fish \
++            "$pkgdir/usr/share/fish/vendor_completions.d/voxtype.fish"
++
++        local man_dir
++        man_dir=$(find target/release/build -type d -path '*/voxtype-*/out/man' -print -quit)
++        if [[ -n $man_dir ]]; then
++            install -d "$pkgdir/usr/share/man/man1"
++            install -Dm644 "$man_dir"/*.1 "$pkgdir/usr/share/man/man1/"
++        fi
++        return
++    fi
++
+     # Install Whisper CPU binaries to /usr/lib/voxtype/
+     install -Dm755 "$srcdir/voxtype-$pkgver-avx2" "$pkgdir/usr/lib/voxtype/voxtype-avx2"
+     install -Dm755 "$srcdir/voxtype-$pkgver-avx512" "$pkgdir/usr/lib/voxtype/voxtype-avx512"
+--- a/voxtype-bin.install
++++ b/voxtype-bin.install
+@@ -53,6 +53,14 @@
+ }
+ 
+ _set_default_backend() {
++    # AArch64 is built from source as one generic native binary. The AVX
++    # variants below remain the unchanged x86_64 selection path.
++    if [ -f /usr/lib/voxtype/voxtype-native ]; then
++        _install_active_binary /usr/lib/voxtype/voxtype-native
++        echo "native"
++        return
++    fi
++
+     # Set the default CPU backend based on CPU capabilities
+     if grep -q avx512f /proc/cpuinfo 2>/dev/null; then
+         _install_active_binary /usr/lib/voxtype/voxtype-avx512

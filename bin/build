@@ -151,6 +151,17 @@ DOCKER_ARGS=(
   -v "$BUILD_ROOT/pkgbuilds:/pkgbuilds:ro"
 )
 
+# A release backend may need to bootstrap trust in an already signed
+# repository before its keyring package can be installed from that repository.
+# Paths are container-visible paths; /pkgbuilds and /pkgs.omarchy.org are both
+# mounted above.
+if [[ -n "${OMARCHY_REPOSITORY_KEY:-}" ]]; then
+  DOCKER_ARGS+=( -e "OMARCHY_REPOSITORY_KEY=$OMARCHY_REPOSITORY_KEY" )
+fi
+if [[ -n "${OMARCHY_REPOSITORY_KEY_FINGERPRINT:-}" ]]; then
+  DOCKER_ARGS+=( -e "OMARCHY_REPOSITORY_KEY_FINGERPRINT=$OMARCHY_REPOSITORY_KEY_FINGERPRINT" )
+fi
+
 # Run the builder with assembled args
 IMAGE_TAG="omarchy-pkg-builder:latest-$ARCH-$MIRROR"
 PLATFORM_ARG=$(get_platform_arg "$ARCH")

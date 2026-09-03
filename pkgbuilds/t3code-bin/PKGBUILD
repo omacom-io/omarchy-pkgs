@@ -1,16 +1,14 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
-# T3 Code ships Linux as an AppImage and nothing else, so Omarchy unpacks it and
-# keeps only the Electron tree. AppRun, the compatibility libraries bundled for
-# distributions that do not ship their own, and the AppImage's icon shims are all
-# dead weight here. .omarchy/upstream.sh rewrites the version and checksum below
-# from the release feed the app updates itself from.
+# T3 Code ships an x86_64 AppImage, so Omarchy unpacks that vendor artifact on
+# x86_64. Upstream does not publish a Linux ARM64 artifact; AArch64 builds the
+# same tagged source and then applies the identical AppImage packaging policy.
 
 pkgname=t3code-bin
 pkgver=0.0.38
 pkgrel=1
 pkgdesc="Open-source control plane for coding agents"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://t3.codes"
 license=('MIT')
 
@@ -53,24 +51,83 @@ optdepends=(
 provides=("t3code=${pkgver}")
 conflicts=('t3code')
 options=('!debug' '!strip')
+makedepends_aarch64=(
+  'gcc'
+  'git'
+  'imagemagick'
+  'make'
+  'nodejs-lts-krypton>=24.13.1'
+  'pnpm'
+  'python'
+  'rust'
+)
 
 _appimage="T3-Code-${pkgver}-x86_64.AppImage"
+_archive="t3code-${pkgver}.tar.gz"
 source=('t3code-launcher.sh' 't3-launcher.sh' 'LICENSE')
 source_x86_64=("${_appimage}::https://github.com/pingdotgg/t3code/releases/download/v${pkgver}/${_appimage}")
+source_aarch64=("${_archive}::https://github.com/pingdotgg/t3code/archive/refs/tags/v${pkgver}.tar.gz")
 noextract=("${_appimage}")
 sha256sums=('cb905ff341372ef2ef6e402cf485959f8bd1df8f0efebee4cda1afdd5e6abc0a'
             'c5b3f2a9f0b14b12cfd973b79319f0f018b7ae49a1d43d8ca346100c3f7de28f'
             '935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43')
 sha256sums_x86_64=('1f1ccd922b2efaffd50447b028ee0d6e2525502905087cf8ae3fe41efebe346f')
+sha256sums_aarch64=('cea0db0e9f1d9495297c45219cf6db887b89e946e0e116a3b3388028f0880b12')
 
 prepare() {
-  chmod +x "${srcdir}/${_appimage}"
-  rm -rf "${srcdir}/squashfs-root"
-  "${srcdir}/${_appimage}" --appimage-extract >/dev/null
+  if [[ $CARCH == x86_64 ]]; then
+    chmod +x "${srcdir}/${_appimage}"
+    rm -rf "${srcdir}/squashfs-root"
+    "${srcdir}/${_appimage}" --appimage-extract >/dev/null
+  else
+    cd "t3code-${pkgver}"
+    pnpm install --frozen-lockfile
+  fi
+}
+
+build() {
+  [[ $CARCH == aarch64 ]] || return 0
+
+  cd "t3code-${pkgver}"
+  export CARGO_HOME="$srcdir/cargo-home"
+  export RUSTFLAGS="--remap-path-prefix=$srcdir/t3code-$pkgver/=t3code/ --remap-path-prefix=$CARGO_HOME/registry/src/=cargo/"
+  export T3CODE_DESKTOP_OUTPUT_DIR="$srcdir/release"
+  export TMPDIR="$srcdir/tmp"
+  mkdir -p "$TMPDIR"
+  pnpm run dist:desktop:artifact \
+    --platform linux --target AppImage --arch arm64 --output-dir "$srcdir/release"
+
+  local artifacts=("$srcdir"/release/T3-Code-*-arm64.AppImage)
+  [[ ${#artifacts[@]} -eq 1 && -f ${artifacts[0]} ]] || {
+    echo "T3 Code did not produce exactly one ARM64 AppImage" >&2
+    return 1
+  }
 }
 
 package() {
+  if [[ $CARCH == aarch64 ]]; then
+    # Some tags retain the previous desktop version internally, so select the
+    # unique architecture-specific artifact instead of guessing its version.
+    local artifacts=("$srcdir"/release/T3-Code-*-arm64.AppImage)
+    [[ ${#artifacts[@]} -eq 1 && -f ${artifacts[0]} ]] || return 1
+    chmod +x "${artifacts[0]}"
+    rm -rf "${srcdir}/squashfs-root"
+    "${artifacts[0]}" --appimage-extract >/dev/null
+  fi
+
   cd "${srcdir}/squashfs-root"
+
+  if [[ $CARCH == aarch64 ]]; then
+    local node_pty="resources/app.asar.unpacked/node_modules/node-pty"
+    [[ -f "${node_pty}/build/Release/pty.node" ]] || {
+      echo "T3 Code's ARM64 build lacks its native node-pty binding" >&2
+      return 1
+    }
+    # node-gyp produced the Linux AArch64 binding above. The packaged Darwin
+    # and Windows prebuild matrix is unreachable on Linux and only carries
+    # foreign native binaries, so do not publish it.
+    rm -rf "${node_pty}/prebuilds"
+  fi
 
   # The AppImage's usr/ tree is compatibility libraries for distributions that
   # lack them, and Arch is not one; its icons are the only part worth keeping.

@@ -61,9 +61,16 @@ get_platform_arg() {
 
 make_dir_writable() {
   local dir="$1"
-  if [ "$(id -u)" -eq 0 ]; then
-    chmod -R 777 "$dir"
-  else
-    sudo chown -R $(id -u):$(id -g) "$dir" 2>/dev/null || chmod -R 777 "$dir"
-  fi
+
+  # Locally owned workspaces need no privilege escalation. Avoid prompting for
+  # sudo on hosts that grant Docker access through a group or rootless daemon.
+  chmod -R a+rwX "$dir" 2>/dev/null && return 0
+
+  # The host user and the image's `builder` user do not necessarily share a
+  # numeric UID (GitHub-hosted runners are 1001 while builder is 1000). If an
+  # earlier rootful container owns the workspace, reclaim it before granting
+  # write access to the container user.
+  [[ $(id -u) -ne 0 ]] || return 1
+  sudo chown -R "$(id -u):$(id -g)" "$dir" 2>/dev/null || true
+  chmod -R a+rwX "$dir" 2>/dev/null || sudo chmod -R a+rwX "$dir"
 }

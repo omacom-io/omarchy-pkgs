@@ -1,0 +1,6 @@
+{
+  "source": "local",
+  "arch_package": true,
+  "release_ring": "fast",
+  "upstream_commit": "7c601d97c8e447371dbc004368b3b83666b61225"
+}

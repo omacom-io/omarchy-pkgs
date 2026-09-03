@@ -1,10 +1,11 @@
 # Maintainer: noureddinex
 pkgname=lmstudio-bin
 pkgver=0.4.23
-pkgrel=1
-_pkgver=${pkgver}-${pkgrel}
+pkgrel=1.1
+_vendor_pkgrel=1
+_pkgver=${pkgver}-${_vendor_pkgrel}
 pkgdesc="LM Studio - A desktop app for exploring and running large language models locally"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://lmstudio.ai"
 license=('EULA')
 depends=('fuse2' 'zlib' 'hicolor-icon-theme' 'gtk3' 'nss' 'libxcrypt-compat')
@@ -12,15 +13,21 @@ options=('!strip')
 install=lmstudio-bin.install
 provides=(lmstudio)
 conflicts=(lmstudio)
-source=("https://installers.lmstudio.ai/linux/x64/${_pkgver}/LM-Studio-${_pkgver}-x64.AppImage"
-         "lmstudio.png"
-         "lmstudio.desktop")
-sha256sums=('c1bdf195281e25dc921af5c91eb2502035240dce1217140c43036d6cf3038fd8'
-            '9f791789c959a11316328692807737a5f1bc1c170ae99ec04c56bfd8ee8263e5'
-            '635dec12f3e3a57136b9e6fd7c2839ed6da7287fa55b482d64debf6eacf36baa')
+source=(
+  "lmstudio.png"
+  "lmstudio.desktop"
+)
+source_x86_64=("LM-Studio.AppImage::https://installers.lmstudio.ai/linux/x64/${_pkgver}/LM-Studio-${_pkgver}-x64.AppImage")
+source_aarch64=("LM-Studio.AppImage::https://installers.lmstudio.ai/linux/arm64/${_pkgver}/LM-Studio-${_pkgver}-arm64.AppImage")
+sha256sums=(
+  '9f791789c959a11316328692807737a5f1bc1c170ae99ec04c56bfd8ee8263e5'
+  '635dec12f3e3a57136b9e6fd7c2839ed6da7287fa55b482d64debf6eacf36baa'
+)
+sha256sums_x86_64=('c1bdf195281e25dc921af5c91eb2502035240dce1217140c43036d6cf3038fd8')
+sha256sums_aarch64=('3333f28050744ad4bc293b995aad0047e66d890209df9dd01e582975d39ad7d6')
 
 prepare() {
-  chmod +x "${srcdir}/${source[0]##*/}"
+  chmod +x "${srcdir}/LM-Studio.AppImage"
 }
 
 package() {
@@ -28,7 +35,7 @@ package() {
   install -dm755 "$pkgdir/opt/lm-studio"
   
   # Install AppImage
-  install -Dm755 "${srcdir}/${source[0]##*/}" "$pkgdir/opt/lm-studio/lm-studio.AppImage"
+  install -Dm755 "${srcdir}/LM-Studio.AppImage" "$pkgdir/opt/lm-studio/lm-studio.AppImage"
   
   # Install static icon
   install -Dm644 "${srcdir}/lmstudio.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/lmstudio-bin.png"

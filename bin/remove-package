@@ -88,9 +88,15 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 0
 fi
 
-# Build/update the Docker image (always use x86_64 for removal - it's architecture independent)
-# repo-remove is mirror-independent — always use the edge x86_64 image
-build_docker_image "$BUILD_DIR" "x86_64" "edge"
+# repo-remove is architecture-independent. Keep the existing x86_64 path on
+# x86_64 hosts and use the native ARM image on AArch64 hosts.
+IMAGE_ARCH=x86_64
+PLATFORM_ARGS=(--platform linux/amd64)
+if [[ $(uname -m) == aarch64 ]]; then
+  IMAGE_ARCH=aarch64
+  read -r -a PLATFORM_ARGS <<< "$(get_platform_arg "$IMAGE_ARCH")"
+fi
+build_docker_image "$BUILD_DIR" "$IMAGE_ARCH" edge
 
 acquire_release_lock || exit 1
 
@@ -99,13 +105,13 @@ print_info "Removing package..."
 # Ensure directory is writable by container user
 make_dir_writable "$REPO_DIR"
 
-# Run the removal script in Docker (always use x86_64 image)
-docker run --rm --platform linux/amd64 \
+# Run the architecture-neutral operation in the selected native image.
+docker run --rm "${PLATFORM_ARGS[@]}" \
   -e ARCH="$ARCH" \
   -e MIRROR="$MIRROR" \
   -v "$REPO_ROOT:/pkgs.omarchy.org" \
   -v "$BUILD_DIR:/build:ro" \
-  omarchy-pkg-builder:latest-x86_64-edge /build/remove-package.sh "$PACKAGE_NAME"
+  "omarchy-pkg-builder:latest-$IMAGE_ARCH-edge" /build/remove-package.sh "$PACKAGE_NAME"
 
 RESULT=$?
 

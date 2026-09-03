@@ -1,0 +1,12 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -5,7 +5,7 @@ pkgname=bindfs
+ pkgver=1.18.4
+ pkgrel=1
+ pkgdesc="A FUSE filesystem for mirroring a directory to another directory, similar to 'mount --bind', with permission settings."
+-arch=('i686' 'x86_64' 'armv6h' 'armv6l' 'armv7h')
++arch=('i686' 'x86_64' 'armv6h' 'armv6l' 'armv7h' 'aarch64')
+ url="http://bindfs.org/"
+ license=('GPL-2.0')
+ depends=('glibc' 'fuse3')

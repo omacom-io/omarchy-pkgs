@@ -1,0 +1,66 @@
+#!/bin/bash
+
+set -euo pipefail
+
+offset=""
+destination=""
+mode=extract
+archive=""
+
+while (($# > 0)); do
+  case $1 in
+  -o)
+    offset=$2
+    shift 2
+    ;;
+  -d)
+    destination=$2
+    shift 2
+    ;;
+  -s)
+    mode=stat
+    shift
+    ;;
+  -lln)
+    mode=list
+    shift
+    ;;
+  -processors)
+    shift 2
+    ;;
+  -no-progress | -no-xattrs)
+    shift
+    ;;
+  -*)
+    echo "unexpected unsquashfs test option: $1" >&2
+    exit 2
+    ;;
+  *)
+    archive=$1
+    shift
+    ;;
+  esac
+done
+
+[[ -n $archive && $offset == "${APPIMAGE_TEST_OFFSET:?}" ]]
+
+case ${archive##*/} in
+good.AppImage) payload=${APPIMAGE_GOOD_PAYLOAD:?} ;;
+bad.AppImage) payload=${APPIMAGE_BAD_PAYLOAD:?} ;;
+*) exit 1 ;;
+esac
+
+case $mode in
+stat)
+  printf 'Found a valid SQUASHFS 4:0 superblock\n'
+  ;;
+list)
+  printf '%s\n' 'drwxr-xr-x 0/0 0 2026-01-01 00:00 squashfs-root'
+  printf '%s\n' "-rwxr-xr-x 0/0 $(stat -c %s "$payload") 2026-01-01 00:00 squashfs-root/native"
+  ;;
+extract)
+  [[ -n $destination ]]
+  mkdir -p "$destination/squashfs-root"
+  cp "$payload" "$destination/squashfs-root/native"
+  ;;
+esac

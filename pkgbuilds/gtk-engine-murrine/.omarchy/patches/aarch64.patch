@@ -1,0 +1,18 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -9,7 +9,7 @@ pkgname=gtk-engine-murrine
+ pkgver=0.98.2
+ pkgrel=5
+ pkgdesc="GTK2 engine to make your desktop look like a 'murrina', an italian word meaning the art glass works done by Venicians glass blowers."
+-arch=(x86_64 i686)
++arch=(x86_64 i686 aarch64)
+ url="http://cimitan.com/murrine/project/murrine"
+ license=(LGPL-3.0-or-later)
+ depends=(gtk2)
+@@ -29,4 +29,5 @@ prepare() {
+   for patch in ../debian/patches/*.patch; do
+     patch -Np1 < $patch
+   done
++  autoreconf -fiv
+ }

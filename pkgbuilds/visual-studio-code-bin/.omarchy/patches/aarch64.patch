@@ -1,0 +1,42 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -36,6 +36,38 @@ sha256sums_armv7h=('78e64befb925f85a34239db6e9c9c7c28d368df2ad42e7ff6b2f2876c394a22a')
+ package() {
+   bsdtar -xf data.tar.xz -C "${pkgdir}/"
+ 
++  if [[ $CARCH == aarch64 ]]; then
++    local app="${pkgdir}/usr/share/code/resources/app"
++    local copilot="${app}/node_modules.asar.unpacked/@github/copilot-linux-arm64"
++    local required
++    for required in ripgrep/bin/linux-arm64/rg tgrep/bin/linux-arm64/tgrep; do
++      [[ -f "$copilot/$required" ]] || {
++        error "VS Code's ARM64 Copilot payload lacks $required"
++        return 1
++      }
++    done
++    rm -rf "$copilot/ripgrep/bin/linux-x64" "$copilot/tgrep/bin/linux-x64"
++
++    find "${app}/extensions/ms-vscode.js-debug/src" -maxdepth 1 -type f \
++      -name '*win32*.node' -delete
++    local mxc="${app}/node_modules.asar.unpacked/@microsoft/mxc-sdk/bin/arm64"
++    for required in linux-test-proxy lxc-exec; do
++      [[ -f "$mxc/$required" ]] || {
++        error "VS Code's ARM64 MXC payload lacks $required"
++        return 1
++      }
++    done
++    find "$mxc" -maxdepth 1 -type f -name '*.exe' -delete
++    rm -f "$mxc/mxc-exec-mac"
++
++    # This vendor release lacks an ARM64 apply-seccomp helper. The runtime
++    # already treats that as an unsupported optional feature; never retain the
++    # unusable x64 helper in an AArch64 package. Keep arm64 automatically once
++    # Microsoft ships it.
++    find "${app}/node_modules/@vscode/sandbox-runtime/vendor/seccomp" \
++      -mindepth 1 -maxdepth 1 -type d ! -name arm64 -exec rm -rf -- {} +
++  fi
++
+   install -d "${pkgdir}/usr/bin"
+   install -d "${pkgdir}/usr/share/licenses/${pkgname}"
+ 

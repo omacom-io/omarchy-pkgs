@@ -1,0 +1,108 @@
+diff --git a/install/arch-linux/limine-entry-tool/usr/bin/limine-install b/install/arch-linux/limine-entry-tool/usr/bin/limine-install
+--- a/install/arch-linux/limine-entry-tool/usr/bin/limine-install
++++ b/install/arch-linux/limine-entry-tool/usr/bin/limine-install
+@@ -376,7 +376,7 @@ if [[ "${FIND_BOOTLOADERS:-no}" == "yes" && "${SKIP_UEFI:-no}" == "no" ]]; then
+ 		limine-entry-tool --add-efi "Systemd-boot" "${bootloader_path}" --comment "Systemd bootloader" --priority 20 --quiet --no-mutex --no-hooks
+ 	fi
+ 
+-	bootloader_path="${ESP_PATH}/EFI/refind/refind_x64.efi"
++	bootloader_path="${ESP_PATH}/EFI/refind/refind_$(limine_efi_arch | tr "[:upper:]" "[:lower:]").efi"
+ 	if [[ -f "${bootloader_path}" ]]; then
+ 		limine-entry-tool --add-efi "rEFInd" "${bootloader_path}" --comment "rEFInd bootloader" --priority 20 --quiet --no-mutex --no-hooks
+ 	fi
+diff --git a/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-install b/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-install
+--- a/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-install
++++ b/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-install
+@@ -19,6 +19,7 @@ declare -a KERNEL_DIRS=()
+ KERNEL_NAME=""
+ KERNEL_VERSION=""
+ KERNEL_DIR=""
++KERNEL_IMAGE=""
+ BOOT_KERNEL_DIR=""
+ INITRAMFS_FALLBACK_PATH=""
+ UKI_PATH=""
+@@ -107,6 +108,19 @@ set_kernel_context() {
+ 	# Get kernel version from the kernel directory
+ 	KERNEL_DIR="${kernel_dir%/}"
+ 	KERNEL_VERSION="${KERNEL_DIR##*/}"
++	KERNEL_IMAGE="${KERNEL_DIR}/vmlinuz"
++	# Arch Linux ARM's generic kernel owns modules.builtin like an Arch kernel,
++	# but its boot image lives on the ESP and its user-facing entry is `linux`.
++	case "$(uname -m):${KERNEL_NAME}" in
++		aarch64:linux-aarch64 | arm64:linux-aarch64)
++			KERNEL_NAME=linux
++			KERNEL_IMAGE=/boot/Image
++			;;
++	esac
++	if [[ ! -f "$KERNEL_IMAGE" ]]; then
++		error_msg "kernel image '${KERNEL_IMAGE}' does not exist, skipping."
++		return 1
++	fi
+ 	# kernel locations
+ 	BOOT_KERNEL_DIR="${BOOT_PATH}/${MACHINE_ID}/${KERNEL_NAME}"
+ 	INITRAMFS_FALLBACK_PATH="${BOOT_KERNEL_DIR}/initramfs-fallback"
+@@ -145,6 +159,7 @@ build_uki() {
+ 		args+=(--no-cmdline)
+ 	fi
+ 	args+=(--uki "$output")
++	args+=(--kernelimage "$KERNEL_IMAGE")
+ 	if [[ "$is_fallback" == true ]]; then
+ 		args+=(-S autodetect)
+ 	fi
+@@ -235,7 +250,7 @@ process_regular_kernel() {
+ 	if [[ -f "$BOOT_KERNEL_DIR/initramfs-${KERNEL_NAME}" ]]; then
+ 		rm -r "$BOOT_KERNEL_DIR"
+ 	fi
+-	install_kernel "$KERNEL_NAME" "$tmp_initramfs" "${KERNEL_DIR}/vmlinuz" "Kernel version: ${KERNEL_VERSION}"
++	install_kernel "$KERNEL_NAME" "$tmp_initramfs" "$KERNEL_IMAGE" "Kernel version: ${KERNEL_VERSION}"
+ 
+ 	if [[ "${MKINITCPIO_FALLBACK:-}" == "yes" || "${MKINITCPIO_FALLBACK:-}" == "$KERNEL_NAME" ]]; then
+ 		info_msg "Building fallback initramfs for ${KERNEL_NAME} (${KERNEL_VERSION})"
+@@ -244,7 +259,7 @@ process_regular_kernel() {
+ 			error_msg "mkinitcpio failed for kernel ${KERNEL_VERSION}, skipping."
+ 			return 1
+ 		fi
+-		install_kernel "$KERNEL_NAME" "$tmp_initramfs_fb" "${KERNEL_DIR}/vmlinuz" "Kernel version: ${KERNEL_VERSION} fallback" "-fallback"
++		install_kernel "$KERNEL_NAME" "$tmp_initramfs_fb" "$KERNEL_IMAGE" "Kernel version: ${KERNEL_VERSION} fallback" "-fallback"
+ 	elif [[ -f "$INITRAMFS_FALLBACK_PATH" ]]; then
+ 		limine-entry-tool --remove-kernel "${KERNEL_NAME}-fallback" --keep-files --no-mutex --no-hooks --quiet
+ 		rm -f "$INITRAMFS_FALLBACK_PATH"
+diff --git a/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-remove b/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-remove
+--- a/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-remove
++++ b/install/arch-linux/limine-mkinitcpio-hook/usr/share/libalpm/scripts/limine-mkinitcpio-remove
+@@ -10,6 +10,14 @@ readonly SCRIPT_NAME="limine-mkinitcpio-remove"
+ export HOOK_CALLER="$SCRIPT_NAME"
+ export HOOK_CMDLINE="$*"
+ 
++normalize_kernel_name() {
++	local kernel_name="$1"
++	case "$(uname -m):${kernel_name}" in
++		aarch64:linux-aarch64 | arm64:linux-aarch64) kernel_name=linux ;;
++	esac
++	printf '%s\n' "$kernel_name"
++}
++
+ # Record kernels marked for removal before pacman upgrade,
+ # ensuring boot entries are preserved if the upgrade fails.
+ pre_remove() {
+@@ -25,6 +33,7 @@ pre_remove() {
+ 
+ 		[[ -f "${kernel_dir}/modules.builtin" ]] || continue
+ 		kernel_name="$(pacman -Qqo "${kernel_dir}/modules.builtin" 2>/dev/null)" || continue
++		kernel_name="$(normalize_kernel_name "$kernel_name")"
+ 		[[ -n "$kernel_name" ]] || continue
+ 
+ 		# Append to remove list
+@@ -53,7 +62,11 @@ post_remove() {
+ 		return "$rc"
+ 	fi
+ 
+-	valid_kernels=$(pacman -Qqo /usr/lib/modules/*/modules.builtin 2>/dev/null || true)
++	valid_kernels=$(
++		while read -r kernel_name; do
++			normalize_kernel_name "$kernel_name"
++		done < <(pacman -Qqo /usr/lib/modules/*/modules.builtin 2>/dev/null || true)
++	)
+ 	while read -r kernelName; do
+ 		# Remove spaces (invalid for kernel file/directory name in FAT32)
+ 		kernelNameClean="${kernelName// /}"

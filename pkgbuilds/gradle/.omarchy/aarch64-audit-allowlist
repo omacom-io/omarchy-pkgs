@@ -1,0 +1,20 @@
+# Gradle's checksum-pinned binary distribution deliberately ships a platform
+# matrix inside these JARs. Java selects the matching native implementation at
+# runtime. Every reviewed container is pinned by its own SHA-256 so a Gradle or
+# dependency update must be inspected before the AArch64 build can pass again.
+container	3c3bf574fb524f083d5f402e0765cf10022e1b5b8909668ef8cac55f10dd1fef	opt/gradle-9.7.1/lib/gradle-fileevents-0.2.8.jar
+container	0b7b8b003a90ea491579b62f5118828e45112914c65589b00faa49d6ec785839	opt/gradle-9.7.1/lib/jansi-2.4.2.jar
+container	c2b25e8c1c93ec416ba4327f5e31eaec0f0c8847241b9353e294b8db9dce564f	opt/gradle-9.7.1/lib/kotlin-compiler-embeddable-2.4.0.jar
+container	b25f0e064f304e795c35f50fbfe2e24d3f130ae7d0328dd5c6aa95ad02b46e01	opt/gradle-9.7.1/lib/native-platform-freebsd-amd64-libcpp-0.22-milestone-29.jar
+container	acf10546afe29dab7ad9cc5867c805e31b7222ce2ee4e4bcce3f4641af2a10ce	opt/gradle-9.7.1/lib/native-platform-linux-amd64-0.22-milestone-29.jar
+container	d3d02109182d8601892ea1a2dacfce3ebadb9b21cfa1263b7355f477a9751cbb	opt/gradle-9.7.1/lib/native-platform-linux-amd64-ncurses5-0.22-milestone-29.jar
+container	0586745b24bd189cecc5b54b706056c61aa3d7477fdd1dcdcbfe7bdb4275f16e	opt/gradle-9.7.1/lib/native-platform-linux-amd64-ncurses6-0.22-milestone-29.jar
+container	e7259970d9acc0115e5a6e3d6bf3e39b2930f043e50c145dc364420e8a706906	opt/gradle-9.7.1/lib/native-platform-osx-aarch64-0.22-milestone-29.jar
+container	956f1370e77c7d238aa12d5b5e0f7730abbe4c443b951221e12c0af37d297913	opt/gradle-9.7.1/lib/native-platform-osx-amd64-0.22-milestone-29.jar
+container	ab7149a4dfd072464af5abc60a3dd83032466e1a85d4af0524eb6c79475b9ff9	opt/gradle-9.7.1/lib/native-platform-windows-aarch64-0.22-milestone-29.jar
+container	be2556702a1fc477c7ebee3c01d0c834a488318477c212be0d874a99ddc9795a	opt/gradle-9.7.1/lib/native-platform-windows-aarch64-min-0.22-milestone-29.jar
+container	fac04afce80d47fecfc540a7ebcd89dcd6fc1804a5097b5c1e4dae5cf427f95f	opt/gradle-9.7.1/lib/native-platform-windows-amd64-0.22-milestone-29.jar
+container	032dd5c74eeb7720b3d149ad961d89afa2e15f1f838300602c6fde815fdd0f0b	opt/gradle-9.7.1/lib/native-platform-windows-amd64-min-0.22-milestone-29.jar
+container	5d3fcd7f5d81bac216ab016a9edbf4f2fd34380243b2f52aa3b93138ad73ca44	opt/gradle-9.7.1/lib/native-platform-windows-i386-0.22-milestone-29.jar
+container	d1f17ae3ce78b16cca6b1340bb9aad5b0a59ad4f8f9fa6a3325ef609e8454b8a	opt/gradle-9.7.1/lib/native-platform-windows-i386-min-0.22-milestone-29.jar
+container	b3a9408e7c51e08ef0e3bfcc08f443f6ec0f6191ba8cd7c18d53d2b22e5bdbc0	opt/gradle-9.7.1/lib/plugins/jna-5.17.0.jar

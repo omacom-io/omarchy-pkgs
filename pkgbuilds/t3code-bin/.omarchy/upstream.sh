@@ -32,7 +32,10 @@ if [[ "$asset" != "$expected" ]]; then
   exit 1
 fi
 
-sha256=$(curl -fsSL "$RELEASE_URL/v${version}/${asset}" | sha256sum | cut -d' ' -f1)
+x86_sha256=$(curl -fsSL --retry 3 "$RELEASE_URL/v${version}/${asset}" | sha256sum | cut -d' ' -f1)
+arm_sha256=$(curl -fsSL --retry 3 \
+  "https://github.com/pingdotgg/t3code/archive/refs/tags/v${version}.tar.gz" |
+  sha256sum | cut -d' ' -f1)
 
-jq -n --arg pkgver "$version" --arg sha256 "$sha256" \
-  '{pkgver: $pkgver, sha256sums: {x86_64: [$sha256]}}'
+jq -n --arg pkgver "$version" --arg x86 "$x86_sha256" --arg arm "$arm_sha256" \
+  '{pkgver: $pkgver, sha256sums: {x86_64: [$x86], aarch64: [$arm]}}'

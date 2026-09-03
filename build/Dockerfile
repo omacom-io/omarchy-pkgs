@@ -109,14 +109,18 @@ RUN ln -sf /usr/lib/os-release /etc/os-release && \
 # Note: Repository is removed at the end since build scripts add it dynamically.
 # The keyring comes from this image's own channel (the bare /$arch path is a
 # stale legacy layout); %s keeps pacman's $arch literal while MIRROR expands.
+# The official Omarchy repository does not publish AArch64 yet, so ARM images
+# cannot install its keyring during the initial builder bootstrap.
 ARG MIRROR=edge
-RUN pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org && \
-    pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 && \
-    printf '\n[omarchy]\nSigLevel = Optional\nServer = https://pkgs.omarchy.org/%s/$arch\n' "${MIRROR}" >> /etc/pacman.conf && \
-    pacman -Sy --noconfirm && \
-    pacman -S --noconfirm omarchy-keyring && \
-    pacman-key --populate omarchy && \
-    sed -i '/^\[omarchy\]/,/^$/d' /etc/pacman.conf
+RUN if [ "${TARGETARCH}" = "amd64" ]; then \
+        pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org && \
+        pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 && \
+        printf '\n[omarchy]\nSigLevel = Optional\nServer = https://pkgs.omarchy.org/%s/$arch\n' "${MIRROR}" >> /etc/pacman.conf && \
+        pacman -Sy --noconfirm && \
+        pacman -S --noconfirm omarchy-keyring && \
+        pacman-key --populate omarchy && \
+        sed -i '/^\[omarchy\]/,/^$/d' /etc/pacman.conf; \
+    fi
 
 RUN pacman -Syu --noconfirm && \
     pacman -S --noconfirm \
@@ -126,6 +130,8 @@ RUN pacman -Syu --noconfirm && \
         wget \
         curl \
         jq \
+        nodejs \
+        squashfs-tools \
         gnupg && \
     pacman -Scc --noconfirm && \
     rm -rf /var/cache/pacman/pkg/*
@@ -138,7 +144,8 @@ RUN useradd -m -G wheel -s /bin/bash builder && \
     chown -R builder:builder /home/builder
 
 RUN sed -i 's/^#MAKEFLAGS=.*/MAKEFLAGS="-j$(nproc)"/' /etc/makepkg.conf && \
-    sed -i 's/^COMPRESSZST=.*/COMPRESSZST=(zstd -c -z -q --threads=0 -)/' /etc/makepkg.conf
+    sed -i 's/^COMPRESSZST=.*/COMPRESSZST=(zstd -c -z -q --threads=0 -)/' /etc/makepkg.conf && \
+    sed -i "s|^PKGEXT=.*|PKGEXT='.pkg.tar.zst'|" /etc/makepkg.conf
 
 # Pacman wrapper that auto-resolves package conflicts (e.g. rustup vs rust).
 # makepkg only passes --noconfirm to pacman, which defaults to 'N' on conflict

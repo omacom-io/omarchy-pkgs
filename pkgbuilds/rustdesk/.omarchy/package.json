@@ -1,4 +1,9 @@
 {
   "source": "aur",
-  "upstream_commit": "b19996732fccf6c9d436afccb704d65b320cf837"
+  "upstream_commit": "b19996732fccf6c9d436afccb704d65b320cf837",
+  "aarch64_reference": {
+    "source": "aur",
+    "package": "rustdesk-bin",
+    "upstream_commit": "ff2fab30723a15a37654a656862fb722b979aeda"
+  }
 }

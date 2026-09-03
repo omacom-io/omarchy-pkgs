@@ -31,14 +31,23 @@ update_database() {
   # repo-add is architecture- and mirror-independent, so always use the edge
   # x86_64 image. This also lets bootstrap-rc build the rc database before the
   # rc channel exists remotely (an rc image can only build after it does).
-  build_docker_image "$BUILD_DIR" "x86_64" "edge"
+  # Native AArch64 publishing is the exception: use its target image so the
+  # ARM runner does not need QEMU merely to invoke repo-add.
+  local image_arch=x86_64 image_mirror=edge
+  local -a platform_args=(--platform linux/amd64)
+  if [[ $ARCH == aarch64 && $(uname -m) == aarch64 ]]; then
+    image_arch=$ARCH
+    image_mirror=$MIRROR
+    read -r -a platform_args <<< "$(get_platform_arg "$ARCH")"
+  fi
+  build_docker_image "$BUILD_DIR" "$image_arch" "$image_mirror"
 
-  docker run --rm --platform linux/amd64 \
+  docker run --rm "${platform_args[@]}" \
     -e ARCH="$ARCH" \
     -e MIRROR="$MIRROR" \
     -v "$REPO_ROOT:/output" \
     -v "$BUILD_DIR:/build:ro" \
-    omarchy-pkg-builder:latest-x86_64-edge /build/update-repo.sh
+    "omarchy-pkg-builder:latest-$image_arch-$image_mirror" /build/update-repo.sh
 }
 
 # Main execution

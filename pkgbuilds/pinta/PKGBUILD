@@ -1,0 +1,58 @@
+# Maintainer: Rafael Baboni Dominiquini <rafaeldominiquini at gmail dot com>
+
+pkgname=pinta
+pkgver=3.1.2
+pkgrel=2
+pkgdesc="Drawing/editing program modeled after Paint.NET. It's goal is to provide a simplified alternative to GIMP for casual users"
+
+arch=('x86_64' 'aarch64')
+license=('MIT')
+url="https://pinta-project.com"
+
+makedepends=('pkgconf' 'autoconf-archive' 'intltool' 'dotnet-sdk-bin' 'dotnet-runtime-bin' 'dotnet-host-bin' 'dotnet-targeting-pack-bin' 'gtk4' 'perl')
+depends=('dotnet-runtime-bin' 'dotnet-host-bin' 'libadwaita' 'hicolor-icon-theme' 'webp-pixbuf-loader')
+
+provides=($pkgname)
+conflicts=($pkgname-git)
+
+source=("Pinta-${pkgver}.tar.gz::https://github.com/PintaProject/Pinta/archive/refs/tags/${pkgver}.tar.gz")
+sha256sums=('98ed517b33f0e40fd1e3915ea5146355845ac12efd3bb07812c68a52c714cac6')
+
+prepare() {
+  cd "${srcdir}/Pinta-${pkgver}"
+
+  for file in *.md *.txt; do
+    basename=$(tr '[:lower:]' '[:upper:]' <<< "${file%.*}")
+    newname="$basename.${file#*.}"
+    [ ! "$file" == "$newname" ] && mv "$file" "$newname"
+  done
+
+  sed -i 's/net8.0/net10.0/g' Directory.Build.props
+
+  ./autogen.sh --prefix=/usr --sysconfdir=/etc --localstatedir=/var
+}
+
+build() {
+  cd "${srcdir}/Pinta-${pkgver}"
+
+  local runtime_arch
+  case "$CARCH" in
+    x86_64) runtime_arch=x64 ;;
+    aarch64) runtime_arch=arm64 ;;
+    *) return 1 ;;
+  esac
+  sed -i -r "s|^(PINTA_BUILD_OPTS\\s=\\s.*)|\\1 -p:RuntimeIdentifier=linux-${runtime_arch}|g" Makefile
+
+  make
+}
+
+package() {
+  cd "${srcdir}/Pinta-${pkgver}"
+
+  make DESTDIR="${pkgdir}" install
+
+  chmod -v 755 "${pkgdir}/usr/lib/pinta/"*.dll
+
+  install -Dm644 -t "${pkgdir}/usr/share/doc/${pkgname}/" *.md
+  install -Dm644 -t "${pkgdir}/usr/share/licenses/${pkgname}/" LICENSE*.txt
+}

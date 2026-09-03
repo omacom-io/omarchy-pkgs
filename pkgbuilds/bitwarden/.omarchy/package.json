@@ -1,0 +1,6 @@
+{
+  "source": "aur",
+  "aur": "bitwarden-bin",
+  "release_ring": "fast",
+  "upstream_commit": "6b3ba43d13074f88dc2031ce338684489d5835bf"
+}

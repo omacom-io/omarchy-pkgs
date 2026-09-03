@@ -1,0 +1,11 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -9,6 +9,6 @@ pkgver=0.28.0
+ pkgrel=1
+ pkgdesc='Modern screenshot annotation tool for Wayland'
+-arch=('x86_64')
++arch=('x86_64' 'aarch64')
+ url='https://github.com/jondkinney/tensaku'
+ license=('MPL-2.0')
+ depends=('gtk4' 'gtk4-layer-shell' 'libadwaita' 'libepoxy' 'fontconfig')

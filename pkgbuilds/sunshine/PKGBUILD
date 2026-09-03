@@ -28,6 +28,7 @@ if [ "${_versioned_gcc}" == true ]; then
   _gcc_env_suffix="-${_gcc_version}"
 fi
 
+depends_x86_64=('libmfx')
 depends=(
   'avahi'
   'curl'
@@ -36,7 +37,6 @@ depends=(
   'libcap'
   'libdrm'
   'libevdev'
-  'libmfx'
   'libnotify'
   'libpipewire'
   'libpulse'

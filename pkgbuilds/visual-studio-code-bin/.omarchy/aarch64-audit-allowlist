@@ -1,0 +1,4 @@
+# Microsoft's ARM64 Linux archive retains this optional x64 seccomp helper
+# inside node_modules.asar. The runtime does not select it on AArch64. Pin the
+# exact nested bytes until Microsoft ships the ARM64 helper or removes it.
+file	c3c42b6b79d7298ef6fdadb36955350a7fe8ef1a1cfa900b7346191a6dada86f	usr/share/code/resources/app/node_modules.asar/@vscode/sandbox-runtime/vendor/seccomp/x64/apply-seccomp

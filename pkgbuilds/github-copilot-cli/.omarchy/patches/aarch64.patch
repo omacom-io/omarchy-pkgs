@@ -1,0 +1,50 @@
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -7,14 +7,14 @@
+ _pkgexec=copilot
+ 
+ pkgver=1.0.82
+-pkgrel=1
++pkgrel=1.1
+ 
+ pkgdesc="GitHub Copilot CLI brings the power of Copilot coding agent directly to your terminal."
+ 
+ url="https://github.com/github/copilot-cli"
+ _urlraw="https://raw.githubusercontent.com/github/copilot-cli/v${pkgver}"
+ 
+-arch=("x86_64")
++arch=("x86_64" "aarch64")
+ 
+ license=("LicenseRef-GitHub-Copilot")
+ 
+@@ -51,6 +51,25 @@
+ 		*)       error "Unsupported architecture: $CARCH"; exit 1 ;;
+ 	esac
+ 
++	if [[ $CARCH == aarch64 ]]; then
++		local _arm_mod="${_moddir}/node_modules/@github/copilot-linux-arm64"
++		local _required_arm_files=(
++			"prebuilds/linux-arm64/cli-native.node"
++			"prebuilds/linux-arm64/copilot-runtime"
++			"prebuilds/linux-arm64/runtime.node"
++			"ripgrep/bin/linux-arm64/rg"
++			"tgrep/bin/linux-arm64/tgrep"
++		)
++		local _required
++		for _required in "${_required_arm_files[@]}"; do
++			[[ -f "${_arm_mod}/${_required}" ]] || {
++				error "Copilot's ARM64 package lacks ${_required}"
++				return 1
++			}
++		done
++		rm -rf "${_arm_mod}/ripgrep/bin/linux-x64" "${_arm_mod}/tgrep/bin/linux-x64"
++	fi
++
+ 	msg2 "Cleaning non-native prebuilds for ${_arch}"
+ 	if [ -d "${_moddir}/prebuilds" ]; then
+ 		find "${_moddir}/prebuilds" -mindepth 1 -maxdepth 1 -type d ! -name "linux-${_arch}" -exec rm -rf {} +
+@@ -124,4 +143,3 @@
+ 	ln -sf "/usr/lib/node_modules/${_npmmodule}/LICENSE.md" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+ 
+ }
+-

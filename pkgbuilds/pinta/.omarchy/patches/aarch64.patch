@@ -1,0 +1,33 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -6,11 +6,11 @@ pkgrel=1
+ pkgdesc="Drawing/editing program modeled after Paint.NET. It's goal is to provide a simplified alternative to GIMP for casual users"
+ 
+-arch=('x86_64')
++arch=('x86_64' 'aarch64')
+ license=('MIT')
+ url="https://pinta-project.com"
+ 
+-makedepends=('pkgconf' 'autoconf-archive' 'intltool' 'dotnet-sdk' 'dotnet-runtime' 'dotnet-host' 'dotnet-targeting-pack' 'gtk4' 'perl')
+-depends=('dotnet-runtime' 'dotnet-host' 'libadwaita' 'hicolor-icon-theme' 'webp-pixbuf-loader')
++makedepends=('pkgconf' 'autoconf-archive' 'intltool' 'dotnet-sdk-bin' 'dotnet-runtime-bin' 'dotnet-host-bin' 'dotnet-targeting-pack-bin' 'gtk4' 'perl')
++depends=('dotnet-runtime-bin' 'dotnet-host-bin' 'libadwaita' 'hicolor-icon-theme' 'webp-pixbuf-loader')
+ 
+ provides=($pkgname)
+ conflicts=($pkgname-git)
+@@ -37,7 +37,13 @@ prepare() {
+ build() {
+   cd "${srcdir}/Pinta-${pkgver}"
+ 
+-  sed -i -r 's|^(PINTA_BUILD_OPTS\s=\s.*)|\1 -p:RuntimeIdentifier=linux-x64|g' Makefile
++  local runtime_arch
++  case "$CARCH" in
++    x86_64) runtime_arch=x64 ;;
++    aarch64) runtime_arch=arm64 ;;
++    *) return 1 ;;
++  esac
++  sed -i -r "s|^(PINTA_BUILD_OPTS\\s=\\s.*)|\\1 -p:RuntimeIdentifier=linux-${runtime_arch}|g" Makefile
+ 
+   make
+ }

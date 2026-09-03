@@ -1,0 +1,9 @@
+# Microsoft's checksum-pinned Linux ARM64 SDK includes Windows test/debugging
+# support data. These files are selected only when tooling targets Windows;
+# they are not Linux host executables. Require an exact path and digest for
+# every native PE asset rather than exempting the SDK tree broadly.
+file	3674bbc1be67c7d2e6b2a292b5cedcca14bfa65972950464134591b2107932bb	usr/share/dotnet/sdk/10.0.400/TestHostNetFramework/x86/msdia140.dll
+file	e07e31ddd3ea6d90295e86b9b4fc828c498ce550c793f5328e0052223e15d40b	usr/share/dotnet/sdk/10.0.400/TestHostNetFramework/x64/msdia140.dll
+file	b4a8bd2b6a0d4adbf40944c1efde2df65824335a4261a62503382eab06d5e32c	usr/share/dotnet/sdk/10.0.400/TestHostNetFramework/arm64/msdia140.dll
+file	a64b5cb944a4e8eb9f66c7a93dc42d1211052a2f5090bbf60e0ea5613d4295c5	usr/share/dotnet/sdk/10.0.400/DotnetTools/dotnet-format/shims/net10.0/win-x86/dotnet-format.exe
+file	55bc879e0325212aac515b0c6dc525e701a2967dcaf19739df1d651a3bad7ecf	usr/share/dotnet/sdk/10.0.400/DotnetTools/dotnet-format/shims/net10.0/win-x64/dotnet-format.exe

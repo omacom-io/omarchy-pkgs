@@ -1,0 +1,6 @@
+{
+  "source": "aur",
+  "aur": "zed-bin",
+  "release_ring": "fast",
+  "upstream_commit": "8dc782881ea38d9dc712e30d0eb55d03c58ed398"
+}

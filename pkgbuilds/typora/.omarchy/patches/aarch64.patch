@@ -1,0 +1,31 @@
+diff --git a/PKGBUILD b/PKGBUILD
+--- a/PKGBUILD
++++ b/PKGBUILD
+@@ -28,6 +28,27 @@ package() {
+ 	elif [[ "$CARCH" == "aarch64" ]]; then
+ 		bsdtar -xf data.tar.xz -C "$pkgdir/"
+ 	fi
++	if [[ "$CARCH" == "aarch64" ]]; then
++		local cld_addon="$pkgdir/usr/share/typora/resources/node_modules/spellchecker/node_modules/cld/build/Release/cld.node"
++		if [[ -f "$cld_addon" ]]; then
++			local machine magic
++			magic=$(od -An -tx1 -N8 "$cld_addon" | tr -d '[:space:]')
++			if [[ "$magic" == cffaedfe07000001 ]]; then
++				# Typora's ARM64 Debian archive carries this unused macOS addon.
++				rm -f -- "$cld_addon"
++			elif [[ "$magic" == 7f454c46* ]]; then
++				machine=$(readelf -h "$cld_addon" |
++					sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p')
++				if [[ "$machine" != "AArch64" ]]; then
++					error "Unexpected Typora cld ELF architecture: $machine"
++					return 1
++				fi
++			else
++				error "Unexpected Typora cld addon header: ${magic:-unreadable}"
++				return 1
++			fi
++		fi
++	fi
+ 	# remove lintian overrides
+ 	rm -rf "$pkgdir/usr/share/lintian/"
+ 	# replace bin link with custom launch script

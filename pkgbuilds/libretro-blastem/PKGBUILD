@@ -1,0 +1,36 @@
+# Maintainer: Maxime Gauduin <alucryd@archlinux.org>
+
+pkgname=libretro-blastem
+pkgver=20260813.175226.gaeb16cd0750f
+pkgrel=1
+pkgdesc='Sega Mega Drive core'
+arch=(x86_64 aarch64)
+url=https://github.com/libretro/blastem
+license=(GPL-3.0-only)
+groups=(libretro)
+depends=(
+  glibc
+  libretro-core-info
+)
+makedepends=(git)
+source=(
+  libretro-blastem::git+https://github.com/libretro/blastem.git#commit=${pkgver##*.g}
+  libretro-blastem-flags.patch
+)
+b2sums=('3de5cc33923f8b64133ddcdd66e0e6d2fed73e9d65b1318ad4f2c306cf14da7a40de40d8307e2ad4e31796851949fbb6d1b8717783a71a0b4102c0eacae460e5'
+        '0973d8d0ebc5f71e132950eca6321c15eec8944c747d24a9e6bf15e79343249290b3f66b9761569e31b41ffc5cb05ea7be6d2e9926790a67fbe1bb2d3805c1db')
+
+prepare() {
+  cd libretro-blastem
+  patch -Np1 -i ../libretro-blastem-flags.patch
+}
+
+build() {
+  make -C libretro-blastem -f Makefile.libretro
+}
+
+package() {
+  install -Dm 644 libretro-blastem/blastem_libretro.so -t "${pkgdir}"/usr/lib/libretro/
+}
+
+# vim: ts=2 sw=2 et:

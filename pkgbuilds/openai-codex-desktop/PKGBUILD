@@ -83,6 +83,28 @@ package() {
   bsdtar -xOf "${deb}" data.tar.xz |
     bsdtar --no-same-owner -xf - -C "${pkgdir}"
 
+  if [[ $CARCH == aarch64 ]]; then
+    # The official Debian package carries cross-platform Node prebuild
+    # matrices. Every matrix must provide a native Linux ARM64 directory;
+    # retain that directory and remove the other OS/architecture payloads.
+    local resources="${pkgdir}/usr/lib/chatgpt/resources"
+    local prebuild_dir prebuild_count=0
+    while IFS= read -r -d '' prebuild_dir; do
+      ((prebuild_count += 1))
+      find "$prebuild_dir" -mindepth 1 -maxdepth 1 -type d \
+        -name '*linux-arm64*' -print -quit | grep -q . || {
+          error "ChatGPT prebuild matrix lacks Linux ARM64: ${prebuild_dir#"$pkgdir"/}"
+          return 1
+        }
+      find "$prebuild_dir" -mindepth 1 -maxdepth 1 -type d \
+        ! -name '*linux-arm64*' -exec rm -rf -- {} +
+    done < <(find "$resources" -type d -name prebuilds -print0)
+    (( prebuild_count > 0 )) || {
+      error 'ChatGPT package contains no prebuild matrices to validate'
+      return 1
+    }
+  fi
+
   rm "${pkgdir}/usr/bin/chatgpt"
   install -Dm755 chatgpt-launcher.sh "${pkgdir}/usr/bin/chatgpt"
   ln -s chatgpt "${pkgdir}/usr/bin/codex-desktop"
