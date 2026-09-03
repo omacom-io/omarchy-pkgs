@@ -24,7 +24,7 @@ makedepends=(
   'qt6-declarative'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/This-Is-NPC/omafiles/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('047f2edc18c78b0566bbfcdcb2a58155245306814ce34f07ed424ef4d16d4a36')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
