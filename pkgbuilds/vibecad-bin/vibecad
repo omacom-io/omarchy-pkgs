@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# VibeCAD's AppImage bundles libdrm_amdgpu from its build environment. On
+# current Arch/Mesa systems that copy can make Qt's GLX probe see no usable
+# framebuffer configurations. Preloading the host-matched library keeps the
+# AppImage portable while preserving hardware acceleration.
+for vendor_path in /sys/class/drm/card*/device/vendor; do
+  [ -r "$vendor_path" ] || continue
+  if [ "$(cat "$vendor_path")" = "0x1002" ] && [ -r /usr/lib/libdrm_amdgpu.so.1 ]; then
+    LD_PRELOAD="/usr/lib/libdrm_amdgpu.so.1${LD_PRELOAD:+:$LD_PRELOAD}"
+    export LD_PRELOAD
+    break
+  fi
+done
+
+exec /opt/vibecad/VibeCAD.AppImage "$@"
