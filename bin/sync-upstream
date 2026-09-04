@@ -18,9 +18,10 @@ Usage: $0 [PACKAGE...]
 
 Update packages that track an upstream vendor release feed instead of the AUR.
 
-A package whose upstream ships tagged GitHub releases with a checksum manifest
-opts in declaratively, via "upstream" in .omarchy/package.json (see
-helpers/upstream-github.sh for the schema); no code needed. Anything with a
+A package whose upstream ships tagged GitHub releases opts in declaratively,
+via "upstream" in .omarchy/package.json (see helpers/upstream-github.sh for the
+schema): checksums come from a manifest asset the vendor publishes, or from the
+per-asset digests GitHub's release API reports. No code needed. Anything with a
 bespoke feed provides pkgbuilds/<package>/.omarchy/upstream.sh instead, a hook
 that reports the newest upstream release as JSON on stdout:
 
@@ -461,8 +462,8 @@ sync_package() {
 # paths. Covers release selection (fallback past quarantined releases,
 # draft/prerelease filtering, bypass, unchanged version), failure paths
 # (unusable tags/timestamps, missing checksums), checksum template mapping
-# for both architectures, the min_release_age backstop, the duration parser,
-# and manifest validation.
+# for both architectures, release API digests, the min_release_age backstop,
+# the duration parser, and manifest validation.
 cmd_self_test() {
   local failures=0
 
@@ -562,6 +563,76 @@ EOF
   rc=0; github_upstream_release "$pkg" 86400 >/dev/null 2>&1 || rc=$?
   check "missing aarch64 checksum fails the sync" "1" "$rc"
 
+  # A vendor publishing no manifest: checksums come from the digests the
+  # release API reports per asset, with nothing fetched beyond the feed.
+  echo "Release API digests:"
+  local digpkg="$TEMP_DIR/selftest-digests"
+  mkdir -p "$digpkg/.omarchy"
+  printf 'pkgver=1.0.0\npkgrel=1\n' > "$digpkg/PKGBUILD"
+  cat > "$digpkg/.omarchy/package.json" <<'EOF'
+{
+  "source": "local",
+  "upstream": {
+    "github": "example/tool",
+    "digests": true,
+    "assets": {
+      "x86_64": "tool-{pkgver}-1-x86_64.pkg.tar.zst",
+      "aarch64": "tool-{pkgver}-1-aarch64.pkg.tar.zst"
+    }
+  }
+}
+EOF
+  FIXTURE_RELEASES=$(jq -n --arg old "$old2d" --arg x "$sum_x19" --arg a "$sum_a19" '[
+    {tag_name: "v1.9.0", published_at: $old, draft: false, prerelease: false, assets: [
+      {name: "tool-1.9.0-1-x86_64.pkg.tar.zst", digest: ("sha256:" + $x)},
+      {name: "tool-1.9.0-1-aarch64.pkg.tar.zst", digest: ("sha256:" + $a)},
+      {name: "tool-1.9.0-1-x86_64.rpm", digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"}
+    ]}
+  ]')
+  FIXTURE_CHECKSUMS="manifest must not be consulted"
+  out=$(github_upstream_release "$digpkg" 0 2>/dev/null) || out="<error>"
+  check "x86_64 checksum via the asset digest" "$sum_x19" "$(jq -r '.sha256sums.x86_64[0] // "<none>"' <<<"$out")"
+  check "aarch64 checksum via the asset digest" "$sum_a19" "$(jq -r '.sha256sums.aarch64[0] // "<none>"' <<<"$out")"
+
+  FIXTURE_RELEASES=$(jq -n --arg old "$old2d" --arg x "$sum_x19" '[
+    {tag_name: "v1.9.0", published_at: $old, draft: false, prerelease: false, assets: [
+      {name: "tool-1.9.0-1-x86_64.pkg.tar.zst", digest: ("sha256:" + $x)},
+      {name: "tool-1.9.0-1-aarch64.pkg.tar.zst"}
+    ]}
+  ]')
+  rc=0; github_upstream_release "$digpkg" 0 >/dev/null 2>&1 || rc=$?
+  check "asset without a digest fails the sync" "1" "$rc"
+
+  FIXTURE_RELEASES=$(jq -n --arg old "$old2d" --arg x "$sum_x19" '[
+    {tag_name: "v1.9.0", published_at: $old, draft: false, prerelease: false, assets: [
+      {name: "tool-1.9.0-1-x86_64.pkg.tar.zst", digest: ("sha256:" + $x)},
+      {name: "tool-1.9.0-2-aarch64.pkg.tar.zst", digest: ("sha256:" + $x)}
+    ]}
+  ]')
+  rc=0; github_upstream_release "$digpkg" 0 >/dev/null 2>&1 || rc=$?
+  check "asset re-cut under another release number fails the sync" "1" "$rc"
+
+  FIXTURE_RELEASES=$(jq -n --arg old "$old2d" --arg x "$sum_x19" --arg a "$sum_a19" '[
+    {tag_name: "v1.9.0", published_at: $old, draft: false, prerelease: false, assets: [
+      {name: "tool-1.9.0-1-x86_64.pkg.tar.zst", digest: $x},
+      {name: "tool-1.9.0-1-aarch64.pkg.tar.zst", digest: ("sha256:" + $a)}
+    ]}
+  ]')
+  rc=0; github_upstream_release "$digpkg" 0 >/dev/null 2>&1 || rc=$?
+  check "digest without the sha256: prefix fails the sync" "1" "$rc"
+
+  # The provider enforces the declaration shape itself: scheduled runs reach
+  # it without validate_package_metadata.
+  jq '.upstream.checksums = "SHASUMS256.txt"' "$digpkg/.omarchy/package.json" > "$digpkg/both.json"
+  cp "$digpkg/.omarchy/package.json" "$digpkg/good.json"
+  cp "$digpkg/both.json" "$digpkg/.omarchy/package.json"
+  rc=0; github_upstream_release "$digpkg" 0 >/dev/null 2>&1 || rc=$?
+  check "provider rejects checksums and digests together" "1" "$rc"
+  jq '.upstream.digests = "true"' "$digpkg/good.json" > "$digpkg/.omarchy/package.json"
+  rc=0; github_upstream_release "$digpkg" 0 >/dev/null 2>&1 || rc=$?
+  check "provider rejects a non-boolean digests" "1" "$rc"
+  cp "$digpkg/good.json" "$digpkg/.omarchy/package.json"
+
   echo "Quarantine backstop:"
   local rel st
   rel=$(jq -n --arg p "$old2d" '{pkgver: "1.9.0", published_at: $p, sha256sums: {}}')
@@ -614,6 +685,27 @@ EOF
   echo '{"source": "local", "upstream": {"github": "example/tool"}}' > "$agepkg/.omarchy/package.json"
   vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
   check "upstream without checksums/assets is rejected" "1" "$vst"
+  echo '{"source": "local", "upstream": {"github": "example/tool", "checksums": "SHASUMS256.txt", "digests": true, "assets": {"x86_64": "a"}}}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "upstream with both checksums and digests is rejected" "1" "$vst"
+  echo '{"source": "local", "upstream": {"github": "example/tool", "digests": "yes", "assets": {"x86_64": "a"}}}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "non-boolean digests is rejected" "1" "$vst"
+  echo '{"source": "local", "upstream": {"github": "example/tool", "checksums": false, "digests": true, "assets": {"x86_64": "a"}}}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "checksums: false alongside digests is rejected" "1" "$vst"
+  echo '{"source": "local", "upstream": {"github": "example/tool", "checksums": "SUMS", "digests": null, "assets": {"x86_64": "a"}}}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "digests: null is rejected" "1" "$vst"
+  echo '{"source": "local", "upstream": {"github": "example/tool", "checksums": "SUMS", "digests": false, "assets": {"x86_64": "a"}}}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "digests: false beside a checksums manifest is accepted" "0" "$vst"
+  echo '{"source": "local", "upstream": {"github": "example/tool", "digests": false, "assets": {"x86_64": "a"}}}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "digests: false alone is rejected" "1" "$vst"
+  cp "$digpkg/.omarchy/package.json" "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "the digests declaration shape is accepted" "0" "$vst"
   cp "$pkg/.omarchy/package.json" "$agepkg/.omarchy/package.json"
   vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
   check "the real declaration shape is accepted" "0" "$vst"
