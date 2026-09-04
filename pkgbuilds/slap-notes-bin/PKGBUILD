@@ -64,11 +64,6 @@ package() {
   cp -a app/. "${pkgdir}/opt/${_appname}/"
   chmod -R a+rX "${pkgdir}/opt/${_appname}"
 
-  # Arch ships Chromium's and Electron's own sandbox helper setuid, which is
-  # what keeps the sandbox up on a kernel that denies unprivileged user
-  # namespaces -- linux-hardened, mainly -- instead of aborting the app.
-  chmod 4755 "${pkgdir}/opt/${_appname}/chrome-sandbox"
-
   install -Dm755 "${srcdir}/${_appname}-launcher.sh" "${pkgdir}/usr/bin/${_appname}"
 
   # Upstream's entry points straight into /opt, which would step around the
