@@ -13,13 +13,21 @@ check_docker() {
   fi
 }
 
+docker_native_arch() {
+  case "$(uname -m)" in
+    x86_64) echo x86_64 ;;
+    aarch64 | arm64) echo aarch64 ;;
+    *) return 1 ;;
+  esac
+}
+
 setup_qemu() {
-  # Setup QEMU for building ARM64 packages on x86_64 hosts
+  # Register emulators for builds whose target differs from the host.
   if ! docker run --rm --privileged multiarch/qemu-user-static --reset -p yes --credential yes >/dev/null 2>&1; then
-    print_error "Failed to setup QEMU for ARM64 emulation"
+    print_error "Failed to set up QEMU emulation"
     exit 1
   fi
-  print_success "QEMU ARM64 emulation enabled"
+  print_success "QEMU emulation enabled"
 }
 
 build_docker_image() {
@@ -53,9 +61,9 @@ build_docker_image() {
 get_platform_arg() {
   local arch="$1"
   case "$arch" in
-    x86_64)  echo "--platform linux/amd64" ;;
-    aarch64) echo "--platform linux/arm64" ;;
-    *)       echo "" ;;
+    x86_64)  echo "--platform=linux/amd64" ;;
+    aarch64) echo "--platform=linux/arm64" ;;
+    *)       return 1 ;;
   esac
 }
 

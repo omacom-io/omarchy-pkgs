@@ -45,9 +45,7 @@ RUN if [ "${TARGETARCH}" = "amd64" ]; then \
             printf 'Server = https://mirror.omarchy.org/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist; \
         fi; \
     else \
-        curl -L "https://raw.githubusercontent.com/archlinuxarm/PKGBUILDs/master/core/pacman-mirrorlist/mirrorlist" 2>/dev/null | \
-            sed -E 's/^\s*#\s*Server\s*=/Server =/g' > /etc/pacman.d/mirrorlist && \
-        sed -i 's/\$arch/aarch64/g' /etc/pacman.d/mirrorlist; \
+        printf 'Server = https://fl.us.mirror.archlinuxarm.org/aarch64/$repo\n' > /etc/pacman.d/mirrorlist; \
     fi
 
 # Bootstrap keyrings (required before pacstrap can verify packages)

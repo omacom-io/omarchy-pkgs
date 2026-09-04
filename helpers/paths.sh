@@ -13,8 +13,8 @@ VALID_ARCHES="x86_64 aarch64"
 # in this order; the first entry is the reference architecture that the
 # release train observes channels through. Adding an architecture here is the
 # enablement step: the next check-versions tick queues its packages and the
-# next auto-release tick builds them. OMARCHY_ARCHES overrides it for a host
-# or a one-off run.
+# next auto-release tick builds them. OMARCHY_ARCHES overrides it for a
+# one-off run.
 PUBLISHED_ARCHES="${OMARCHY_ARCHES:-x86_64}"
 
 validate_arch() {

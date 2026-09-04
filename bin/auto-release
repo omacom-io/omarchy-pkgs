@@ -131,17 +131,28 @@ release_arch() {
 
   if "$BUILD_ROOT/bin/repo" release --mirror "$MIRROR" --arch "$arch" --skip-prod-check; then
     print_success "Release completed successfully for $MIRROR ($arch)"
-    rm -f "$state_file" "$fail_file"
+    local completed_state=("$state_file" "$fail_file")
+    if [[ "$arch" == "x86_64" ]]; then
+      completed_state+=("$(legacy_sync_queue_file "$MIRROR")" "$(legacy_sync_fail_file "$MIRROR")")
+    fi
+    if ! rm -f "${completed_state[@]}"; then
+      print_error "Release succeeded, but its queue state could not be cleared"
+      return 1
+    fi
     print_success "State file removed: $state_file"
     return 0
   fi
 
   fail_count=$((fail_count + 1))
-  cat >"$fail_file" <<EOF
+  if ! cat >"$fail_file" <<EOF
 FAILURE_COUNT=$fail_count
 FAILURE_AT=$(date +%s)
 FAILURE_FINGERPRINT=$(current_fingerprint)
 EOF
+  then
+    print_error "Could not record failure state: $fail_file"
+    return 1
+  fi
   local next
   next=$(backoff_seconds "$fail_count")
   print_error "Release failed for $MIRROR ($arch) (attempt $fail_count)"

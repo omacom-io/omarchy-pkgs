@@ -143,6 +143,31 @@ package_has_pkgbuild() {
   [[ -f "$pkgdir/PKGBUILD" ]]
 }
 
+# The architectures declared by a PKGBUILD. Set CARCH while reading it so a
+# conditional arch=() assignment is evaluated for the architecture we are
+# actually checking, even when the repository host is a different one.
+package_arches() {
+  local pkgdir="$1"
+  local arch="${2:-${ARCH:-x86_64}}"
+
+  (cd "$pkgdir" && env -u OMARCHY_SRC CARCH="$arch" bash -c '
+    source PKGBUILD >/dev/null 2>&1
+    printf "%s\n" "${arch[*]}"
+  ')
+}
+
+package_supports_arch() {
+  local pkgdir="$1"
+  local target="${2:-${ARCH:-x86_64}}"
+  local arches
+
+  arches=$(package_arches "$pkgdir" "$target") || return 1
+  case " $arches " in
+    *" any "* | *" $target "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Channel membership: where a package may be published. Packages without a
 # `channels` key are members of every channel (they flow edge -> rc -> stable).
 package_has_channels() {
@@ -301,9 +326,12 @@ packages_for_mirror() {
 
 packages_for_unscoped_build() {
   local mirror="$1"
+  local arch="${2:-${ARCH:-x86_64}}"
 
   package_dirs | while IFS= read -r pkgdir; do
-    if package_builds_for_mirror "$pkgdir" "$mirror" && ! package_build_skipped "$pkgdir"; then
+    if package_builds_for_mirror "$pkgdir" "$mirror" &&
+      ! package_build_skipped "$pkgdir" &&
+      package_supports_arch "$pkgdir" "$arch"; then
       basename "$pkgdir"
     fi
   done
@@ -502,12 +530,28 @@ validate_package_metadata() {
     return 1
   fi
 
-  if ! jq -e '(.rebuilt_against // {}) | type == "object" and (to_entries | all(.value | type == "string" and length > 0))' "$metadata" >/dev/null; then
-    echo "invalid rebuilt_against for $(basename "$pkgdir"): must be an object mapping package names to versions"
+  if ! jq -e '
+    def version_map:
+      type == "object" and (to_entries | all(.value | type == "string" and length > 0));
+    (.rebuilt_against // {}) as $record |
+    ($record | version_map) or
+      (($record | type) == "object"
+       and ((($record | keys) - ["x86_64", "aarch64"]) | length == 0)
+       and ($record | to_entries | all(.value | version_map)))
+  ' "$metadata" >/dev/null; then
+    echo "invalid rebuilt_against for $(basename "$pkgdir"): must map architectures to package-version maps"
     return 1
   fi
 
-  if ! jq -e '((.rebuilt_against // {}) | keys) - (.rebuild_on // []) | length == 0' "$metadata" >/dev/null; then
+  if ! jq -e '
+    (.rebuild_on // []) as $triggers |
+    (.rebuilt_against // {}) as $record |
+    if ($record | to_entries | all(.value | type == "string")) then
+      ((($record | keys) - $triggers) | length == 0)
+    else
+      ($record | to_entries | all((((.value | keys) - $triggers) | length) == 0))
+    end
+  ' "$metadata" >/dev/null; then
     echo "invalid rebuilt_against for $(basename "$pkgdir"): records a package that rebuild_on does not name"
     return 1
   fi

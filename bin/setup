@@ -15,6 +15,7 @@ set -e
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/paths.sh"
 
 CHECK_ONLY=false
 SKIP_TIMERS=false
@@ -238,7 +239,7 @@ echo ""
 # --- release timers ----------------------------------------------------------
 
 print_info "Published architectures: $(published_arches | tr '\n' ' ')"
-echo "    (PUBLISHED_ARCHES in helpers/paths.sh, or OMARCHY_ARCHES in $CREDENTIALS)"
+echo "    (PUBLISHED_ARCHES in helpers/paths.sh; OMARCHY_ARCHES overrides a one-off command)"
 echo ""
 
 TIMERS=(omarchy-check-versions omarchy-auto-release-edge omarchy-auto-release-rc omarchy-auto-release-stable)

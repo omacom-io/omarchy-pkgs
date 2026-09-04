@@ -57,14 +57,25 @@ file per channel and architecture (`.sync-needed-<channel>-<arch>`);
 `auto-release <channel>` works through the queues one architecture at a
 time, each with its own backoff (`.build-failed-<channel>-<arch>`), so a
 failing build on one architecture never holds up the other; and the release
-train advances channels with `--arch all`, so a channel never moves for one
-architecture and not another. The first entry is the reference architecture
-the release train observes channels through.
+train advances channels with `--arch all`: it takes one host-wide lock and
+verifies every architecture's source database before moving any of them. The
+first entry is the reference architecture the release train observes channels
+through. A remote sync failure can still leave a promotion temporarily partial;
+rerunning the same advance completes it safely.
 
-Adding an architecture is therefore one change to that list (or
-`OMARCHY_ARCHES` in the host's build credentials): the next `check-versions`
-tick queues everything the new architecture lacks, and the next
-`auto-release` tick starts building it. The builder image bootstraps
+Adding an architecture to the scheduled pipeline is therefore one checked-in
+change to that list: the next `check-versions` tick queues everything the new
+architecture lacks, and the next `auto-release` tick starts building it. A
+checked-in list also means the rebuild workflow and release host cannot drift
+onto different architecture sets. For a one-off run, override it directly:
+
+```bash
+OMARCHY_ARCHES=x86_64 bin/check-versions
+OMARCHY_ARCHES=aarch64 bin/check-versions
+OMARCHY_ARCHES="x86_64 aarch64" bin/check-versions
+```
+
+The builder image bootstraps
 `omarchy-keyring` from the x86_64 tree for every architecture, so the first
 build of a new architecture does not depend on a repository that only it can
 create.
@@ -450,7 +461,12 @@ A package names those dependencies in `.omarchy/package.json`:
 { "source": "aur", "sync": false, "rebuild_on": ["qt6-base", "qt6-declarative", "qt6-wayland"] }
 ```
 
-`bin/sync-rebuilds` reads each named package's version from the official repositories and compares it to `rebuilt_against`, the record of what the checked-in pkgrel was last bumped for. pkgrel is bumped unless every name in `rebuild_on` is recorded and still matches, so a name the record does not carry reads as changed rather than going unexamined forever. Opting a package in therefore buys one rebuild: what its published build actually linked against is not knowable from here, and a record written without a rebuild would certify a build nobody checked.
+`bin/sync-rebuilds` reads each named package's version from the official
+repositories for every published architecture the package supports and compares
+it to `rebuilt_against`. Records are kept per architecture because Arch and
+Arch Linux ARM can carry different dependency versions. pkgrel is bumped once
+when any recorded version moves; that one source revision is then rebuilt by
+each architecture's normal queue.
 
 The bump is the point of the command, and it has to land in git rather than in the builder. A rebuild that reuses the published version string produces a package pacman will never offer anyone, so merely unlocking the build gate would ship nothing. Bumping pkgrel needs no other change: `bin/check-versions` and the builder both already rebuild when pkgrel moves.
 
@@ -458,9 +474,12 @@ For an AUR-synced package the bump is expressed as the dotted Omarchy pkgrel suf
 
 The bumped version is checked against the published one as well as the checked-in one, and refused when pacman would not order it higher. The checked-in version is not the floor; what a user already has is, and a checkout that has fallen behind the repository can otherwise be bumped to something that loses to the package it means to replace. That check is skipped with a warning when the published database cannot be read.
 
-Versions are read from the local pacman database, so this runs on Arch or in an Arch container against a synced database. Only `core`, `extra` and `multilib` count: a Qt release sitting in testing or kde-unstable is not what the builder will link against, and rebuilding for it would ship a package built against the wrong ABI. The workflow points that database at `mirror.omarchy.org`, the mirror the x86_64 builder itself uses, because a mirror running ahead of the builder would record a version the build never linked against and nothing re-fires once the record matches.
-
-aarch64 is not covered. Those builds resolve Qt from Arch Linux ARM, which can lag Arch, so one record cannot describe both architectures. Only x86_64 is published today, so nothing currently ships from the untracked side; if ARM publishing starts, `rebuilt_against` has to become per-architecture before this can be trusted there.
+x86_64 versions are read from the local pacman database, so the workflow runs
+in an Arch container pointed at `mirror.omarchy.org`, the same mirror as the
+x86_64 builder. aarch64 versions are read directly from the live Arch Linux ARM
+repository database, which is also what the ARM builder uses. Testing and
+staging repositories do not count. A legacy flat `rebuilt_against` record is
+read as x86_64 and is migrated naturally the next time a rebuild is needed.
 
 ### Other
 
@@ -668,7 +687,7 @@ Fields:
 - `skip_build`: optional boolean; defaults to `false`. Set `true` to exclude a package from scheduled version checks and unscoped builds. The package can still be built explicitly with `bin/repo release --package <name>`.
 - `pkgrel`: optional Omarchy pkgrel suffix for a version-pinned rebuild bump. This emits `<aur pkgrel>.<suffix>` instead of replacing AUR's pkgrel. `offset` can be used only when preserving monotonic upgrades from old absolute pkgrel bumps. The metadata is removed automatically when AUR sync changes `pkgver`; the current package version is read from the checked-in PKGBUILD, so the version is not duplicated in JSON.
 - `rebuild_on`: optional array of package names this package links against closely enough that it must be rebuilt when they change, independent of its own source. Read by `bin/sync-rebuilds`.
-- `rebuilt_against`: written by `bin/sync-rebuilds`. Records the version of each `rebuild_on` package that the current pkgrel was bumped for.
+- `rebuilt_against`: written by `bin/sync-rebuilds`. Maps each published architecture to the versions of its `rebuild_on` packages that the current pkgrel was bumped for.
 - `upstream_commit`: set by `bin/sync-aur` for AUR packages. Used by `bin/package-worktree` to recreate the exact raw AUR package that Omarchy last synced.
 
 ### Build Matrix
@@ -764,8 +783,10 @@ bin/repo release --package my-package
 
 ### aarch64
 - Built on the repository host like x86_64; under QEMU when the host is x86_64
-- Uses Arch Linux ARM repositories (one mirrorlist for every channel — Arch
-  Linux ARM publishes no dated snapshots to pin a channel's base to)
+- On an ARM host, package builds and the signing/database utility containers
+  run natively; only an explicitly requested x86_64 package build is emulated
+- Uses Arch Linux ARM repositories through the same HTTPS mirror for every
+  channel (Arch Linux ARM publishes no dated snapshots to pin a channel's base)
 - Additional repos: `[alarm]`, `[aur]`
 - Same workflow, just add `--arch aarch64`; the scheduled pipeline runs it
   automatically once `aarch64` is in `PUBLISHED_ARCHES`
@@ -835,10 +856,11 @@ That cadence is only safe because of three guards:
   an operator expects. `check-versions` takes it too — its `git pull` would
   otherwise swap PKGBUILDs out from under a running build.
 - **Backoff on failure.** A failed release records the attempt in
-  `.build-failed-<channel>` and backs off exponentially — 10m, 20m, 40m, up to
+  `.build-failed-<channel>-<arch>` and backs off exponentially — 10m, 20m, 40m, up to
   a 6h ceiling — instead of rebuilding the same broken tree every 5 minutes.
   **Any new commit clears the backoff immediately**, since a push is the most
-  likely fix. Clear it by hand with `rm /root/.state/.build-failed-<channel>`.
+  likely fix. Clear it by hand with
+  `rm /root/.state/.build-failed-<channel>-<arch>`.
 - **Quiet when idle.** With nothing queued a tick exits without output, so the
   journal shows the runs that mattered rather than 288 no-ops a day.
 
@@ -891,10 +913,14 @@ bin/repo timers --local   # inspect this machine instead
 ```
 
 State files are stored in `/root/.state/`:
-- `.sync-needed-<channel>` — the packages queued for that channel, one per
-  line; the release run reads them to name what it is building
-- `.build-failed-<channel>` — consecutive failure count, timestamp, and the
-  commit it failed on (drives the backoff; removing it forces a retry)
+- `.sync-needed-<channel>-<arch>` — the packages queued for that channel and
+  architecture, one per line; the release run reads them to name what it is
+  building
+- `.build-failed-<channel>-<arch>` — consecutive failure count, timestamp, and
+  the commit it failed on (drives the backoff; removing it forces a retry)
+
+Legacy files without the architecture suffix are consumed once as x86_64
+state, so upgrading the host does not lose an in-flight build.
 
 ### Schedule (America/New_York)
 

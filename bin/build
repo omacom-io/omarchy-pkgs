@@ -102,6 +102,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+require_valid_arch "$ARCH"
+
 if [[ $DEFER_RUNTIME_DEPS != "false" && $DEFER_RUNTIME_DEPS != "true" ]]; then
   print_error "OMARCHY_DEFER_RUNTIME_DEPS must be true or false"
   exit 1
@@ -170,8 +172,7 @@ check_docker
 HOST_ARCH=$(uname -m)
 [[ "$HOST_ARCH" == "arm64" ]] && HOST_ARCH=aarch64
 if [[ "$HOST_ARCH" != "$ARCH" ]]; then
-  # shellcheck disable=SC2086
-  if ! docker run --rm $(get_platform_arg "$ARCH") alpine:3.21 /bin/true >/dev/null 2>&1; then
+  if ! docker run --rm "$(get_platform_arg "$ARCH")" alpine:3.21 /bin/true >/dev/null 2>&1; then
     print_info "Setting up QEMU for $ARCH emulation on this $HOST_ARCH host..."
     setup_qemu
   fi
@@ -183,7 +184,7 @@ if [[ $KEEP_BUILD_WORKSPACE == "1" ]]; then
   print_info "Keeping existing build workspace..."
 else
   print_info "Cleaning build workspace..."
-  rm -rf "$BUILD_OUTPUT_DIR"/*
+  rm -rf "${BUILD_OUTPUT_DIR:?}"/*
 fi
 mkdir -p "$BUILD_OUTPUT_DIR"
 
@@ -237,7 +238,7 @@ DOCKER_ARGS=(
 # Run the builder with assembled args
 PLATFORM_ARG=$(get_platform_arg "$ARCH")
 
-docker run $PLATFORM_ARG "${DOCKER_ARGS[@]}" "$IMAGE_TAG" /build/build.sh
+docker run "$PLATFORM_ARG" "${DOCKER_ARGS[@]}" "$IMAGE_TAG" /build/build.sh
 
 BUILD_RESULT=$?
 

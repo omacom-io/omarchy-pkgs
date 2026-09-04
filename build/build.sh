@@ -186,26 +186,9 @@ get_local_version() {
 # Returns 0 (success) if should build, 1 if should skip
 should_build_for_arch() {
   local pkg="$1"
-  local current_arch="$ARCH"
-  local pkgdir=$(find_package_dir "$pkg")
-  local pkgbuild="$pkgdir/PKGBUILD"
-
-  [[ ! -f "$pkgbuild" ]] && return 1
-
-  # Check PKGBUILD arch=() array
-  local pkgbuild_archs=$(cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; echo "${arch[@]}"')
-
-  # If arch=('any'), build for all architectures
-  if [[ "$pkgbuild_archs" == "any" ]]; then
-    return 0
-  fi
-
-  # Check if current arch is in PKGBUILD arch=()
-  if echo "$pkgbuild_archs" | grep -qw "$current_arch"; then
-    return 0  # Build
-  else
-    return 1  # Skip
-  fi
+  local pkgdir
+  pkgdir=$(find_package_dir "$pkg")
+  [[ -n "$pkgdir" ]] && package_supports_arch "$pkgdir" "$ARCH"
 }
 
 # For VCS packages, makepkg recalculates pkgver() before the build. If the
@@ -488,7 +471,7 @@ check_needs_build() {
 
 # Collect packages that should be built for the selected mirror
 collect_packages() {
-  packages_for_unscoped_build "$MIRROR"
+  packages_for_unscoped_build "$MIRROR" "$ARCH"
 }
 
 # Main execution
@@ -540,13 +523,6 @@ if [[ -n "$PACKAGES" ]]; then
 else
   # Build all packages that need updates from the relevant directories
   while IFS= read -r pkg; do
-    # Check if package should be built for this architecture
-    if ! should_build_for_arch "$pkg"; then
-      echo "  - $pkg - not built for $ARCH"
-      SKIPPED_PACKAGES="$SKIPPED_PACKAGES $pkg"
-      continue
-    fi
-
     if check_needs_build "$pkg"; then
       PACKAGES_TO_BUILD+=("$pkg")
     else

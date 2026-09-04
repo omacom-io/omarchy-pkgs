@@ -105,32 +105,32 @@ echo ""
 paused=false
 for channel in edge rc stable; do
   for arch in $(published_arches); do
-  fail_file=$(sync_fail_file "$channel" "$arch")
-  [[ "$arch" == "x86_64" && ! -f "$fail_file" ]] && fail_file=$(legacy_sync_fail_file "$channel")
-  [[ -f "$fail_file" ]] || continue
-  if [[ "$paused" == false ]]; then
-    print_error "Failing builds (backoff active)"
-    paused=true
-  fi
-  FAILURE_COUNT=0 FAILURE_AT=0 FAILURE_FINGERPRINT=""
-  # shellcheck disable=SC1090
-  source "$fail_file" 2>/dev/null || true
-  delay=600
-  for ((i = 1; i < FAILURE_COUNT; i++)); do
-    delay=$((delay * 2))
-    ((delay >= 21600)) && { delay=21600; break; }
-  done
-  retry_at=$((FAILURE_AT + delay))
-  now=$(date +%s)
-  if ((now < retry_at)); then
-    when="retries at $(date -d "@$retry_at" '+%H:%M:%S' 2>/dev/null || echo "+$((retry_at - now))s")"
-  else
-    when="retries on the next tick"
-  fi
-  printf '  ✗ %-7s %-8s %s consecutive failure(s), %s\n' "$channel" "$arch" "$FAILURE_COUNT" "$when"
-  printf '      last attempt %s on commit %s\n' \
-    "$(date -d "@$FAILURE_AT" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$FAILURE_AT")" \
-    "${FAILURE_FINGERPRINT:0:12}"
+    fail_file=$(sync_fail_file "$channel" "$arch")
+    [[ "$arch" == "x86_64" && ! -f "$fail_file" ]] && fail_file=$(legacy_sync_fail_file "$channel")
+    [[ -f "$fail_file" ]] || continue
+    if [[ "$paused" == false ]]; then
+      print_error "Failing builds (backoff active)"
+      paused=true
+    fi
+    FAILURE_COUNT=0 FAILURE_AT=0 FAILURE_FINGERPRINT=""
+    # shellcheck disable=SC1090
+    source "$fail_file" 2>/dev/null || true
+    delay=600
+    for ((i = 1; i < FAILURE_COUNT; i++)); do
+      delay=$((delay * 2))
+      ((delay >= 21600)) && { delay=21600; break; }
+    done
+    retry_at=$((FAILURE_AT + delay))
+    now=$(date +%s)
+    if ((now < retry_at)); then
+      when="retries at $(date -d "@$retry_at" '+%H:%M:%S' 2>/dev/null || echo "+$((retry_at - now))s")"
+    else
+      when="retries on the next tick"
+    fi
+    printf '  ✗ %-7s %-8s %s consecutive failure(s), %s\n' "$channel" "$arch" "$FAILURE_COUNT" "$when"
+    printf '      last attempt %s on commit %s\n' \
+      "$(date -d "@$FAILURE_AT" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "$FAILURE_AT")" \
+      "${FAILURE_FINGERPRINT:0:12}"
   done
 done
 if [[ "$paused" == true ]]; then

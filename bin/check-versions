@@ -180,7 +180,7 @@ check_mirror() {
       needs_build=true
       packages+=("$pkg")
     fi
-  done < <(packages_for_unscoped_build "$mirror")
+  done < <(packages_for_unscoped_build "$mirror" "$ARCH")
 
   echo ""
 
