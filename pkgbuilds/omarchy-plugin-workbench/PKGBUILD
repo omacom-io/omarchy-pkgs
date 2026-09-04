@@ -1,19 +1,16 @@
-pkgname=omarchy-discovery
+pkgname=omarchy-plugin-workbench
 pkgver=0.3.0
 pkgrel=1
-pkgdesc='Native Omarchy discovery and ecosystem management helper'
+pkgdesc='Native Omarchy plugin discovery, management, and development helper'
 arch=('x86_64' 'aarch64')
 url='https://github.com/tcballard/omarchy-plugin-workbench'
 license=('MIT')
 depends=('gcc-libs' 'glibc' 'git' 'curl')
 makedepends=('cargo')
-provides=('omarchy-plugin-workbench')
-conflicts=('omarchy-plugin-workbench')
-
-_commit='0d3c38085a0da6021842f29fbd2b6c2bd451d49a'
+_commit='6ab0b83e8519473ef71c2b005528806e5f180dad'
 _srcdir="omarchy-plugin-workbench-$_commit"
 source=("$pkgname-$_commit.tar.gz::$url/archive/$_commit.tar.gz")
-sha256sums=('1d91e1c3856a54893c9df6a81bd5016fb0cb0f76781e99794a56a9a352d0ed86')
+sha256sums=('2c53dcec4e56df7b352958c51db705f1284ae91e9981b280580713e0340136f4')
 
 prepare() {
   cd "$_srcdir"
@@ -34,8 +31,8 @@ check() {
 
 package() {
   cd "$_srcdir"
-  install -Dm755 target/release/omarchy-discovery \
-    "$pkgdir/usr/bin/omarchy-discovery"
+  install -Dm755 target/release/omarchy-plugin-workbench \
+    "$pkgdir/usr/bin/omarchy-plugin-workbench"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }
