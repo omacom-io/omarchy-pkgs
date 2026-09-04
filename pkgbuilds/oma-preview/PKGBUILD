@@ -1,6 +1,6 @@
 # Maintainer: Lukas Innig (derluke on GitHub)
 pkgname=oma-preview
-pkgver=0.8.1
+pkgver=0.8.2
 pkgrel=1
 pkgdesc='A small Omarchy-native PDF reader and editor with visible agent review'
 arch=('x86_64' 'aarch64')
@@ -10,7 +10,7 @@ options=('!debug')
 depends=('quickshell' 'qt6-declarative' 'qt6-webengine' 'qpdf' 'poppler' 'librsvg' 'gcc-libs' 'glibc')
 makedepends=('cargo')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('9e56d0d6de45e0cb3984e10328aee929c40e4d9b1780235ed850117fa783f541')
+sha256sums=('7a457d76550500caa19028cf6cb698812c7d41f4167205e60417369af4ceb7ce')
 
 prepare() {
     cd "oma-preview-$pkgver"
