@@ -1,0 +1,61 @@
+# Maintainer: Spencer Bull <spencerbull2554@gmail.com>
+
+# cua-driver ships prebuilt from the trycua/cua monorepo release feed, so this
+# repackages the vendor tarball. Upstream keeps the CLI, its cursor-theme
+# compiler, and the SDK artifacts together in one directory and exposes the
+# CLI through a symlink -- the binary resolves its helpers as siblings of
+# /proc/self/exe -- so the whole tree lands under /usr/lib/cua-driver with a
+# /usr/bin symlink. .omarchy/upstream.sh rewrites the version and checksums
+# below from the release feed.
+
+pkgname=cua-driver-bin
+pkgver=0.23.2
+pkgrel=1
+pkgdesc="Computer-use driver for native GUI apps: accessibility-tree snapshots and input injection"
+arch=('x86_64' 'aarch64')
+url="https://github.com/trycua/cua"
+license=('MIT')
+# at-spi2-core carries the AT-SPI accessibility bus the driver reads GUI
+# trees through; the X libraries are linked, not dlopen'd.
+depends=(
+  'at-spi2-core'
+  'gcc-libs'
+  'glibc'
+  'libx11'
+  'libxcb'
+  'libxext'
+  'libxi'
+  'libxkbcommon'
+)
+provides=("cua-driver=${pkgver}")
+conflicts=('cua-driver')
+# Prebuilt Rust binaries ship byte-exact: their build ids are what upstream
+# symbolication matches.
+options=('!strip' '!debug')
+source=('LICENSE')
+source_x86_64=("https://github.com/trycua/cua/releases/download/cua-driver-rs-v${pkgver}/cua-driver-rs-${pkgver}-linux-x86_64.tar.gz")
+source_aarch64=("https://github.com/trycua/cua/releases/download/cua-driver-rs-v${pkgver}/cua-driver-rs-${pkgver}-linux-arm64.tar.gz")
+sha256sums=('c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9')
+sha256sums_x86_64=('478e010d2b0426de9d8a07eb839802daa92137b33cb8affb93b991e91d76ce7e')
+sha256sums_aarch64=('3ad2d6c7ca7356a08e534baa2f4ca84ad02cebb2d27caef66cb268b6df71210d')
+
+package() {
+  local platform
+  case "${CARCH}" in
+    x86_64) platform="linux-x86_64" ;;
+    aarch64) platform="linux-arm64" ;;
+  esac
+  cd "${srcdir}/cua-driver-rs-${pkgver}-${platform}"
+
+  # The vendor tree stays together: cua-driver execs cua-cursor-theme as a
+  # sibling of the resolved binary, and the SDK library, node runtime, ABI
+  # header, and the GNOME wayland-helper extension are versioned with it.
+  install -d "${pkgdir}/usr/lib/cua-driver"
+  cp -a . "${pkgdir}/usr/lib/cua-driver/"
+  chmod -R a+rX "${pkgdir}/usr/lib/cua-driver"
+
+  install -d "${pkgdir}/usr/bin"
+  ln -s ../lib/cua-driver/cua-driver "${pkgdir}/usr/bin/cua-driver"
+
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
