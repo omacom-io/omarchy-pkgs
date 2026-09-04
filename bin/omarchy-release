@@ -18,6 +18,7 @@ set -e
 
 BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
+source "$BUILD_ROOT/helpers/docker-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/host-helpers.sh"
 
@@ -374,8 +375,8 @@ iso_checkout() { # prints a usable omarchy-iso checkout, cloning to tmp if neede
 build_iso() { # build_iso <version> [--rc]
   local version="$1" rc_flag="${2:-}" dir
   dir=$(iso_checkout) || return 1
-  if ! command -v docker >/dev/null || ! docker info >/dev/null 2>&1; then
-    print_warning "Docker unavailable — cannot build the ISO here. Run on a Docker machine:"
+  if [[ -z "$CONTAINER_ENGINE" ]] || ! "$CONTAINER_ENGINE" info >/dev/null 2>&1; then
+    print_warning "No container engine is available — cannot build the ISO here. Run on a Docker or Podman machine:"
     echo "  cd $dir && bin/omarchy-iso-release ${rc_flag:+$rc_flag }$version"
     return 1
   fi
@@ -1034,10 +1035,10 @@ cmd_doctor() {
   else
     print_warning "no build host configured — set OMARCHY_REPO_HOST, --host, or write an ssh destination (root@<host> or an ssh-config alias) to $BUILD_ROOT/.repo-host; until then builds trigger on the 6h timer only"
   fi
-  if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
-    print_success "docker available (ISO builds possible here)"
+  if [[ -n "$CONTAINER_ENGINE" ]] && "$CONTAINER_ENGINE" info >/dev/null 2>&1; then
+    print_success "$CONTAINER_ENGINE available (ISO builds possible here)"
   else
-    print_warning "docker unavailable — ISO builds will print instructions instead"
+    print_warning "container engine unavailable — ISO builds will print instructions instead"
   fi
   echo ""
   if ((failures == 0)); then

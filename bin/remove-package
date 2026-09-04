@@ -62,8 +62,8 @@ if [[ ! -d "$REPO_DIR" ]]; then
   exit 1
 fi
 
-# Check Docker is available
-check_docker
+# Check the selected container engine is available
+check_engine
 
 # Find package files to confirm before running Docker
 cd "$REPO_DIR"
@@ -99,11 +99,13 @@ acquire_release_lock || exit 1
 
 print_info "Removing package..."
 
-# Ensure directory is writable by container user
-make_dir_writable "$REPO_DIR"
+# Rootless Podman uses keep-id and leaves host ownership/modes intact.
+if [[ "$CONTAINER_ENGINE" == "docker" ]]; then
+  make_dir_writable "$REPO_DIR"
+fi
 
 # Run the removal script in the host-native image.
-docker run --rm "$(get_platform_arg "$TOOL_ARCH")" \
+"$CONTAINER_ENGINE" run "${CONTAINER_RUN_ARGS[@]}" --rm "$(get_platform_arg "$TOOL_ARCH")" \
   -e ARCH="$ARCH" \
   -e MIRROR="$MIRROR" \
   -v "$REPO_ROOT:/pkgs.omarchy.org" \

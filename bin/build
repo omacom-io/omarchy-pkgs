@@ -145,7 +145,7 @@ if [[ $DEFER_RUNTIME_DEPS == "true" ]]; then
 fi
 
 if [[ "$DRY_RUN" == true ]]; then
-  print_warning "DRY RUN MODE - build plan only; no Docker or makepkg will run"
+  print_warning "DRY RUN MODE - build plan only; no container or makepkg will run"
   ARCH="$ARCH" \
     MIRROR="$MIRROR" \
     PACKAGES="$PACKAGES" \
@@ -163,8 +163,8 @@ fi
 # Create directories if they don't exist
 mkdir -p "$BUILD_OUTPUT_DIR" "$REPO_DIR" "$SRC_DIR"
 
-# Check Docker is available
-check_docker
+# Check the selected container engine is available
+check_engine
 
 # A foreign target architecture runs under QEMU user emulation. Probe by
 # actually running a container for the target platform: that is the only
@@ -172,9 +172,11 @@ check_docker
 HOST_ARCH=$(uname -m)
 [[ "$HOST_ARCH" == "arm64" ]] && HOST_ARCH=aarch64
 if [[ "$HOST_ARCH" != "$ARCH" ]]; then
-  if ! docker run --rm "$(get_platform_arg "$ARCH")" alpine:3.21 /bin/true >/dev/null 2>&1; then
+  PROBE_IMAGE="alpine:3.21"
+  [[ "$CONTAINER_ENGINE" == "podman" ]] && PROBE_IMAGE="docker.io/library/alpine:3.21"
+  if ! "$CONTAINER_ENGINE" run "${CONTAINER_RUN_ARGS[@]}" --rm "$(get_platform_arg "$ARCH")" "$PROBE_IMAGE" /bin/true >/dev/null 2>&1; then
     print_info "Setting up QEMU for $ARCH emulation on this $HOST_ARCH host..."
-    setup_qemu
+    setup_qemu "$ARCH"
   fi
 fi
 
@@ -201,7 +203,7 @@ fi
 # flag is that every job runs the same bytes.
 IMAGE_TAG="omarchy-pkg-builder:latest-$ARCH-$MIRROR"
 if [[ $SKIP_BUILDER_IMAGE == "1" ]]; then
-  if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+  if ! "$CONTAINER_ENGINE" image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
     print_error "Prepared builder image is unavailable: $IMAGE_TAG"
     exit 1
   fi
@@ -216,9 +218,12 @@ print_info "Running package build..."
 mkdir -p "$BUILD_OUTPUT_DIR"
 mkdir -p "$REPO_DIR"
 
-# Ensure output directories are writable by container user
-make_dir_writable "$BUILD_OUTPUT_DIR"
-make_dir_writable "$REPO_DIR"
+# Rootful Docker writes as the image uid, so retain its existing permission
+# workaround. Rootless Podman uses keep-id and must leave ownership/modes alone.
+if [[ "$CONTAINER_ENGINE" == "docker" ]]; then
+  make_dir_writable "$BUILD_OUTPUT_DIR"
+  make_dir_writable "$REPO_DIR"
+fi
 
 # Build Docker arguments
 DOCKER_ARGS=(
@@ -235,10 +240,16 @@ DOCKER_ARGS=(
   -v "$BUILD_ROOT/pkgbuilds:/pkgbuilds:ro"
 )
 
+# Podman-created images can leave WORKDIR owned by a remapped uid. Mount the
+# existing host-user-owned workspace so the builder can write there.
+if [[ "$CONTAINER_ENGINE" == "podman" ]]; then
+  DOCKER_ARGS+=(-v "$SRC_DIR:/src")
+fi
+
 # Run the builder with assembled args
 PLATFORM_ARG=$(get_platform_arg "$ARCH")
 
-docker run "$PLATFORM_ARG" "${DOCKER_ARGS[@]}" "$IMAGE_TAG" /build/build.sh
+"$CONTAINER_ENGINE" run "${CONTAINER_RUN_ARGS[@]}" "$PLATFORM_ARG" "${DOCKER_ARGS[@]}" "$IMAGE_TAG" /build/build.sh
 
 BUILD_RESULT=$?
 

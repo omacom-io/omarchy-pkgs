@@ -52,8 +52,8 @@ if [[ ! -d "$BUILD_OUTPUT_DIR" ]]; then
   exit 1
 fi
 
-# Check Docker is available
-check_docker
+# Check the selected container engine is available
+check_engine
 
 # Check GPG credentials are in environment
 if [[ -z "$GPG_PRIVATE_KEY" ]]; then
@@ -76,11 +76,13 @@ build_docker_image "$BUILD_DIR" "$TOOL_ARCH" "$MIRROR"
 
 print_info "Running package signing..."
 
-# Ensure output directory is writable by container user
-make_dir_writable "$BUILD_OUTPUT_DIR"
+# Rootless Podman uses keep-id and leaves host ownership/modes intact.
+if [[ "$CONTAINER_ENGINE" == "docker" ]]; then
+  make_dir_writable "$BUILD_OUTPUT_DIR"
+fi
 
 # Run the signing script in the host-native image.
-docker run --rm "$(get_platform_arg "$TOOL_ARCH")" \
+"$CONTAINER_ENGINE" run "${CONTAINER_RUN_ARGS[@]}" --rm "$(get_platform_arg "$TOOL_ARCH")" \
   -e ARCH="$ARCH" \
   -e MIRROR="$MIRROR" \
   -e GPG_PRIVATE_KEY="$GPG_PRIVATE_KEY" \
