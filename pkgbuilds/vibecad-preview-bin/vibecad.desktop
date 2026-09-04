@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=VibeCAD
+Name=VibeCAD Preview
 Comment=Design editable 3D parts with AI-native parametric CAD
 GenericName=CAD Application
 Exec=vibecad --single-instance %F

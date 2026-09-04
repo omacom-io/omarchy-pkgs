@@ -1,9 +1,9 @@
 # Maintainer: monomyth
 
-pkgname=vibecad-bin
+pkgname=vibecad-preview-bin
 pkgver=26.3.1rc6.build1
-pkgrel=2
-pkgdesc="AI-native parametric CAD platform"
+pkgrel=1
+pkgdesc="AI-native parametric CAD platform (release candidate)"
 arch=('x86_64')
 url="https://github.com/10-X-eng/vibecad"
 license=('LGPL-2.1-or-later')
@@ -41,7 +41,7 @@ source_x86_64=("${_appimage}::https://github.com/10-X-eng/vibecad/releases/downl
 noextract=("${_appimage}")
 sha256sums=(
   '5dc3e8b5dcade0d54c1334533f318485179c62ab3866c4c22cc739af63aa58e5'
-  'd31836d2aeaa48d113d7edf75572c57ce945de1867a78c07296d694fd87edebd'
+  '495c9f737148982ae510f32b343569e2c8b99e1066bf7f83e0f6767ddc5974e7'
   'bed3d14591ade955eceecaa0a27f8a196fcf0f32b7986ac758f9cec0e58809fa'
   '7ffe1954587c77dfba1cf8eb9b2ea743671fa6e63f9e7a2f258119d42e14eefe'
   '01cd7fb7718e80891594d9a437bb0f61402dbf47f092c2237a19571fc72fa171'

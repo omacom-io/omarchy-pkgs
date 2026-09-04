@@ -1,6 +1,6 @@
 #!/bin/bash
 # VibeCAD publishes a checksum file beside each AppImage. Read the small
-# checksum asset instead of downloading the multi-gigabyte AppImage merely to
+# checksum asset instead of downloading the AppImage merely to
 # discover whether a package update is available.
 set -euo pipefail
 
@@ -8,7 +8,14 @@ REPO='10-X-eng/vibecad'
 RELEASES_URL="https://api.github.com/repos/${REPO}/releases?per_page=100"
 
 current=$(awk -F= '/^pkgver=/ { print $2; exit }' PKGBUILD)
+package=$(awk -F= '/^pkgname=/ { print $2; exit }' PKGBUILD)
+case "$package" in
+  vibecad-bin) preview=false ;;
+  vibecad-preview-bin) preview=true ;;
+  *) echo "Unsupported VibeCAD package: $package" >&2; exit 1 ;;
+esac
 releases=$(curl -fsSL "$RELEASES_URL")
+jq -e 'type == "array"' <<<"$releases" >/dev/null
 now=$(date +%s)
 min_age=${MIN_RELEASE_AGE_SECONDS:-0}
 best_version=''
@@ -22,6 +29,14 @@ while IFS=$'\t' read -r tag published_at assets; do
 
   upstream_version="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
   build="${BASH_REMATCH[5]}"
+  suffix="${BASH_REMATCH[3]}"
+  # Require both GitHub's classification and the tag to match the track.
+  # RCs never enter stable, even if a release is mislabeled on GitHub.
+  if [[ $preview == true ]]; then
+    [[ $suffix == RC ]] || continue
+  else
+    [[ -z $suffix ]] || continue
+  fi
   version="${upstream_version/-RC/rc}"
   version="${version/-beta/beta}"
   version="${version/-alpha/alpha}.build${build}"
@@ -38,6 +53,11 @@ while IFS=$'\t' read -r tag published_at assets; do
   checksum_url=$(jq -r --arg name "$checksum" '.[] | select(.name == $name) | .browser_download_url' <<<"$assets")
 
   [[ -n $asset_url && -n $checksum_url ]] || continue
+  expected_url="https://github.com/${REPO}/releases/download/${tag}/${asset}"
+  if [[ $asset_url != "$expected_url" || $checksum_url != "${expected_url}-SHA256.txt" ]]; then
+    echo "Unexpected asset URL for ${tag}" >&2
+    exit 1
+  fi
   if [[ -z $best_version ]] || (( $(vercmp "$version" "$best_version") > 0 )); then
     best_version=$version
     best_tag=$tag
@@ -45,9 +65,15 @@ while IFS=$'\t' read -r tag published_at assets; do
     best_checksum_url=$checksum_url
     best_published_at=$published_at
   fi
-done < <(jq -r '.[] | select(.draft | not) | [.tag_name, .published_at, (.assets | tojson)] | @tsv' <<<"$releases")
+done < <(jq -r --argjson preview "$preview" '.[] | select(.draft == false and .prerelease == $preview) | [.tag_name, .published_at, (.assets | tojson)] | @tsv' <<<"$releases")
 
-if [[ -z $best_version ]] || (( $(vercmp "$best_version" "$current") <= 0 )); then
+if [[ -z $best_version ]]; then
+  echo "No eligible release for ${package}; package unchanged." >&2
+  echo '{}'
+  exit 0
+fi
+
+if (( $(vercmp "$best_version" "$current") <= 0 )); then
   echo '{}'
   exit 0
 fi
