@@ -11,16 +11,16 @@ pkgdesc="Layered image editor with PSD and Affinity support (binary release)"
 arch=(x86_64 aarch64)
 url="https://github.com/Infrawrench/schist"
 license=(MIT)
-# The same list the source package (../schist/PKGBUILD) carries:
-# fontconfig/wayland/vulkan-icd-loader are dlopen'd, so namcap flags them
-# "may not be needed" — they are. vulkan-driver is the virtual package
-# every ICD provides; without one the app gets as far as the window and no
-# further, and vulkan-swrast satisfies it in software.
+# The list the payload's own .PKGINFO carries: fontconfig/wayland/
+# vulkan-icd-loader are dlopen'd, so namcap flags them "may not be needed"
+# — they are.
 depends=(fontconfig freetype2 hicolor-icon-theme libxcb libxkbcommon
-         libxkbcommon-x11 vulkan-driver vulkan-icd-loader wayland)
-# dlopen'd at run time; the app starts and opens everything else
-# without it.
-optdepends=('libheif: HEIC import')
+         libxkbcommon-x11 vulkan-icd-loader wayland)
+# A Vulkan ICD is needed to draw, but as a hard dependency makepkg -s would
+# resolve it to nvidia-utils in the build container; Omarchy installs the right
+# driver per machine. libheif is dlopen'd; everything else opens without it.
+optdepends=('vulkan-driver: GPU rendering (any Vulkan ICD, vulkan-swrast in software)'
+            'libheif: HEIC import')
 provides=(schist)
 conflicts=(schist)
 # The released binary ships byte-exact: it is already stripped by the
