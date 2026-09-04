@@ -16,6 +16,8 @@
 #   { "source": "local", "channels": ["edge", "rc", "stable"] }
 #   { "source": "local", "min_release_age": "24h" }
 #   { "source": "local", "upstream": { "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "x86_64": "name-{tag}-x64.tar.xz" } } }
+#   { "source": "local", "upstream": { "git_tags": "https://example/repo.git", "tag_pattern": "v{pkgver}", "sources": { "any": ["https://example/archive/{tag}.tar.gz"] } } }
+#   { "source": "local", "upstream": { "npm": "@scope/package", "sources": { "any": ["{npm_tarball}"] } } }
 #
 # bin/sync-aur also writes upstream_commit for AUR-backed packages, and
 # bin/sync-rebuilds writes rebuilt_against for packages declaring rebuild_on.
@@ -446,17 +448,33 @@ validate_package_metadata() {
   # `has` rather than `// {}`: jq's // treats false as absent, which would
   # let "upstream": false slip through as an empty declaration.
   if ! jq -e '
+    def valid_sources:
+      type == "object" and length > 0 and (to_entries | all(
+        (.key | test("\\A[a-z0-9_]+\\z"))
+        and (.value | type == "array" and length > 0 and all(type == "string" and length > 0))
+      ));
     if has("upstream") | not then true
     elif (.upstream | type) != "object" then false
     else .upstream |
-      ((.github // "") | type == "string" and test("\\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\z"))
-      and ((.checksums // "") | type == "string" and length > 0)
-      and ((.assets // {}) | type == "object" and length > 0 and (to_entries | all(
-        (.key | test("\\A[a-z0-9_]+\\z")) and (.value | type == "string" and length > 0)
-      )))
+      ([has("github"), has("git_tags"), has("npm")] | map(select(.)) | length) == 1
+      and if has("github") then
+        (.github | type == "string" and test("\\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\z"))
+        and (.checksums | type == "string" and length > 0)
+        and (.assets | type == "object" and length > 0 and (to_entries | all(
+          (.key | test("\\A[a-z0-9_]+\\z")) and (.value | type == "string" and length > 0)
+        )))
+      elif has("git_tags") then
+        (.git_tags | type == "string" and test("\\Ahttps://[^[:space:]]+\\.git\\z"))
+        and (.tag_pattern | type == "string" and (split("{pkgver}") | length) == 2)
+        and (.sources | valid_sources)
+      else
+        (.npm | type == "string" and test("\\A(@[a-z0-9_.-]+/)?[a-z0-9_.-]+\\z"))
+        and ((.dist_tag // "latest") | type == "string" and test("\\A[a-z0-9_.-]+\\z"))
+        and (.sources | valid_sources)
+      end
     end
   ' "$metadata" >/dev/null; then
-    echo "invalid upstream for $(basename "$pkgdir"): needs github owner/repo, checksums asset name, and an assets arch->name map"
+    echo "invalid upstream for $(basename "$pkgdir"): configure exactly one valid github, git_tags, or npm provider"
     return 1
   fi
 
