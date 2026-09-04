@@ -6,7 +6,7 @@
     "github": "Onefailatatime/slap-notes",
     "checksums": "SHA256SUMS",
     "assets": {
-      "x86_64": "slap-notes-{pkgver}-linux-x64.tar.zst"
+      "x86_64": "slap-notes-{tag}-linux-x64.tar.zst"
     }
   }
 }
