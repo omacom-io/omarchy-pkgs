@@ -73,11 +73,8 @@ backup=(
   'etc/systemd/system.conf.d/20-omarchy-nofile.conf'
   'etc/systemd/user.conf.d/20-omarchy-nofile.conf'
   'etc/systemd/oomd.conf.d/10-omarchy.conf'
-  'etc/systemd/zram-generator.conf'
   'etc/sddm.conf.d/10-theme.conf'
   'etc/sddm.conf.d/10-wayland.conf'
-  'etc/udev/rules.d/99-omarchy-power-profile.rules'
-  'etc/udev/rules.d/99-omarchy-wifi-powersave.rules'
 )
 
 optdepends=(
@@ -87,7 +84,7 @@ optdepends=(
   'limine: Bootloader the shipped /etc/mkinitcpio.conf.d/ and /etc/limine-entry-tool.d/ drop-ins are for'
   'limine-mkinitcpio-hook: Picks up the shipped /etc/mkinitcpio.conf.d/omarchy_hooks.conf'
   'limine-snapper-sync: Boot-entry sync for snapper snapshots'
-  'zram-generator: Reads the shipped /etc/systemd/zram-generator.conf to create the compressed swap device'
+  'zram-generator: Reads the shipped vendor drop-in to create the compressed swap device'
   'snapper: Used with the shipped /etc/snapper/config-templates/omarchy template'
 )
 
@@ -302,12 +299,15 @@ EOF
   # System font.
   install -Dm644 default/fonts/omarchy/omarchy.ttf "$pkgdir/usr/share/fonts/omarchy/omarchy.ttf"
 
-  # systemd system-sleep hook (lazy-unmounts gvfsd-fuse mounts before
-  # suspend/hibernate). The script also ships under /usr/share/omarchy/default
-  # via the default/** copy above; we additionally install it to the live
-  # systemd path so the hook fires.
+  # systemd system-sleep hooks. The scripts also ship under
+  # /usr/share/omarchy/default via the default/** copy above; these live copies
+  # are package-owned so runtime commands never seed static files into /usr.
   install -Dm755 default/systemd/system-sleep/unmount-fuse \
     "$pkgdir/usr/lib/systemd/system-sleep/unmount-fuse"
+  install -Dm755 default/systemd/system-sleep/keyboard-backlight \
+    "$pkgdir/usr/lib/systemd/system-sleep/omarchy-keyboard-backlight"
+  install -Dm755 default/systemd/system-sleep/force-igpu \
+    "$pkgdir/usr/lib/systemd/system-sleep/omarchy-force-igpu"
 
   # Branding assets (logos, icons).
   install -Dm644 logo.txt "$pkgdir/usr/share/omarchy/logo.txt"
