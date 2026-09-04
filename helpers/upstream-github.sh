@@ -1,8 +1,7 @@
 # Declarative upstream providers for bin/sync-upstream.
 #
-# A package whose upstream ships tagged GitHub releases with a checksum
-# manifest asset needs no upstream.sh hook: the whole feed is data, declared
-# in .omarchy/package.json --
+# A package whose upstream ships tagged GitHub releases needs no upstream.sh
+# hook: the whole feed is data, declared in .omarchy/package.json --
 #
 #   "upstream": {
 #     "github": "jdx/mise",
@@ -13,12 +12,16 @@
 #     }
 #   }
 #
+# "checksums" names the vendor's manifest asset. A vendor publishing none can
+# set "digests": true instead, which reads the SHA-256 digest GitHub's release
+# API reports for every asset, so the sync never downloads the artifacts.
+#
 # {tag} and {pkgver} interpolate into asset names; tags may carry a leading
 # "v", which is stripped for pkgver. Drafts and prereleases are ignored. The
 # provider emits the same JSON contract as an upstream.sh hook, so
 # bin/sync-upstream's validation and min_release_age backstop apply
-# unchanged. Git-tag and npm providers below cover projects without a release
-# checksum manifest; a feed that fits no convention keeps a bespoke hook.
+# unchanged. Git-tag and npm providers below cover projects without GitHub
+# releases; a feed that fits no convention keeps a bespoke hook.
 
 # Return the single declarative provider selected by a package. An empty
 # result means either no provider or an invalid/ambiguous declaration; the
@@ -203,7 +206,7 @@ npm_upstream_release() {
 # not silently choose from.
 github_upstream_release() {
   local package_dir="$1" min_age="${2:-0}"
-  local metadata repo checksums_name
+  local metadata repo checksums_name use_digests
   metadata=$(metadata_file_for_dir "$package_dir")
 
   repo=$(jq -r '(.upstream? | objects | .github) // ""' "$metadata")
@@ -211,9 +214,20 @@ github_upstream_release() {
     echo "invalid upstream.github repository: '${repo:-<empty>}'" >&2
     return 1
   fi
-  checksums_name=$(jq -r '(.upstream? | objects | .checksums) // ""' "$metadata")
-  if [[ -z "$checksums_name" ]]; then
-    echo "upstream.checksums names the checksum manifest asset and is required" >&2
+  # Enforced here as well as in validate_package_metadata: the scheduled sync
+  # reaches this provider without running the validator first.
+  checksums_name=$(jq -r '(.upstream? | objects | .checksums) | strings' "$metadata")
+  use_digests=$(jq -r '(.upstream? | objects | .digests) | if . == null then "false" elif type == "boolean" then tostring else "invalid" end' "$metadata")
+  if [[ "$use_digests" == "invalid" ]]; then
+    echo "upstream.digests must be true or false" >&2
+    return 1
+  fi
+  if [[ -n "$checksums_name" && "$use_digests" == "true" ]]; then
+    echo "upstream sets both checksums and digests; keep exactly one" >&2
+    return 1
+  fi
+  if [[ -z "$checksums_name" && "$use_digests" != "true" ]]; then
+    echo "upstream needs either checksums (a manifest asset name) or digests: true" >&2
     return 1
   fi
   local arches
@@ -281,15 +295,16 @@ github_upstream_release() {
     return 0
   fi
 
-  local checksums
-  if ! checksums=$(github_fetch_checksums "$repo" "$best_tag" "$checksums_name"); then
+  local checksums=""
+  if [[ "$use_digests" != "true" ]] \
+      && ! checksums=$(github_fetch_checksums "$repo" "$best_tag" "$checksums_name"); then
     echo "could not fetch $checksums_name for $repo $best_tag" >&2
     return 1
   fi
 
   local jq_args=(--arg pkgver "$best_pkgver" --arg published_at "$best_published_at")
   local jq_filter='{pkgver: $pkgver, published_at: $published_at, sha256sums: {}}'
-  local arch template filename checksum
+  local arch template filename checksum checksum_source
   for arch in "${arches[@]}"; do
     if [[ ! "$arch" =~ ^[a-z0-9_]+$ ]]; then
       echo "invalid architecture key in upstream.assets: '$arch'" >&2
@@ -298,11 +313,23 @@ github_upstream_release() {
     template=$(jq -r --arg arch "$arch" '.upstream.assets[$arch]' "$metadata")
     filename=${template//\{pkgver\}/$best_pkgver}
     filename=${filename//\{tag\}/$best_tag}
-    # Manifest lines are "<sha256>  <name>", with the name sometimes prefixed
-    # "./" (sha256sum of a local path) or "*" (binary-mode marker).
-    checksum=$(awk -v f="$filename" '$2 == f || $2 == "./" f || $2 == "*" f { print $1; exit }' <<<"$checksums")
+    if [[ "$use_digests" == "true" ]]; then
+      # Only a "sha256:<hex>" digest is stripped to its hex; any other shape
+      # falls through empty and fails the check below.
+      checksum=$(jq -r --arg tag "$best_tag" --arg name "$filename" '
+        first(.[] | select(.tag_name == $tag)) | (.assets // [])[]
+        | select(.name == $name) | (.digest // "")
+        | if type == "string" and test("\\Asha256:[0-9a-f]{64}\\z") then ltrimstr("sha256:") else "" end
+      ' <<<"$releases")
+      checksum_source="the release API digest"
+    else
+      # Manifest lines are "<sha256>  <name>", with the name sometimes prefixed
+      # "./" (sha256sum of a local path) or "*" (binary-mode marker).
+      checksum=$(awk -v f="$filename" '$2 == f || $2 == "./" f || $2 == "*" f { print $1; exit }' <<<"$checksums")
+      checksum_source="$checksums_name"
+    fi
     if [[ ! "$checksum" =~ ^[0-9a-f]{64}$ ]]; then
-      echo "no valid checksum for $filename in $repo $best_tag $checksums_name" >&2
+      echo "no valid checksum for $filename in $repo $best_tag $checksum_source" >&2
       return 1
     fi
     jq_args+=(--arg "sum_$arch" "$checksum")

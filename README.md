@@ -302,8 +302,8 @@ Some vendors publish a release feed of their own that is faster and more precise
 than the AUR packaging of it. Those packages are `source: local` — Omarchy owns
 the PKGBUILD — and declare where releases come from in one of two ways.
 
-A vendor shipping tagged GitHub releases with a checksum manifest asset is pure
-data, declared as `upstream` in `.omarchy/package.json` with no code at all:
+A vendor shipping tagged GitHub releases is pure data, declared as `upstream`
+in `.omarchy/package.json` with no code at all:
 
 ```json
 "upstream": {
@@ -315,6 +315,12 @@ data, declared as `upstream` in `.omarchy/package.json` with no code at all:
   }
 }
 ```
+
+`checksums` names the manifest asset the vendor publishes. A vendor publishing
+none sets `"digests": true` instead, and the checksums come from the SHA-256
+digest GitHub's release API reports for every asset — see
+`pkgbuilds/schist-bin/.omarchy/package.json`. Either way the artifacts
+themselves are never downloaded.
 
 `{tag}` and `{pkgver}` interpolate into asset names; a leading `v` on the tag is
 stripped for `pkgver`; drafts and prereleases are ignored. Only the 100 most
@@ -626,7 +632,7 @@ Minimal examples:
 Fields:
 
 - `source`: `aur` or `local`. A `local` package can still follow an upstream release, either declaratively via `upstream` or with an `.omarchy/upstream.sh` hook.
-- `upstream`: optional for `local` packages whose vendor ships tagged GitHub releases with a checksum manifest asset. `{ "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "<arch>": "name-{tag}.tar.xz" } }` — see [Sync Upstream Releases](#sync-upstream-releases). Mutually exclusive with `.omarchy/upstream.sh`.
+- `upstream`: optional for `local` packages whose vendor ships tagged GitHub releases. `{ "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "<arch>": "name-{tag}.tar.xz" } }`, or `"digests": true` in place of `checksums` to use the release API's per-asset digests — see [Sync Upstream Releases](#sync-upstream-releases). Mutually exclusive with `.omarchy/upstream.sh`.
 - `min_release_age`: optional quarantine for upstream releases (`"24h"`, `"2d"`, or bare seconds). The newest release older than the window ships; anything younger waits, and a release whose age cannot be proven fails the sync. Bypass deliberately with `BYPASS_MIN_RELEASE_AGE=1 bin/sync-upstream <package>`.
 - `sync`: optional for AUR packages; defaults to `true`. Set `false` for AUR-origin packages that Omarchy maintains manually.
 - `aur`: optional AUR package name when it differs from the local package directory, usually for split packages.

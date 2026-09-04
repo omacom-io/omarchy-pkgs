@@ -16,6 +16,7 @@
 #   { "source": "local", "channels": ["edge", "rc", "stable"] }
 #   { "source": "local", "min_release_age": "24h" }
 #   { "source": "local", "upstream": { "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "x86_64": "name-{tag}-x64.tar.xz" } } }
+#   { "source": "local", "upstream": { "github": "owner/repo", "digests": true, "assets": { "x86_64": "name-{tag}-x64.tar.xz" } } }
 #   { "source": "local", "upstream": { "git_tags": "https://example/repo.git", "tag_pattern": "v{pkgver}", "sources": { "any": ["https://example/archive/{tag}.tar.gz"] } } }
 #   { "source": "local", "upstream": { "npm": "@scope/package", "sources": { "any": ["{npm_tarball}"] } } }
 #
@@ -459,7 +460,9 @@ validate_package_metadata() {
       ([has("github"), has("git_tags"), has("npm")] | map(select(.)) | length) == 1
       and if has("github") then
         (.github | type == "string" and test("\\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\z"))
-        and (.checksums | type == "string" and length > 0)
+        and (if has("checksums") then (.checksums | type == "string" and length > 0) else true end)
+        and (if has("digests") then (.digests | type == "boolean") else true end)
+        and (has("checksums") != (has("digests") and .digests == true))
         and (.assets | type == "object" and length > 0 and (to_entries | all(
           (.key | test("\\A[a-z0-9_]+\\z")) and (.value | type == "string" and length > 0)
         )))
