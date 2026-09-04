@@ -1,0 +1,40 @@
+# Maintainer: Ratandeep Bansal <ratandeepbansal@gmail.com>
+
+pkgname=omanote
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Markdown notes app with a collapsible notes sidebar, built on Omawrite'
+arch=('x86_64' 'aarch64')
+url='https://github.com/ratandeepbansal/omanote'
+license=('MIT' 'OFL-1.1')
+install='omanote.install'
+options=('!debug')
+depends=(
+  'hicolor-icon-theme'
+  'qt6-base'
+  'qt6-declarative'
+  'xdg-desktop-portal'
+)
+makedepends=(
+  'gcc'
+  'make'
+  'qt6-base'
+  'qt6-declarative'
+)
+source=("$pkgname-$pkgver.tar.gz::https://github.com/ratandeepbansal/omanote/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('2ec8e6479f8566ae6ac23645f1323cf5f840d94fbe8092d1500781d03b6fda80')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  ./bin/build
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  install -Dm755 build/omanote "$pkgdir/usr/bin/omanote"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 fonts/OFL.txt "$pkgdir/usr/share/licenses/$pkgname/OFL.txt"
+  install -Dm644 pkgbuild/omanote.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/omanote.svg"
+  install -Dm644 pkgbuild/omanote.desktop "$pkgdir/usr/share/applications/omanote.desktop"
+}
