@@ -95,20 +95,26 @@ package() {
 
   # 26.9.1 started shipping a systemd unit under /lib, and owning /lib -- a
   # symlink owned by the filesystem package -- makes pacman refuse the whole
-  # transaction. The unit is also a no-op here:
-  # its setup script apt-installs Docker and the NVIDIA Container Toolkit and
-  # exits on any distro but Ubuntu (install those yourself; see optdepends).
-  # Delete it, but only it: anything else arriving outside the trees this
-  # PKGBUILD expects stops the build rather than shipping the next conflict.
+  # transaction. The unit is also a no-op here: its setup script apt-installs
+  # Docker and the NVIDIA Container Toolkit and exits on any distro but Ubuntu
+  # (install those yourself; see optdepends). Delete it, and its parents once
+  # emptied; then anything else left outside opt/ and usr/ -- whatever its
+  # type, an empty bin/ or lib64/ included, since those are filesystem-owned
+  # symlinks too -- stops the build rather than shipping the next conflict.
+  (
+    cd "${pkgdir}"
+    rm -f lib/systemd/system/perplexity-local-runtime-setup.service
+    rmdir -p lib/systemd/system 2>/dev/null || true
+  )
+
   local unexpected
-  unexpected=$(cd "${pkgdir}" && find . \( -type f -o -type l \) | grep -vE \
-    '^\./(opt|usr)/|^\./lib/systemd/system/perplexity-local-runtime-setup\.service$' || true)
+  unexpected=$(cd "${pkgdir}" && find . -mindepth 1 \
+    -path ./opt -prune -o -path ./usr -prune -o -print)
   if [[ -n "${unexpected}" ]]; then
-    echo "Unexpected files outside opt/ and usr/ in the upstream deb:" >&2
+    echo "Unexpected entries outside opt/ and usr/ in the upstream deb:" >&2
     echo "${unexpected}" >&2
     return 1
   fi
-  rm -rf "${pkgdir}/lib"
 
   # pacman never runs the deb's postinst, so the /usr/bin entry it would have
   # symlinked is a launcher here instead, and the menu entry goes through it so
