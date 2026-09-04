@@ -1,7 +1,7 @@
 # Maintainer: Spencer Bull <spencerbull2554@gmail.com>
 
 pkgname=openvino-genai
-pkgver=2026.3.0.0
+pkgver=2026.3.1.0
 pkgrel=1
 pkgdesc="OpenVINO GenAI C and C++ runtime libraries"
 arch=('x86_64')
@@ -12,7 +12,7 @@ depends=(
     'gcc-libs'
     'glibc'
     'onetbb'
-    'openvino=2026.3.0'
+    'openvino=2026.3.1'
 )
 makedepends=(
     'cmake'
@@ -25,7 +25,7 @@ optdepends=(
     'openvino-intel-npu-plugin: inference on Intel NPUs'
 )
 
-_commit=bd8d6542e3ca1ac30042d5d8d4202ce00b5f4af0
+_commit=56d9685302da2fc5cc7c9689cfab500fd0660a02
 source=(
     "openvino.genai::git+$url.git#commit=$_commit"
     'gcc-16-char8_t.patch'
