@@ -47,7 +47,6 @@ depends=(
 )
 provides=("${_appname}=${pkgver}")
 conflicts=("${_appname}")
-replaces=("${_appname}")
 # Electron ships prebuilt binaries: stripping them breaks the bundle.
 options=('!strip' '!debug')
 install="${pkgname}.install"
