@@ -5,6 +5,7 @@ pkgrel=1
 # Upstream's own package release, embedded in the asset name. It is
 # packages.sh's "release=" and only moves when the packaging changes under
 # a version that has already shipped; pkgrel above is this package's own.
+# The asset templates in .omarchy/package.json carry the same number.
 _relver=1
 pkgdesc="Layered image editor with PSD and Affinity support (binary release)"
 arch=(x86_64 aarch64)
