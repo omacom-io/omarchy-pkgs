@@ -18,11 +18,11 @@ Usage: $0 [PACKAGE...]
 
 Update packages that track an upstream vendor release feed instead of the AUR.
 
-A package whose upstream ships tagged GitHub releases with a checksum manifest
-opts in declaratively, via "upstream" in .omarchy/package.json (see
-helpers/upstream-github.sh for the schema); no code needed. Anything with a
-bespoke feed provides pkgbuilds/<package>/.omarchy/upstream.sh instead, a hook
-that reports the newest upstream release as JSON on stdout:
+Packages opt in declaratively through "upstream" in .omarchy/package.json.
+Providers cover GitHub Releases with checksum manifests, semver-shaped git
+tags whose source URLs can be hashed, and npm dist-tags. See README.md for the
+schemas. Anything outside those conventions may provide
+pkgbuilds/<package>/.omarchy/upstream.sh, a hook that reports JSON on stdout:
 
   {
     "pkgver": "1.2.3",
@@ -332,27 +332,27 @@ sync_package() {
     return 0
   fi
 
-  local github_repo has_upstream=false
-  github_repo=$(package_upstream_github_repo "$package_dir")
+  local provider has_upstream=false
+  provider=$(package_upstream_provider "$package_dir")
   if package_has_upstream_provider "$package_dir"; then
     has_upstream=true
   fi
 
   # A present-but-unusable declaration fails loudly; treating it like "no
   # upstream source" would silently drop the package from scheduled runs.
-  if [[ "$has_upstream" == true && -z "$github_repo" ]]; then
-    print_error "Package $package has an unusable upstream declaration (needs a github owner/repo)"
+  if [[ "$has_upstream" == true && -z "$provider" ]]; then
+    print_error "Package $package has an unusable or ambiguous upstream declaration"
     ((++FAILED))
     return 0
   fi
 
-  if [[ -n "$github_repo" && -f "$hook" ]]; then
-    print_error "Package $package declares both upstream.github and an upstream.sh hook; keep exactly one"
+  if [[ -n "$provider" && -f "$hook" ]]; then
+    print_error "Package $package declares both an upstream provider and an upstream.sh hook; keep exactly one"
     ((++FAILED))
     return 0
   fi
 
-  if [[ -z "$github_repo" && ! -f "$hook" ]]; then
+  if [[ -z "$provider" && ! -f "$hook" ]]; then
     if [[ "$SPECIFIC_MODE" == true ]]; then
       print_error "Package $package has neither an upstream declaration nor .omarchy/upstream.sh"
       ((++FAILED))
@@ -372,10 +372,15 @@ sync_package() {
 
   print_info "Checking $package for upstream releases..."
 
-  local release
-  if [[ -n "$github_repo" ]]; then
-    if ! release=$(github_upstream_release "$package_dir" "$min_age"); then
-      print_error "GitHub release provider failed for $package"
+  local release release_status=0
+  if [[ -n "$provider" ]]; then
+    case "$provider" in
+    github) release=$(github_upstream_release "$package_dir" "$min_age") || release_status=$? ;;
+    git_tags) release=$(git_tags_upstream_release "$package_dir") || release_status=$? ;;
+    npm) release=$(npm_upstream_release "$package_dir") || release_status=$? ;;
+    esac
+    if [[ ${release_status:-0} -ne 0 ]]; then
+      print_error "$provider upstream provider failed for $package"
       ((++FAILED))
       return 0
     fi
@@ -614,9 +619,78 @@ EOF
   echo '{"source": "local", "upstream": {"github": "example/tool"}}' > "$agepkg/.omarchy/package.json"
   vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
   check "upstream without checksums/assets is rejected" "1" "$vst"
+  echo '{"source":"local","upstream":{"github":"example/tool","git_tags":"https://example/tool.git","checksums":"sums","assets":{"any":"tool"}}}' > "$agepkg/.omarchy/package.json"
+  vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
+  check "multiple provider types are rejected" "1" "$vst"
   cp "$pkg/.omarchy/package.json" "$agepkg/.omarchy/package.json"
   vst=0; validate_package_metadata "$agepkg" >/dev/null || vst=$?
   check "the real declaration shape is accepted" "0" "$vst"
+
+  echo "Git-tag provider:"
+  local tagpkg="$TEMP_DIR/selftest-tags" tag_sum remote_sum local_sum
+  mkdir -p "$tagpkg/.omarchy"
+  printf 'pkgver=1.0.0\npkgrel=4\nsha256sums=("old" "old")\n' > "$tagpkg/PKGBUILD"
+  printf 'local fixture\n' > "$tagpkg/local.patch"
+  cat > "$tagpkg/.omarchy/package.json" <<'EOF'
+{
+  "source": "local",
+  "upstream": {
+    "git_tags": "https://example.test/tool.git",
+    "tag_pattern": "release/{pkgver}",
+    "sources": {
+      "any": ["https://downloads.example.test/tool-{pkgver}.tar.gz", "file:local.patch"]
+    }
+  }
+}
+EOF
+  git_tags_fetch_refs() {
+    printf '%s\n' \
+      'aaaa refs/tags/release/1.9.0' \
+      'bbbb refs/tags/release/1.10.0' \
+      'cccc refs/tags/not-a-release'
+  }
+  upstream_fetch_source() { printf 'remote fixture for %s\n' "$1" > "$2"; }
+  tag_sum=$(git_tags_upstream_release "$tagpkg")
+  remote_sum=$(printf 'remote fixture for %s\n' 'https://downloads.example.test/tool-1.10.0.tar.gz' | sha256sum | cut -d' ' -f1)
+  local_sum=$(sha256sum "$tagpkg/local.patch" | cut -d' ' -f1)
+  check "pacman ordering selects 1.10.0 over 1.9.0" "1.10.0" "$(jq -r '.pkgver' <<<"$tag_sum")"
+  check "remote source template is downloaded and hashed" "$remote_sum" "$(jq -r '.sha256sums.any[0]' <<<"$tag_sum")"
+  check "local source entry is hashed" "$local_sum" "$(jq -r '.sha256sums.any[1]' <<<"$tag_sum")"
+  vst=0; validate_package_metadata "$tagpkg" >/dev/null || vst=$?
+  check "git-tags declaration validates" "0" "$vst"
+
+  echo "npm provider:"
+  local npmpkg="$TEMP_DIR/selftest-npm" npm_sum npm_tar_sum npm_notes_sum
+  mkdir -p "$npmpkg/.omarchy"
+  printf 'pkgver=1.0.0\npkgrel=1\nsha256sums=("old" "old")\n' > "$npmpkg/PKGBUILD"
+  cat > "$npmpkg/.omarchy/package.json" <<'EOF'
+{
+  "source": "local",
+  "upstream": {
+    "npm": "@example/tool",
+    "dist_tag": "latest",
+    "sources": {
+      "any": ["{npm_tarball}", "https://example.test/tool/{pkgver}/notes"]
+    }
+  }
+}
+EOF
+  npm_fetch_metadata() {
+    jq -n '{
+      "dist-tags": {latest: "2.0.0"},
+      versions: {"2.0.0": {dist: {tarball: "https://registry.npmjs.org/@example/tool/-/tool-2.0.0.tgz"}}},
+      time: {"2.0.0": "2024-01-02T03:04:05.000Z"}
+    }'
+  }
+  npm_sum=$(npm_upstream_release "$npmpkg")
+  npm_tar_sum=$(printf 'remote fixture for %s\n' 'https://registry.npmjs.org/@example/tool/-/tool-2.0.0.tgz' | sha256sum | cut -d' ' -f1)
+  npm_notes_sum=$(printf 'remote fixture for %s\n' 'https://example.test/tool/2.0.0/notes' | sha256sum | cut -d' ' -f1)
+  check "npm dist-tag selects its version" "2.0.0" "$(jq -r '.pkgver' <<<"$npm_sum")"
+  check "npm tarball placeholder is hashed" "$npm_tar_sum" "$(jq -r '.sha256sums.any[0]' <<<"$npm_sum")"
+  check "npm pkgver template is hashed" "$npm_notes_sum" "$(jq -r '.sha256sums.any[1]' <<<"$npm_sum")"
+  check "npm publication time is preserved" "2024-01-02T03:04:05.000Z" "$(jq -r '.published_at' <<<"$npm_sum")"
+  vst=0; validate_package_metadata "$npmpkg" >/dev/null || vst=$?
+  check "npm declaration validates" "0" "$vst"
 
   # End to end over the real mise-bin package: its checked-in metadata and
   # PKGBUILD, the full sync_package path (selection, validation, backstop,

@@ -1,4 +1,4 @@
-# GitHub-releases upstream provider for bin/sync-upstream.
+# Declarative upstream providers for bin/sync-upstream.
 #
 # A package whose upstream ships tagged GitHub releases with a checksum
 # manifest asset needs no upstream.sh hook: the whole feed is data, declared
@@ -17,13 +17,20 @@
 # "v", which is stripped for pkgver. Drafts and prereleases are ignored. The
 # provider emits the same JSON contract as an upstream.sh hook, so
 # bin/sync-upstream's validation and min_release_age backstop apply
-# unchanged; a feed that fits no convention keeps a bespoke upstream.sh.
+# unchanged. Git-tag and npm providers below cover projects without a release
+# checksum manifest; a feed that fits no convention keeps a bespoke hook.
 
-package_upstream_github_repo() {
-  local pkgdir="$1"
-  # `objects` drops a non-object upstream value (validation rejects those
-  # separately) instead of erroring the jq pipeline.
-  package_metadata_value "$pkgdir" '(.upstream? | objects | .github)' ""
+# Return the single declarative provider selected by a package. An empty
+# result means either no provider or an invalid/ambiguous declaration; the
+# caller distinguishes those through package_has_upstream_provider().
+package_upstream_provider() {
+  local pkgdir="$1" metadata
+  metadata=$(metadata_file_for_dir "$pkgdir")
+  jq -r '
+    (.upstream? | objects) as $u
+    | [$u | keys[] | select(. == "github" or . == "git_tags" or . == "npm")]
+    | if length == 1 then .[0] else "" end
+  ' "$metadata"
 }
 
 # Fetches sit behind functions so the self-test can replace them with fixture
@@ -41,6 +48,151 @@ github_fetch_releases() {
 github_fetch_checksums() {
   local repo="$1" tag="$2" asset="$3"
   curl -fsSL "https://github.com/$repo/releases/download/$tag/$asset"
+}
+
+git_tags_fetch_refs() {
+  local repo="$1"
+  git ls-remote --tags "$repo"
+}
+
+npm_fetch_metadata() {
+  local package="$1" encoded
+  encoded=$(jq -rn --arg package "$package" '$package | @uri')
+  curl -fsSL "https://registry.npmjs.org/$encoded"
+}
+
+upstream_fetch_source() {
+  local url="$1" output="$2"
+  curl --proto '=https' --proto-redir '=https' -fsSL -o "$output" "$url"
+}
+
+# Hash every URL template in upstream.sources and emit hook-contract JSON.
+# Templates may use {pkgver}, {tag}, and (for npm) {npm_tarball}. Downloads
+# happen only after discovery reports a version newer than the PKGBUILD.
+upstream_hash_sources() {
+  local package_dir="$1" pkgver="$2" tag="${3:-}" npm_tarball="${4:-}"
+  local metadata sources work result arch template url file sum sums index=0
+  metadata=$(metadata_file_for_dir "$package_dir")
+  sources=$(jq -c '.upstream.sources' "$metadata")
+  work=$(mktemp -d)
+  result=$(jq -n --arg pkgver "$pkgver" '{pkgver: $pkgver, sha256sums: {}}')
+
+  while IFS= read -r arch; do
+    sums='[]'
+    while IFS= read -r template; do
+      if [[ "$template" == file:* ]]; then
+        file=${template#file:}
+        if [[ ! "$file" =~ ^[A-Za-z0-9._+-]+$ || ! -f "$package_dir/$file" ]]; then
+          echo "upstream source names an unsafe or missing local file: '$file'" >&2
+          rm -rf "$work"
+          return 1
+        fi
+        sum=$(sha256sum "$package_dir/$file" | cut -d' ' -f1)
+        sums=$(jq -c --arg sum "$sum" '. + [$sum]' <<<"$sums")
+        continue
+      fi
+      url=${template//\{pkgver\}/$pkgver}
+      url=${url//\{tag\}/$tag}
+      url=${url//\{npm_tarball\}/$npm_tarball}
+      if [[ ! "$url" =~ ^https://[^[:space:]{}]+$ ]]; then
+        echo "upstream source template produced an unsafe URL: '$url'" >&2
+        rm -rf "$work"
+        return 1
+      fi
+      file="$work/source-$((index += 1))"
+      if ! upstream_fetch_source "$url" "$file"; then
+        echo "could not fetch upstream source: $url" >&2
+        rm -rf "$work"
+        return 1
+      fi
+      sum=$(sha256sum "$file" | cut -d' ' -f1)
+      sums=$(jq -c --arg sum "$sum" '. + [$sum]' <<<"$sums")
+    done < <(jq -r --arg arch "$arch" '.[$arch][]' <<<"$sources")
+    result=$(jq -c --arg arch "$arch" --argjson sums "$sums" '.sha256sums[$arch] = $sums' <<<"$result")
+  done < <(jq -r 'keys[]' <<<"$sources")
+
+  rm -rf "$work"
+  printf '%s\n' "$result"
+}
+
+git_tags_upstream_release() {
+  local package_dir="$1" metadata repo pattern prefix suffix refs
+  metadata=$(metadata_file_for_dir "$package_dir")
+  repo=$(jq -r '.upstream.git_tags // ""' "$metadata")
+  pattern=$(jq -r '.upstream.tag_pattern // ""' "$metadata")
+  prefix=${pattern%%\{pkgver\}*}
+  suffix=${pattern#*\{pkgver\}}
+
+  if [[ ! "$repo" =~ ^https://[^[:space:]]+\.git$ || "$pattern" != *'{pkgver}'* || "$suffix" == *'{pkgver}'* ]]; then
+    echo "invalid git_tags provider configuration" >&2
+    return 1
+  fi
+  if ! refs=$(git_tags_fetch_refs "$repo"); then
+    echo "could not fetch tags from $repo" >&2
+    return 1
+  fi
+
+  local best_pkgver="" best_tag="" tag candidate
+  declare -A version_tags=()
+  while read -r tag; do
+    tag=${tag%\^\{\}}
+    [[ "$tag" == "$prefix"*"$suffix" ]] || continue
+    candidate=${tag#"$prefix"}
+    [[ -z "$suffix" ]] || candidate=${candidate%"$suffix"}
+    [[ "$candidate" =~ ^[A-Za-z0-9][A-Za-z0-9._+]*$ ]] || continue
+    if [[ -n "${version_tags[$candidate]:-}" && "${version_tags[$candidate]}" != "$tag" ]]; then
+      echo "multiple tags map to pkgver $candidate: ${version_tags[$candidate]} and $tag" >&2
+      return 1
+    fi
+    version_tags[$candidate]="$tag"
+    if [[ -z "$best_pkgver" || $(vercmp "$candidate" "$best_pkgver") -gt 0 ]]; then
+      best_pkgver="$candidate"
+      best_tag="$tag"
+    fi
+  done < <(sed -n 's#^.*refs/tags/##p' <<<"$refs")
+
+  [[ -n "$best_pkgver" ]] || { echo "no usable tags found at $repo" >&2; return 1; }
+  local current_pkgver
+  current_pkgver=$(grep -m1 '^pkgver=' "$package_dir/PKGBUILD" | cut -d= -f2- | tr -d "\"'")
+  if [[ $(vercmp "$best_pkgver" "$current_pkgver") -le 0 ]]; then
+    echo '{}'
+    return 0
+  fi
+  upstream_hash_sources "$package_dir" "$best_pkgver" "$best_tag"
+}
+
+npm_upstream_release() {
+  local package_dir="$1" metadata package dist_tag npm_metadata pkgver tarball published_at release
+  metadata=$(metadata_file_for_dir "$package_dir")
+  package=$(jq -r '.upstream.npm // ""' "$metadata")
+  dist_tag=$(jq -r '.upstream.dist_tag // "latest"' "$metadata")
+  if [[ ! "$package" =~ ^(@[a-z0-9_.-]+/)?[a-z0-9_.-]+$ || ! "$dist_tag" =~ ^[a-z0-9_.-]+$ ]]; then
+    echo "invalid npm provider configuration" >&2
+    return 1
+  fi
+  if ! npm_metadata=$(npm_fetch_metadata "$package"); then
+    echo "could not fetch npm metadata for $package" >&2
+    return 1
+  fi
+  pkgver=$(jq -r --arg tag "$dist_tag" '."dist-tags"[$tag] // ""' <<<"$npm_metadata")
+  tarball=$(jq -r --arg version "$pkgver" '.versions[$version].dist.tarball // ""' <<<"$npm_metadata")
+  published_at=$(jq -r --arg version "$pkgver" '.time[$version] // ""' <<<"$npm_metadata")
+  if [[ ! "$pkgver" =~ ^[A-Za-z0-9][A-Za-z0-9._+]*$ || ! "$tarball" =~ ^https://registry\.npmjs\.org/ ]]; then
+    echo "npm returned an unusable $package release" >&2
+    return 1
+  fi
+
+  local current_pkgver
+  current_pkgver=$(grep -m1 '^pkgver=' "$package_dir/PKGBUILD" | cut -d= -f2- | tr -d "\"'")
+  if [[ $(vercmp "$pkgver" "$current_pkgver") -le 0 ]]; then
+    echo '{}'
+    return 0
+  fi
+  release=$(upstream_hash_sources "$package_dir" "$pkgver" "$pkgver" "$tarball") || return 1
+  if [[ -n "$published_at" ]]; then
+    release=$(jq -c --arg published_at "$published_at" '.published_at = $published_at' <<<"$release")
+  fi
+  printf '%s\n' "$release"
 }
 
 # Emits the newest qualifying release as hook-contract JSON. min_release_age
