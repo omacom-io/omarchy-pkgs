@@ -8,10 +8,12 @@ REPO="Onefailatatime/slap-notes"
 
 release=$(curl -fsSL -H 'Accept: application/vnd.github+json' \
   "https://api.github.com/repos/${REPO}/releases/latest")
-version=$(jq -r '.tag_name // ""' <<<"$release" | sed 's/^v//')
+version=$(jq -r '.tag_name // ""' <<<"$release")
 
-if [[ -z "$version" ]]; then
-  echo "Upstream feed carried no version" >&2
+# The PKGBUILD fetches releases/download/<pkgver>/, so the tag has to be the
+# bare version. A "v" prefix would pin a URL that never resolves.
+if [[ ! "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+  echo "Upstream tag '${version}' is not a bare version" >&2
   exit 1
 fi
 
