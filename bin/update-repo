@@ -13,6 +13,8 @@ source "$BUILD_ROOT/helpers/lock-helpers.sh"
 
 # Function to update repository database using Docker
 update_database() {
+  local platform_arg
+
   print_info "Updating repository database in Docker container..."
 
   # Check Docker is available
@@ -28,17 +30,17 @@ update_database() {
   # Make output directory writable for container
   make_dir_writable "$REPO_DIR"
 
-  # repo-add is architecture- and mirror-independent, so always use the edge
-  # x86_64 image. This also lets bootstrap-rc build the rc database before the
-  # rc channel exists remotely (an rc image can only build after it does).
-  build_docker_image "$BUILD_DIR" "x86_64" "edge"
+  # Match the target architecture to keep native builds native.
+  # Use edge so RC bootstrapping does not require an existing RC image.
+  build_docker_image "$BUILD_DIR" "$ARCH" "edge"
+  platform_arg=$(get_platform_arg "$ARCH")
 
-  docker run --rm --platform linux/amd64 \
+  docker run --rm $platform_arg \
     -e ARCH="$ARCH" \
     -e MIRROR="$MIRROR" \
     -v "$REPO_ROOT:/output" \
     -v "$BUILD_DIR:/build:ro" \
-    omarchy-pkg-builder:latest-x86_64-edge /build/update-repo.sh
+    "omarchy-pkg-builder:latest-${ARCH}-edge" /build/update-repo.sh
 }
 
 # Main execution

@@ -1,0 +1,147 @@
+name: aarch64 package repo
+
+# Build an aarch64 Omarchy repository for manual or reusable workflows.
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Space-separated pkgbases to build (empty = every eligible package)"
+        type: string
+        default: ""
+      mirror:
+        description: "edge or stable"
+        type: string
+        default: edge
+  workflow_call:
+    inputs:
+      pkgs_repository:
+        description: "owner/name of the omarchy-pkgs checkout to build"
+        type: string
+        required: true
+      pkgs_ref:
+        description: "branch, tag or SHA of that repository"
+        type: string
+        required: true
+      packages:
+        type: string
+        default: ""
+      mirror:
+        type: string
+        default: edge
+    outputs:
+      artifact:
+        description: "Name of the uploaded repository artifact"
+        value: ${{ jobs.build.outputs.artifact }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    outputs:
+      artifact: ${{ steps.meta.outputs.artifact }}
+    env:
+      ARCH: aarch64
+      INPUT_MIRROR: ${{ inputs.mirror }}
+      INPUT_PACKAGES: ${{ inputs.packages }}
+    steps:
+      - name: Checkout omarchy-pkgs
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.pkgs_repository || github.repository }}
+          ref: ${{ inputs.pkgs_ref || github.ref }}
+
+      - name: Resolve inputs
+        id: meta
+        run: |
+          MIRROR="${INPUT_MIRROR:-edge}"
+          PACKAGES="$INPUT_PACKAGES"
+          case "$MIRROR" in edge|stable) ;; *) echo "invalid mirror: $MIRROR" >&2; exit 1 ;; esac
+          re='^[A-Za-z0-9._+ -]+$'
+          if ! [[ $PACKAGES =~ $re ]]; then echo "invalid package list" >&2; exit 1; fi
+          {
+            echo "MIRROR=$MIRROR"
+            echo "PACKAGES=$PACKAGES"
+            echo "REPO_DIR=pkgs.omarchy.org/$MIRROR/$ARCH"
+            echo "OUTPUT_DIR=build-output/$MIRROR/$ARCH"
+          } >> "$GITHUB_ENV"
+          echo "artifact=omarchy-repo-$ARCH-$MIRROR" >> "$GITHUB_OUTPUT"
+
+      - name: Runner facts
+        run: |
+          set -x
+          uname -a
+          nproc
+          free -h
+          df -h / /mnt 2>/dev/null || df -h /
+          docker version
+          docker buildx version
+          docker info --format '{{.Driver}} {{.DockerRootDir}}'
+          id
+
+      # Reuse packages whose build inputs have not changed.
+      - name: Restore repository tree
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.REPO_DIR }}
+          key: omarchy-repo-${{ env.ARCH }}-${{ env.MIRROR }}-${{ hashFiles('pkgbuilds/**/PKGBUILD', 'pkgbuilds/**/.omarchy/**') }}
+          restore-keys: |
+            omarchy-repo-${{ env.ARCH }}-${{ env.MIRROR }}-
+
+      # The builder and runner use different user IDs.
+      - name: Prepare output directories
+        run: |
+          mkdir -p "$OUTPUT_DIR" "$REPO_DIR" src logs
+          chmod -R a+rwX build-output pkgs.omarchy.org src
+
+      - name: Build plan
+        run: bin/repo build --arch "$ARCH" --mirror "$MIRROR" --dry-run --package $PACKAGES
+
+      - name: Build packages
+        run: |
+          start=$(date +%s)
+          bin/repo build --arch "$ARCH" --mirror "$MIRROR" --package $PACKAGES
+          echo "build wall-clock: $(( $(date +%s) - start ))s"
+
+      # Replaces bin/repo sign + promote, which need the repository host's key.
+      - name: Publish into the repository tree and write omarchy.db
+        run: |
+          shopt -s nullglob
+          files=("$OUTPUT_DIR"/*.pkg.tar.*)
+          echo "new package files: ${#files[@]}"
+          [[ ${#files[@]} -gt 0 ]] && cp -v "${files[@]}" "$REPO_DIR/"
+          chmod -R a+rwX pkgs.omarchy.org
+          bin/repo update --arch "$ARCH" --mirror "$MIRROR"
+
+      - name: Verify repository
+        run: |
+          cd "$REPO_DIR"
+          ls -la
+          echo "== packages in omarchy.db =="
+          tar --use-compress-program=unzstd -tf omarchy.db.tar.zst | grep '/$' | sed 's|/$||' | sort
+          echo "== missing from the requested set =="
+          missing=0
+          for p in $PACKAGES; do
+            tar --use-compress-program=unzstd -tf omarchy.db.tar.zst | grep -q "^$p-[^-]*-[^-]*/$" || { echo "  $p"; missing=1; }
+          done
+          du -sh .
+          exit $missing
+
+      - name: Upload repository artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact }}
+          path: ${{ env.REPO_DIR }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ env.ARCH }}-${{ env.MIRROR }}
+          path: logs/
+          if-no-files-found: ignore
+          retention-days: 7

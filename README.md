@@ -41,7 +41,7 @@ docker run --rm --platform linux/arm64 alpine:latest uname -m
 # Should output: aarch64
 ```
 
-**Note**: aarch64 builds use QEMU and slower than native x86_64 builds.
+**Note**: Local aarch64 builds use QEMU and are slower than native builds.
 
 ## Quick Start
 
@@ -741,6 +741,7 @@ bin/repo release --package my-package
 - Uses Arch Linux ARM repositories
 - Additional repos: `[alarm]`, `[aur]`
 - Same workflow, just add `--arch aarch64`
+- For native CI builds, run the **aarch64 package repo** workflow.
 
 ### Building for Both Architectures
 
