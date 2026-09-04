@@ -2,7 +2,7 @@
 
 pkgname=openvino-genai
 pkgver=2026.3.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="OpenVINO GenAI C and C++ runtime libraries"
 arch=('x86_64')
 url="https://github.com/openvinotoolkit/openvino.genai"
@@ -29,15 +29,20 @@ _commit=56d9685302da2fc5cc7c9689cfab500fd0660a02
 source=(
     "openvino.genai::git+$url.git#commit=$_commit"
     'gcc-16-char8_t.patch'
+    'format-template-linkage.patch::https://github.com/openvinotoolkit/openvino.genai/commit/398fbc1450f7485368edf52dd82f45eba215d6c9.patch'
 )
 sha256sums=(
     'SKIP'
     '6e685c1e45d4b2314fd55e2f791846cc9086413ba62a6bb5e31be5a5878a243c'
+    '8c2a3e4bf1d33e00b780da7bec2d5e40b6fd26a4e518359d6ff7c59ca7f649e3'
 )
 
 prepare() {
     cd openvino.genai
     patch -Np1 -i "$srcdir/gcc-16-char8_t.patch"
+    # Backport upstream 398fbc14: GCC -O3 can otherwise leave format<int>
+    # unresolved in libopenvino_genai.so.
+    patch -Np1 -i "$srcdir/format-template-linkage.patch"
     git submodule update --init --recursive
 }
 
@@ -58,6 +63,11 @@ build() {
         -DENABLE_XGRAMMAR=OFF
 
     cmake --build build
+}
+
+check() {
+    LD_LIBRARY_PATH="$srcdir/build/openvino_genai:$srcdir/build/src/c${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+        python -c 'import ctypes; ctypes.CDLL("libopenvino_genai_c.so")'
 }
 
 package() {
