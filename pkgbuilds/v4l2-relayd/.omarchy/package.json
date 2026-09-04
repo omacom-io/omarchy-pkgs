@@ -1,9 +1,3 @@
 {
-  "source": "aur",
-  "sync": false,
-  "pkgrel": {
-    "suffix": 2,
-    "offset": 1
-  },
-  "upstream_commit": "086fa284d7f5ad562ea6ba79b3cb4fd798e759d3"
+  "source": "local"
 }
