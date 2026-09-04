@@ -49,8 +49,8 @@ Arguments:
   PACKAGE    One or more package names to update (optional)
 
 Commands:
-  self-test  Run the offline fixture tests for release selection, the
-             quarantine backstop, and metadata parsing
+  self-test  Run the offline fixture tests for release selection, repository
+             identity, the quarantine backstop, and metadata parsing
 
 Examples:
   $0                          # Update every package with an upstream source
@@ -460,9 +460,10 @@ sync_package() {
 # are swapped for fixture readers, everything else runs the production code
 # paths. Covers release selection (fallback past quarantined releases,
 # draft/prerelease filtering, bypass, unchanged version), failure paths
-# (unusable tags/timestamps, missing checksums), checksum template mapping
-# for both architectures, the min_release_age backstop, the duration parser,
-# and manifest validation.
+# (unusable tags/timestamps, missing checksums), repository identity (rename,
+# archive, unreadable metadata), checksum template mapping for both
+# architectures, the min_release_age backstop, the duration parser, and
+# manifest validation.
 cmd_self_test() {
   local failures=0
 
@@ -522,6 +523,15 @@ EOF
 
   github_fetch_releases() { printf '%s' "$FIXTURE_RELEASES"; }
   github_fetch_checksums() { printf '%s\n' "$FIXTURE_CHECKSUMS"; }
+  # Unset FIXTURE_REPO means "the declared repository, live and not archived",
+  # so every case that is not about the repository itself stays unaffected.
+  github_fetch_repo() {
+    if [[ -n "${FIXTURE_REPO:-}" ]]; then
+      printf '%s' "$FIXTURE_REPO"
+    else
+      jq -n --arg r "$1" '{full_name: $r, archived: false}'
+    fi
+  }
 
   echo "Release selection:"
   local out
@@ -561,6 +571,43 @@ EOF
   FIXTURE_CHECKSUMS="$sum_x19  ./tool-v1.9.0-x64.tar.xz"
   rc=0; github_upstream_release "$pkg" 86400 >/dev/null 2>&1 || rc=$?
   check "missing aarch64 checksum fails the sync" "1" "$rc"
+
+  echo "Repository identity:"
+  local rs
+  repo_facts() { jq -n --arg n "$1" --argjson a "$2" '{full_name: $n, archived: $a}'; }
+
+  rs=0; github_repo_identity_status "$(repo_facts "example/tool" false)" "example/tool" 2>/dev/null || rs=$?
+  check "the declared repository passes" "0" "$rs"
+
+  rs=0; github_repo_identity_status "$(repo_facts "Example/Tool" false)" "example/tool" 2>/dev/null || rs=$?
+  check "a difference in case is not a rename" "0" "$rs"
+
+  # The declared name still resolves through GitHub's redirect, so nothing else
+  # in the sync notices; the abandoned name is what an attacker can register.
+  rs=0; github_repo_identity_status "$(repo_facts "newowner/tool" false)" "example/tool" 2>/dev/null || rs=$?
+  check "a renamed or transferred repository fails the sync" "1" "$rs"
+
+  rs=0; github_repo_identity_status "$(repo_facts "example/tool" true)" "example/tool" 2>/dev/null || rs=$?
+  check "an archived repository fails the sync" "1" "$rs"
+
+  rs=0; github_repo_identity_status '{}' "example/tool" 2>/dev/null || rs=$?
+  check "unreadable repository metadata fails the sync" "1" "$rs"
+
+  rs=0; github_repo_identity_status '{"full_name": "example/tool"}' "example/tool" 2>/dev/null || rs=$?
+  check "a response missing archived fails rather than assuming live" "1" "$rs"
+
+  # End to end through the provider: the release feed is impeccable and the
+  # repository behind it is the thing that is wrong.
+  FIXTURE_RELEASES=$(jq -n --arg old2 "$old2d" '[
+    {tag_name: "v1.9.0", published_at: $old2, draft: false, prerelease: false}
+  ]')
+  FIXTURE_CHECKSUMS=$(printf '%s\n' \
+    "$sum_x19  ./tool-v1.9.0-x64.tar.xz" \
+    "$sum_a19  tool-v1.9.0-arm64.tar.xz")
+  FIXTURE_REPO=$(repo_facts "attacker/tool" false)
+  rc=0; github_upstream_release "$pkg" 86400 >/dev/null 2>&1 || rc=$?
+  check "a good feed under a hijackable name fails the whole sync" "1" "$rc"
+  FIXTURE_REPO=""
 
   echo "Quarantine backstop:"
   local rel st

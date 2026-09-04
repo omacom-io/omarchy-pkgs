@@ -43,6 +43,64 @@ github_fetch_checksums() {
   curl -fsSL "https://github.com/$repo/releases/download/$tag/$asset"
 }
 
+github_fetch_repo() {
+  local repo="$1"
+  curl -fsSL "https://api.github.com/repos/$repo"
+}
+
+# Confirms the repository serving a feed is still the one that was declared.
+#
+# upstream.github is metadata a person wrote once, in a pull request, and has no
+# reason to revisit. Two things change underneath it without anything in the
+# sync noticing, and neither is a judgement call:
+#
+#   renamed   GitHub redirects a renamed or transferred repository, so a stale
+#             owner/repo keeps resolving and every sync keeps passing. The
+#             abandoned name is then free for anyone to register, and whoever
+#             takes it inherits this package's release feed. Comparing the
+#             full_name GitHub returns against what is declared is the whole
+#             defense, and it costs one field.
+#
+#   archived  An archived repository cannot publish anything, so a feed that
+#             appears to ship a new release from one is not the feed we believe
+#             we are reading -- the same class of anomaly this provider already
+#             treats as a loud error.
+#
+# Deliberately not checked: repository age and release count. Neither says
+# anything about whether an artifact is safe -- a project can be new and sound,
+# or old and never once reviewed -- and a threshold on either would reject
+# perfectly good young upstreams while stopping no attacker who is willing to
+# wait. Every check here reports a fact about the repository as it is now.
+github_repo_identity_status() {
+  local repo_json="$1" declared="$2"
+  local full_name archived
+
+  full_name=$(jq -r '.full_name // ""' <<<"$repo_json")
+  archived=$(jq -r 'if has("archived") then .archived else "missing" end' <<<"$repo_json")
+
+  # Fail closed on a response this cannot read, for the same reason an unusable
+  # tag fails the sync: a repository we cannot verify is not one to adopt a
+  # release from.
+  if [[ -z "$full_name" || "$archived" == "missing" ]]; then
+    echo "could not read repository metadata for $declared" >&2
+    return 1
+  fi
+
+  # GitHub treats owner and repository names case-insensitively, so a difference
+  # in case is not a rename.
+  if [[ "${full_name,,}" != "${declared,,}" ]]; then
+    echo "upstream.github declares $declared but GitHub serves $full_name: the repository was renamed or transferred, and the declared name is now free for anyone to register" >&2
+    return 1
+  fi
+
+  if [[ "$archived" == "true" ]]; then
+    echo "$declared is archived upstream and cannot be publishing new releases" >&2
+    return 1
+  fi
+
+  return 0
+}
+
 # Emits the newest qualifying release as hook-contract JSON. min_release_age
 # is honored during selection (newest release older than the window wins,
 # even when a younger one exists) and BYPASS_MIN_RELEASE_AGE=1 lifts it.
@@ -128,6 +186,16 @@ github_upstream_release() {
     echo '{}'
     return 0
   fi
+
+  # Confirmed here rather than before selection so a scheduled sync over every
+  # package pays for the extra call only when a release is actually about to be
+  # adopted -- the same place the checksum manifest is already fetched.
+  local repo_json
+  if ! repo_json=$(github_fetch_repo "$repo"); then
+    echo "could not fetch repository metadata for $repo" >&2
+    return 1
+  fi
+  github_repo_identity_status "$repo_json" "$repo" || return 1
 
   local checksums
   if ! checksums=$(github_fetch_checksums "$repo" "$best_tag" "$checksums_name"); then
