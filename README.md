@@ -328,9 +328,49 @@ recent releases are considered. The provider fails closed on anything it cannot
 read — an unusable tag, timestamp, or checksum stops the sync rather than being
 skipped.
 
-A package may also declare `"min_release_age": "24h"` (`s`/`m`/`h`/`d` suffix or
-bare seconds) to quarantine fresh releases until maintainers have had time to
-pull a bad or compromised one. The newest release that has cleared the window
+Projects that publish version tags but no checksum manifest can declare the
+tag repository, the exact tag shape, and every source that should be hashed:
+
+```json
+"upstream": {
+  "git_tags": "https://github.com/owner/project.git",
+  "tag_pattern": "v{pkgver}",
+  "sources": {
+    "any": ["https://github.com/owner/project/archive/refs/tags/{tag}.tar.gz"]
+  }
+}
+```
+
+The newest matching tag is selected with pacman's `vercmp`; unrelated tags are
+ignored. `tag_pattern` must contain exactly one `{pkgver}`. Source templates may
+use `{tag}` and `{pkgver}`. Each expanded URL must be HTTPS and is downloaded
+only when the discovered version is newer. A checked-in patch or other local
+source can be included as `file:patch-name.patch`; it is hashed from the package
+directory. Keys such as `any`, `x86_64`, and `aarch64` select the corresponding
+`sha256sums` array.
+
+npm packages use the same source mapping, with `{npm_tarball}` available for
+the tarball named by the selected dist-tag:
+
+```json
+"upstream": {
+  "npm": "@scope/package",
+  "dist_tag": "latest",
+  "sources": {
+    "any": ["{npm_tarball}", "https://example.com/v{pkgver}/CHANGELOG.md"]
+  }
+}
+```
+
+`dist_tag` defaults to `latest`. The registry's publication timestamp is
+carried into the provider result, so `min_release_age` works for npm packages.
+Exactly one of `github`, `git_tags`, or `npm` may appear in a declaration.
+
+A timestamped provider may also declare `"min_release_age": "24h"`
+(`s`/`m`/`h`/`d` suffix or bare seconds) to quarantine fresh releases until
+maintainers have had time to pull a bad or compromised one. GitHub Releases and
+npm provide publication times; raw git tags do not, so combining `git_tags`
+with this policy fails closed. The newest release that has cleared the window
 ships, so a fast release cadence cannot starve updates. The window is enforced
 centrally: whatever reports the release must prove its age via `published_at`,
 or the sync fails. A maintainer deliberately shipping inside the window runs

@@ -12,8 +12,36 @@ BUILD_OUTPUT_DIR=${BUILD_OUTPUT_DIR:-/build-output/$MIRROR/$ARCH}
 FINAL_OUTPUT_DIR=${FINAL_OUTPUT_DIR:-/pkgs.omarchy.org/$MIRROR/$ARCH}
 HELPERS_DIR=${HELPERS_DIR:-/helpers}
 SRC_DIR=${SRC_DIR:-/src}
+# Set by bin/build from OMARCHY_DEFER_RUNTIME_DEPS after it has checked the
+# request; re-checked here so the container never trusts a stray value.
+DEFER_RUNTIME_DEPS=${DEFER_RUNTIME_DEPS:-false}
 
 source "$HELPERS_DIR/package-metadata.sh"
+
+if [[ $DEFER_RUNTIME_DEPS != "false" && $DEFER_RUNTIME_DEPS != "true" ]]; then
+  echo "DEFER_RUNTIME_DEPS must be true or false" >&2
+  exit 1
+fi
+if [[ $DEFER_RUNTIME_DEPS == "true" ]]; then
+  deferred_runtime=0
+  deferred_settings=0
+  deferred_count=0
+  for package in $PACKAGES; do
+    ((deferred_count += 1))
+    case $package in
+      omarchy|omarchy-dev) deferred_runtime=1 ;;
+      omarchy-settings|omarchy-settings-dev) deferred_settings=1 ;;
+      *)
+        echo "Runtime dependency deferral only applies to the omarchy pair, not $package" >&2
+        exit 1
+        ;;
+    esac
+  done
+  if (( deferred_runtime != 1 || deferred_settings != 1 || deferred_count != 2 )); then
+    echo "Runtime dependency deferral requires exactly the omarchy pair" >&2
+    exit 1
+  fi
+fi
 
 if [[ "$DRY_RUN" != true ]]; then
   # Import GPG keys
@@ -48,13 +76,16 @@ EOF
     # Create an empty database
     repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
     ln -sf omarchy-build.db.tar.zst omarchy-build.db
-  else
-    # Database exists, check if we need to rebuild it from packages
-    if ls *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | grep -q .; then
-      echo "==> Rebuilding build database from existing packages..."
-      ls *.pkg.tar.* | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | xargs -r repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
-      ln -sf omarchy-build.db.tar.zst omarchy-build.db
-    fi
+  fi
+  # Fold any packages already in the workspace into the database, whether
+  # they came with an existing database or were dropped in by an earlier
+  # workflow job (OMARCHY_KEEP_BUILD_WORKSPACE). Without this a seeded
+  # workspace with no database would leave those packages invisible to
+  # dependency resolution.
+  if ls *.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | grep -q .; then
+    echo "==> Rebuilding build database from existing packages..."
+    ls *.pkg.tar.* | grep -v '\.sig$' | grep -v 'omarchy-build\.db' | xargs -r repo-add omarchy-build.db.tar.zst >/dev/null 2>&1
+    ln -sf omarchy-build.db.tar.zst omarchy-build.db
   fi
 
   # Add omarchy repo if it has a database (stable packages)
@@ -224,6 +255,31 @@ refresh_vcs_pkgver_preserving_local_pkgrel() {
   fi
 }
 
+# With runtime dependency checks deferred, makepkg runs --nodeps, so the
+# build-time dependencies it would normally install with -s have to be
+# installed explicitly: makedepends and checkdepends, including the
+# architecture-suffixed variants for the current CARCH.
+install_deferred_build_dependencies() {
+  local pkg="$1"
+  local -a build_deps=()
+
+  mapfile -t build_deps < <(
+    CARCH="$ARCH" bash -c '
+      source PKGBUILD
+      arch_makedepends="makedepends_${CARCH}[@]"
+      arch_checkdepends="checkdepends_${CARCH}[@]"
+      printf "%s\n" \
+        "${makedepends[@]}" "${!arch_makedepends}" \
+        "${checkdepends[@]}" "${!arch_checkdepends}"
+    ' | awk 'NF && !seen[$0]++'
+  )
+
+  if (( ${#build_deps[@]} )); then
+    echo "    Installing build-only dependencies for $pkg..."
+    sudo pacman -S --needed --noconfirm -- "${build_deps[@]}"
+  fi
+}
+
 # Build a package
 build_package() {
   local pkg="$1"
@@ -280,9 +336,20 @@ build_package() {
   # Build package without signing (signing is done separately)
   # PACMAN override uses a wrapper that adds --ask 4 to auto-resolve conflicts
   # (e.g. rustup replacing rust) since --noconfirm defaults to 'N' on those prompts
-  MAKEPKG_FLAGS="-scf --noconfirm"
+  local -a makepkg_flags=(-scf --noconfirm)
+  if [[ $DEFER_RUNTIME_DEPS == "true" ]]; then
+    # The pair's runtime dependencies (each other, and packages other jobs
+    # of the same pipeline build) are not resolvable here; the assembled set
+    # is installed in one verified transaction downstream. Only the
+    # build-time dependencies are installed, then makepkg skips the check.
+    install_deferred_build_dependencies "$pkg" || {
+      FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+      return 1
+    }
+    makepkg_flags=(-cf --noconfirm --nodeps)
+  fi
 
-  if PACMAN=/usr/local/bin/pacman-for-makepkg makepkg $MAKEPKG_FLAGS; then
+  if PACMAN=/usr/local/bin/pacman-for-makepkg makepkg "${makepkg_flags[@]}"; then
     # Ensure output directory exists
     mkdir -p "$BUILD_OUTPUT_DIR"
     
