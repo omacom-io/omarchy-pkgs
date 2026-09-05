@@ -41,7 +41,9 @@ docker run --rm --platform linux/arm64 alpine:latest uname -m
 # Should output: aarch64
 ```
 
-**Note**: aarch64 builds use QEMU and slower than native x86_64 builds.
+**Note**: aarch64 builds use QEMU and slower than native x86_64 builds. To avoid the
+emulation entirely, run the **Build aarch64 Packages** workflow, which builds on native
+ARM64 runners.
 
 ## Quick Start
 
@@ -741,6 +743,9 @@ bin/repo release --package my-package
 - Uses Arch Linux ARM repositories
 - Additional repos: `[alarm]`, `[aur]`
 - Same workflow, just add `--arch aarch64`
+- Or build natively in CI: the **Build aarch64 Packages** workflow runs on GitHub's
+  ARM64 runners, which need no emulation. Trigger it from the Actions tab; it uploads
+  the packages as an artifact and leaves signing and publishing to a maintainer.
 
 ### Building for Both Architectures
 
