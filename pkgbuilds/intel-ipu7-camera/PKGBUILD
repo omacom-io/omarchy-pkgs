@@ -92,8 +92,10 @@ sha256sums=(
 
 prepare() {
   cd "${srcdir}/ipu7-drivers"
-  patch -Np1 -i "${srcdir}/0004-ipu7-psys-register-device-bus.patch"
-  patch -Np1 -i "${srcdir}/0005-ipu7-psys-harden-userptr-pinning.patch"
+  # --fuzz=0: a security patch that lands somewhere other than its anchor still
+  # compiles, and the build is the only place that can refuse it.
+  patch -Np1 --fuzz=0 -i "${srcdir}/0004-ipu7-psys-register-device-bus.patch"
+  patch -Np1 --fuzz=0 -i "${srcdir}/0005-ipu7-psys-harden-userptr-pinning.patch"
 
   cd "${srcdir}/vision-drivers"
   git config user.email "build@localhost"
