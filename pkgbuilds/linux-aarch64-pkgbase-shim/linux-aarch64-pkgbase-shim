@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Supply pkgbase and vmlinuz metadata missing from Arch Linux ARM kernels.
+set -u
+
+readonly SELF=linux-aarch64-pkgbase-shim
+readonly IMAGE=/boot/Image
+readonly LIMINE_INSTALL_SCRIPT=/usr/share/libalpm/scripts/limine-mkinitcpio-install
+
+declare -A DIRS=()
+modules_in_transaction=0
+self_in_transaction=0
+rebuild=0
+
+owner_of() {
+	pacman -Qqo "$1" 2>/dev/null
+}
+
+# NeedsTargets requires consuming every line from stdin.
+while IFS= read -r line; do
+	case $line in
+	usr/lib/modules/*)
+		v=${line#usr/lib/modules/}
+		v=${v%%/*}
+		[[ -n $v ]] && DIRS["/usr/lib/modules/$v"]=1
+		modules_in_transaction=1
+		;;
+	"$SELF")
+		self_in_transaction=1
+		;;
+	esac
+done
+
+# Cover kernels already present when the shim itself is installed.
+if ((self_in_transaction)); then
+	for d in /usr/lib/modules/*/; do
+		[[ -d $d ]] && DIRS["${d%/}"]=1
+	done
+fi
+
+for dir in "${!DIRS[@]}"; do
+	[[ -d $dir ]] || continue
+	# Leave existing kernel metadata untouched.
+	[[ -e $dir/pkgbase ]] && continue
+	# Not a packaged kernel (a leftover or DKMS-only directory).
+	owner=$(owner_of "$dir") || continue
+	if [[ $(owner_of "$IMAGE") != "$owner" ]]; then
+		echo "$SELF: $owner owns $dir but not $IMAGE, leaving it alone" >&2
+		continue
+	fi
+	if ! cp -f "$IMAGE" "$dir/.vmlinuz.tmp" || ! mv -f "$dir/.vmlinuz.tmp" "$dir/vmlinuz"; then
+		echo "$SELF: failed to copy $IMAGE to $dir/vmlinuz" >&2
+		rm -f "$dir/.vmlinuz.tmp"
+		continue
+	fi
+	printf '%s\n' "$owner" >"$dir/pkgbase"
+	echo "$SELF: wrote pkgbase ($owner) and vmlinuz in $dir"
+	# Rebuild when the transaction will not trigger mkinitcpio itself.
+	if ! ((modules_in_transaction)) || ! pacman -Qlq "$owner" 2>/dev/null | grep -q '^/usr/lib/initcpio/'; then
+		rebuild=1
+	fi
+done
+
+# Remove directories containing only stale shim metadata.
+for dir in /usr/lib/modules/*/; do
+	dir=${dir%/}
+	[[ -f $dir/pkgbase && -f $dir/vmlinuz ]] || continue
+	owner_of "$dir" >/dev/null && continue
+	owner_of "$dir/pkgbase" >/dev/null && continue
+	[[ -z $(find "$dir" -mindepth 1 ! -name pkgbase ! -name vmlinuz -print -quit) ]] || continue
+	rm -f "$dir/pkgbase" "$dir/vmlinuz" && rmdir "$dir" && echo "$SELF: removed leftover $dir"
+done
+
+# Respect the installer's deferred boot-image build.
+deferred_hook=/etc/pacman.d/hooks/90-mkinitcpio-install.hook
+if ((rebuild)) && [[ -L $deferred_hook && $(readlink "$deferred_hook") == /dev/null ]]; then
+	echo "$SELF: $deferred_hook is masked, leaving the rebuild to limine-update"
+	rebuild=0
+fi
+
+if ((rebuild)); then
+	if [[ -x $LIMINE_INSTALL_SCRIPT ]]; then
+		echo rebuild | "$LIMINE_INSTALL_SCRIPT"
+	else
+		echo "$SELF: $LIMINE_INSTALL_SCRIPT not found; run mkinitcpio for the new kernel yourself" >&2
+	fi
+fi
+
+exit 0
