@@ -331,11 +331,39 @@ build_package() {
   if PACMAN=/usr/local/bin/pacman-for-makepkg makepkg "${makepkg_flags[@]}"; then
     # Ensure output directory exists
     mkdir -p "$BUILD_OUTPUT_DIR"
-    
+
+    # Copy only the artifacts makepkg declares as outputs. A PKGBUILD may use
+    # another pacman package as a source (schist-bin does); a *.pkg.tar.* glob
+    # would mistake that source archive for one of our freshly built packages.
+    local -a package_files=()
+    mapfile -t package_files < <(makepkg --packagelist)
+
+    if [[ ${#package_files[@]} -eq 0 ]]; then
+      echo "    Makepkg produced no package files for $pkg"
+      FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+      return 1
+    fi
+
     local dependency_pkg_file=""
-    for pkg_file in *.pkg.tar.*; do
-      [[ -f "$pkg_file" && "$pkg_file" != *.sig ]] || continue
+    local -a new_pkgs=()
+    local pkg_path pkg_file
+    for pkg_path in "${package_files[@]}"; do
+      pkg_file=${pkg_path##*/}
+      if [[ ! -f "$pkg_file" ]]; then
+        # makepkg predicts an automatic -debug output whenever debug is
+        # enabled, but data-only packages may contain no symbols and therefore
+        # legitimately produce no debug archive.
+        if [[ "$pkg_file" == *-debug-*.pkg.tar.* ]]; then
+          continue
+        fi
+
+        echo "    Expected package file was not produced: $pkg_file"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        return 1
+      fi
+
       cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
+      new_pkgs+=("$pkg_file")
 
       if [[ "$(bsdtar -xOf "$pkg_file" .PKGINFO 2>/dev/null | sed -n 's/^pkgname = //p')" == "$pkg" ]]; then
         dependency_pkg_file="$BUILD_OUTPUT_DIR/$pkg_file"
@@ -344,9 +372,7 @@ build_package() {
 
     cd "$BUILD_OUTPUT_DIR"
 
-    # Find ALL package files (handles split packages)
-    local new_pkgs=($(ls -t ${pkg}-*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | grep -v 'omarchy-build\.db'))
-
+    # Add every output from this build, including split packages.
     if [[ ${#new_pkgs[@]} -gt 0 ]]; then
       repo-add omarchy-build.db.tar.zst "${new_pkgs[@]}" >/dev/null 2>&1
       ln -sf omarchy-build.db.tar.zst omarchy-build.db
