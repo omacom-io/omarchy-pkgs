@@ -1,0 +1,43 @@
+# Maintainer: Lukas Innig (derluke on GitHub)
+pkgname=oma-preview
+pkgver=0.8.2
+pkgrel=1
+pkgdesc='A small Omarchy-native PDF reader and editor with visible agent review'
+arch=('x86_64' 'aarch64')
+url='https://github.com/derluke/oma-preview'
+license=('MIT')
+options=('!debug')
+depends=('quickshell' 'qt6-declarative' 'qt6-webengine' 'qpdf' 'poppler' 'librsvg' 'gcc-libs' 'glibc')
+makedepends=('cargo')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('7a457d76550500caa19028cf6cb698812c7d41f4167205e60417369af4ceb7ce')
+
+prepare() {
+    cd "oma-preview-$pkgver"
+    # Packaged builds must not embed a developer checkout as a UI fallback.
+    sed -i 's#PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ui")#PathBuf::from("/usr/share/oma-preview/ui")#' src/main.rs
+    cargo fetch --locked
+}
+
+build() {
+    cd "oma-preview-$pkgver"
+    cargo build --frozen --release
+}
+
+check() {
+    cd "oma-preview-$pkgver"
+    cargo test --frozen
+}
+
+package() {
+    cd "oma-preview-$pkgver"
+    install -Dm755 target/release/oma-preview "$pkgdir/usr/bin/oma-preview"
+    install -d "$pkgdir/usr/share/oma-preview/ui"
+    install -m644 ui/*.qml ui/qmldir "$pkgdir/usr/share/oma-preview/ui/"
+    install -Dm644 data/org.omarchy.oma-preview.desktop "$pkgdir/usr/share/applications/org.omarchy.oma-preview.desktop"
+    install -Dm644 assets/org.omarchy.oma-preview.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/org.omarchy.oma-preview.svg"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 skills/oma-preview/SKILL.md "$pkgdir/usr/share/oma-preview/skills/oma-preview/SKILL.md"
+    install -Dm644 skills/oma-preview/agents/openai.yaml "$pkgdir/usr/share/oma-preview/skills/oma-preview/agents/openai.yaml"
+}
