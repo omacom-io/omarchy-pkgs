@@ -174,9 +174,23 @@ HOST_ARCH=$(uname -m)
 if [[ "$HOST_ARCH" != "$ARCH" ]]; then
   PROBE_IMAGE="alpine:3.21"
   [[ "$CONTAINER_ENGINE" == "podman" ]] && PROBE_IMAGE="docker.io/library/alpine:3.21"
-  if ! "$CONTAINER_ENGINE" run "${CONTAINER_RUN_ARGS[@]}" --rm "$(get_platform_arg "$ARCH")" "$PROBE_IMAGE" /bin/true >/dev/null 2>&1; then
-    print_info "Setting up QEMU for $ARCH emulation on this $HOST_ARCH host..."
+
+  # Rootless Podman cannot repair host binfmt state itself. Validate the flags
+  # before the basic probe, because an F-only registration can start an ARM
+  # container but silently breaks sudo inside it.
+  if [[ "$CONTAINER_ENGINE" == "podman" ]]; then
     setup_qemu "$ARCH"
+  fi
+
+  if ! "$CONTAINER_ENGINE" run "${CONTAINER_RUN_ARGS[@]}" --rm "$(get_platform_arg "$ARCH")" "$PROBE_IMAGE" /bin/true >/dev/null 2>&1; then
+    if [[ "$CONTAINER_ENGINE" == "podman" ]]; then
+      print_error "QEMU $ARCH is registered, but the container probe failed"
+      print_info "Refresh the registration with: sudo systemctl restart systemd-binfmt"
+      exit 1
+    else
+      print_info "Setting up QEMU for $ARCH emulation on this $HOST_ARCH host..."
+      setup_qemu "$ARCH"
+    fi
   fi
 fi
 

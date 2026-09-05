@@ -5,6 +5,10 @@
 
 # Setup directories
 ARCH=${ARCH:-x86_64}
+# ARCH selects the repository target for this script, but make and Kbuild also
+# interpret an exported ARCH themselves (Linux calls this target "arm64").
+# Keep the shell variable local to the orchestrator so PKGBUILDs see CARCH only.
+export -n ARCH
 MIRROR=${MIRROR:-edge}
 DRY_RUN=${DRY_RUN:-false}
 PKGBUILDS_DIR=${PKGBUILDS_DIR:-/pkgbuilds}
@@ -60,14 +64,11 @@ if [[ "$DRY_RUN" != true ]]; then
   # Configure Omarchy repositories for dependency resolution
   echo "==> Configuring Omarchy repositories for dependency resolution..."
 
-  # Always add omarchy-build repo (for incremental builds)
-  # Packages in build-output are unsigned, so use SigLevel = Never
-  sudo tee -a /etc/pacman.conf > /dev/null <<EOF
-
-[omarchy-build]
-SigLevel = Never
-Server = file://$BUILD_OUTPUT_DIR
-EOF
+  # Always add omarchy-build repo first (for incremental builds). Repository
+  # order is pacman's priority order, so this must precede the official repos;
+  # otherwise pacman can select an older official package with the same name.
+  # Packages in build-output are unsigned, so use SigLevel = Never.
+  sudo sed -i "/^\[core\]$/i [omarchy-build]\nSigLevel = Never\nServer = file://$BUILD_OUTPUT_DIR\n" /etc/pacman.conf
   echo "  -> omarchy-build (priority 1): $BUILD_OUTPUT_DIR"
 
   # Initialize empty build database if it doesn't exist
@@ -90,12 +91,7 @@ EOF
 
   # Add omarchy repo if it has a database (stable packages)
   if [[ -f "$FINAL_OUTPUT_DIR/omarchy.db.tar.zst" ]] || [[ -f "$FINAL_OUTPUT_DIR/omarchy.db" ]]; then
-    sudo tee -a /etc/pacman.conf > /dev/null <<EOF
-
-[omarchy]
-SigLevel = Optional TrustAll
-Server = file://$FINAL_OUTPUT_DIR
-EOF
+    sudo sed -i "/^\[core\]$/i [omarchy]\nSigLevel = Optional TrustAll\nServer = file://$FINAL_OUTPUT_DIR\n" /etc/pacman.conf
     echo "  -> omarchy (priority 2): $FINAL_OUTPUT_DIR"
   fi
 
@@ -336,8 +332,14 @@ build_package() {
     # Ensure output directory exists
     mkdir -p "$BUILD_OUTPUT_DIR"
     
+    local dependency_pkg_file=""
     for pkg_file in *.pkg.tar.*; do
-      [[ -f "$pkg_file" ]] && cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
+      [[ -f "$pkg_file" && "$pkg_file" != *.sig ]] || continue
+      cp "$pkg_file" "$BUILD_OUTPUT_DIR/"
+
+      if [[ "$(bsdtar -xOf "$pkg_file" .PKGINFO 2>/dev/null | sed -n 's/^pkgname = //p')" == "$pkg" ]]; then
+        dependency_pkg_file="$BUILD_OUTPUT_DIR/$pkg_file"
+      fi
     done
 
     cd "$BUILD_OUTPUT_DIR"
@@ -352,6 +354,24 @@ build_package() {
     fi
 
     cd /src/$pkg
+
+    # A lower-priority official repository may contain an older package with
+    # the same name. Install the exact artifact we just built before building
+    # its consumers, so pacman cannot select that older provider instead.
+    if [[ "${INSTALL_PACKAGES[$pkg]:-}" == "1" ]]; then
+      if [[ -z "$dependency_pkg_file" ]]; then
+        echo "    Could not find the built $pkg package to install as a dependency"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        return 1
+      fi
+
+      echo "    Installing freshly built $pkg for dependent packages..."
+      if ! sudo /usr/local/bin/pacman-for-makepkg -U --needed --noconfirm "$dependency_pkg_file"; then
+        echo "    Failed to install freshly built dependency $pkg"
+        FAILED_PACKAGES="$FAILED_PACKAGES $pkg"
+        return 1
+      fi
+    fi
 
     echo "    Successfully built $pkg"
     SUCCESSFUL_PACKAGES="$SUCCESSFUL_PACKAGES $pkg"

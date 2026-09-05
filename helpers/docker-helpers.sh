@@ -69,13 +69,25 @@ setup_qemu() {
 
   if [[ "$CONTAINER_ENGINE" == "podman" ]]; then
     local registration="/proc/sys/fs/binfmt_misc/qemu-$target_arch"
-    if [[ -r "$registration" ]] && grep -q '^flags:.*F' "$registration"; then
+    local packaged_registration="/usr/lib/binfmt.d/qemu-$target_arch-static.conf"
+    local flags=""
+
+    if [[ -r "$registration" ]]; then
+      flags=$(sed -n 's/^flags: //p' "$registration")
+    fi
+
+    if [[ "$flags" == *F* && "$flags" == *C* ]]; then
       print_success "QEMU $target_arch emulation is registered"
       return 0
     fi
 
-    print_error "Rootless Podman requires host QEMU binfmt registration with the F flag"
-    print_info "Install it with: sudo pacman -S qemu-user-static qemu-user-static-binfmt"
+    print_error "Rootless Podman requires QEMU binfmt registration with the F and C flags"
+    print_info "F keeps the emulator available inside containers; C lets container sudo preserve credentials."
+    print_info "Configure it once with:"
+    echo "    sudo pacman -S --needed qemu-user-static qemu-user-static-binfmt"
+    echo "    sudo mkdir -p /etc/binfmt.d"
+    echo "    sed 's/:FP$/:FPC/' $packaged_registration | sudo tee /etc/binfmt.d/qemu-$target_arch-static.conf >/dev/null"
+    echo "    sudo systemctl restart systemd-binfmt"
     exit 1
   fi
 

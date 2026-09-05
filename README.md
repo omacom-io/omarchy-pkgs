@@ -32,12 +32,14 @@ The filesystem no longer encodes release policy. Instead:
 
 The repository host builds every architecture it publishes on the same
 machine. A foreign architecture runs under QEMU user emulation, which
-`bin/build` sets up on first use (and re-checks after each reboot by
-actually running a container for the target platform):
+`bin/build` checks by actually running a container for the target platform.
+Rootful Docker registers QEMU on first use. Rootless Podman uses the host's
+registration and prints the one-time Arch setup commands when it is missing or
+lacks the credential flag required by `sudo` inside the builder:
 
 ```bash
 # Verify
-docker run --rm --platform linux/arm64 alpine:latest uname -m
+podman run --rm --platform linux/arm64 docker.io/library/alpine:latest uname -m
 # Should output: aarch64
 ```
 
