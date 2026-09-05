@@ -34,7 +34,7 @@ makedepends=(
 optdepends=('gifsicle: optimize exported GIF files')
 conflicts=('omarecord')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('330d8e2805135af33bf35378e2e961094fc375075d38120c8270bd42fe04ce5b')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
