@@ -1,11 +1,4 @@
 pkgname=1password
-
-case "$CARCH" in
-    x86_64) _tararch=x64 ;;
-    aarch64) _tararch=arm64 ;;
-    *) return 1 ;;
-esac
-
 pkgver=8.12.34
 pkgrel=35
 conflicts=('1password-beta' '1password-beta-bin')
@@ -33,6 +26,17 @@ validpgpkeys=('3FEF9748469ADBE15DA7CA80AC2D62742012EA22')
 
 package() {
     depends=('hicolor-icon-theme' 'libgtk-3.so=0' 'nss' 'xdg-utils')
+
+    # 1Password names its tarballs by a vendor architecture suffix. arch=()
+    # above already limits which architectures makepkg builds, so no fallback
+    # branch is needed here; keeping this inside package() means sourcing the
+    # PKGBUILD without CARCH (as the version check does) still reads the
+    # version correctly.
+    local _tararch
+    case "$CARCH" in
+        x86_64) _tararch=x64 ;;
+        aarch64) _tararch=arm64 ;;
+    esac
 
     # Go to source directory
     cd "1password-${pkgver}.${_tararch}"

@@ -237,7 +237,7 @@ pkgbuild_field() {
   local package_dir="$1"
   local field="$2"
 
-  (cd "$package_dir" && env -u OMARCHY_SRC bash -c "source PKGBUILD 2>/dev/null; echo \"\${$field:-}\"")
+  package_pkgbuild_var "$package_dir" "$field"
 }
 
 # 2 -> 3, and 1.1 -> 1.2. Anything else is a pkgrel this command has no business
@@ -780,6 +780,26 @@ cmd_self_test() {
   check "run succeeds" 0 "$(run_case "$root")"
   unset SELFTEST_ARCHES
   check "pkgrel untouched" 1 "$(pkgrel_of "$root/pkgbuilds/t-x86")"
+
+  echo "A PKGBUILD that branches on CARCH at file scope still reads its version:"
+  root=$(selftest_root carch-branch)
+  mkdir -p "$root/pkgbuilds/t-carch/.omarchy"
+  cat > "$root/pkgbuilds/t-carch/PKGBUILD" <<'PKG'
+pkgname=t-carch
+case "$CARCH" in
+    x86_64) _suffix=x64 ;;
+    aarch64) _suffix=arm64 ;;
+    *) return 1 ;;
+esac
+pkgver=1.0
+pkgrel=3
+arch=(x86_64 aarch64)
+PKG
+  echo '{"source":"local"}' > "$root/pkgbuilds/t-carch/.omarchy/package.json"
+  check "pkgver read for x86_64" "1.0" "$(package_pkgbuild_var "$root/pkgbuilds/t-carch" pkgver x86_64)"
+  check "pkgrel read for x86_64" "3" "$(package_pkgbuild_var "$root/pkgbuilds/t-carch" pkgrel x86_64)"
+  check "arch-specific value follows CARCH" "arm64" "$(package_pkgbuild_var "$root/pkgbuilds/t-carch" _suffix aarch64)"
+  check "unsupported arch reports failure" 1 "$(package_pkgbuild_var "$root/pkgbuilds/t-carch" pkgver armv7h >/dev/null; echo $?)"
 
   echo ""
   if [[ "$failures" -eq 0 ]]; then

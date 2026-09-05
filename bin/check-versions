@@ -79,10 +79,26 @@ get_repo_version() {
   '
 }
 
+# The PKGBUILD's full version (epoch:pkgver-pkgrel) for the architecture being
+# checked. Prints nothing when pkgver or pkgrel cannot be read: a partial
+# version like "-" would compare unequal to everything published and queue a
+# rebuild on every tick, so an unreadable PKGBUILD must not queue at all.
 get_pkgbuild_version() {
   local pkgdir="$1"
-  if [[ -f "$pkgdir/PKGBUILD" ]]; then
-    (cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; if [[ -n "$epoch" ]]; then echo "${epoch}:${pkgver}-${pkgrel}"; else echo "${pkgver}-${pkgrel}"; fi')
+  local epoch pkgver pkgrel
+
+  [[ -f "$pkgdir/PKGBUILD" ]] || return 1
+
+  epoch=$(package_pkgbuild_var "$pkgdir" epoch "$ARCH")
+  pkgver=$(package_pkgbuild_var "$pkgdir" pkgver "$ARCH")
+  pkgrel=$(package_pkgbuild_var "$pkgdir" pkgrel "$ARCH")
+
+  [[ -n "$pkgver" && -n "$pkgrel" ]] || return 1
+
+  if [[ -n "$epoch" ]]; then
+    echo "${epoch}:${pkgver}-${pkgrel}"
+  else
+    echo "${pkgver}-${pkgrel}"
   fi
 }
 
@@ -97,8 +113,8 @@ check_vcs_unchanged() {
 
   # If epoch or pkgrel changed in PKGBUILD, release even if upstream is unchanged.
   local pkgbuild_epoch pkgbuild_pkgrel
-  pkgbuild_epoch=$(cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; echo "${epoch:-}"')
-  pkgbuild_pkgrel=$(cd "$pkgdir" && bash -c 'source PKGBUILD 2>/dev/null; echo "${pkgrel}"')
+  pkgbuild_epoch=$(package_pkgbuild_var "$pkgdir" epoch "$ARCH")
+  pkgbuild_pkgrel=$(package_pkgbuild_var "$pkgdir" pkgrel "$ARCH")
 
   local repo_pkgrel="${repo_version##*-}"
   local repo_no_pkgrel="${repo_version%-*}"
@@ -126,12 +142,11 @@ check_package() {
   local mirror="$3"
 
   local pkgbuild_version repo_version
-  pkgbuild_version=$(get_pkgbuild_version "$pkgdir")
-  repo_version=$(get_repo_version "$pkg" "$mirror")
-
-  if [[ -z "$pkgbuild_version" ]]; then
+  if ! pkgbuild_version=$(get_pkgbuild_version "$pkgdir") || [[ -z "$pkgbuild_version" ]]; then
+    print_warning "$pkg: could not read pkgver/pkgrel from its PKGBUILD for $ARCH — not queueing"
     return 1
   fi
+  repo_version=$(get_repo_version "$pkg" "$mirror")
 
   if grep -qE '^pkgver[[:space:]]*\(\)' "$pkgdir/PKGBUILD"; then
     if [[ -n "$repo_version" && -n "$(package_extract_vcs_hash_from_version "$repo_version")" ]]; then

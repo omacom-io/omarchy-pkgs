@@ -144,6 +144,30 @@ package_has_pkgbuild() {
   [[ -f "$pkgdir/PKGBUILD" ]]
 }
 
+# Read one variable from a PKGBUILD the way makepkg would see it.
+#
+# makepkg always exports CARCH, so PKGBUILDs may branch on it at file scope
+# (per-architecture sources, tarball suffixes, even `return` for an
+# unsupported architecture). Sourcing without CARCH takes the wrong branch or
+# aborts partway, which leaves pkgver and pkgrel empty — and an empty version
+# never equals the published one, so the package is queued for a rebuild that
+# promotion then refuses. Every read of a PKGBUILD goes through here.
+#
+# Prints the value; exit status is that of `source PKGBUILD` itself, so a
+# caller can tell "variable empty" from "PKGBUILD could not be read".
+package_pkgbuild_var() {
+  local pkgdir="$1"
+  local var="$2"
+  local arch="${3:-${ARCH:-x86_64}}"
+
+  (cd "$pkgdir" && env -u OMARCHY_SRC CARCH="$arch" bash -c '
+    source PKGBUILD >/dev/null 2>&1
+    rc=$?
+    printf "%s\n" "${!1:-}"
+    exit "$rc"
+  ' _ "$var")
+}
+
 # The architectures declared by a PKGBUILD. Set CARCH while reading it so a
 # conditional arch=() assignment is evaluated for the architecture we are
 # actually checking, even when the repository host is a different one.
