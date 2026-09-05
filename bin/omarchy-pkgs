@@ -21,6 +21,7 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/host-helpers.sh"
+source "$BUILD_ROOT/helpers/patch-helpers.sh"
 
 UPSTREAM_URL="${OMARCHY_UPSTREAM_URL:-https://github.com/basecamp/omarchy.git}"
 EDGE_DB_URL="${OMARCHY_EDGE_DB_URL:-https://pkgs.omarchy.org/edge/$(reference_arch)/omarchy.db.tar.zst}"
@@ -43,7 +44,7 @@ Commands:
   release beta|alpha [vX.Y.Z]    Same for beta/alpha channels
   release rc --commit <sha>      Untagged pre-release from a bare commit,
                                  auto-numbered past published edge + PKGBUILD
-  self-test                      Run version-normalization and ordering tests
+  self-test                      Run version, ordering, and overlay tests
 
 Options for release:
   --base <X.Y.Z>    (rc) Base version the RC leads up to (default: base of
@@ -645,6 +646,68 @@ cmd_self_test() {
     fi
   }
 
+  check_strict_patch_application() {
+    local fixture_root exact_patch fuzzy_patch missing_root
+    fixture_root=$(mktemp -d)
+    exact_patch="$fixture_root/exact.patch"
+    fuzzy_patch="$fixture_root/fuzzy.patch"
+    missing_root="$fixture_root/missing"
+
+    printf '%s\n' alpha beta gamma > "$fixture_root/example.txt"
+    printf '%s\n' \
+      '--- a/example.txt' \
+      '+++ b/example.txt' \
+      '@@ -1,3 +1,3 @@' \
+      ' alpha' \
+      '-beta' \
+      '+updated' \
+      ' gamma' > "$exact_patch"
+    if apply_patch_strict "$fixture_root" "$exact_patch" >/dev/null; then
+      echo "  ok: exact overlay context applies"
+    else
+      echo "  FAIL: exact overlay context was rejected"
+      failures=$((failures + 1))
+    fi
+
+    printf '%s\n' a B c d e > "$fixture_root/example.txt"
+    printf '%s\n' \
+      '--- a/example.txt' \
+      '+++ b/example.txt' \
+      '@@ -2,3 +2,3 @@' \
+      ' b' \
+      '-c' \
+      '+updated' \
+      ' d' > "$fuzzy_patch"
+    if (
+      cd "$fixture_root"
+      patch -p1 --forward --batch --no-backup-if-mismatch < "$fuzzy_patch"
+    ) >/dev/null 2>&1; then
+      printf '%s\n' a B c d e > "$fixture_root/example.txt"
+      if apply_patch_strict "$fixture_root" "$fuzzy_patch" >/dev/null 2>&1; then
+        echo "  FAIL: fuzzy overlay context was accepted"
+        failures=$((failures + 1))
+      else
+        echo "  ok: fuzzy overlay context is rejected"
+      fi
+    else
+      echo "  FAIL: fuzz fixture no longer demonstrates permissive patch behavior"
+      failures=$((failures + 1))
+    fi
+
+    printf '%s\n' alpha beta gamma > "$fixture_root/example.txt"
+    if apply_patch_strict "$missing_root" "$exact_patch" >/dev/null 2>&1; then
+      echo "  FAIL: missing package directory was accepted"
+      failures=$((failures + 1))
+    elif [[ "$(cat "$fixture_root/example.txt")" == $'alpha\nbeta\ngamma' ]]; then
+      echo "  ok: missing package directory stops before patch"
+    else
+      echo "  FAIL: patch ran outside the missing package directory"
+      failures=$((failures + 1))
+    fi
+
+    rm -rf "$fixture_root"
+  }
+
   print_header "omarchy-pkgs self-test"
 
   echo "Tag normalization:"
@@ -680,6 +743,9 @@ cmd_self_test() {
   [[ $(version_base 4.0.0rc7) == 4.0.0 ]] && echo "  ok: version_base 4.0.0rc7 → 4.0.0" || { echo "  FAIL: version_base"; failures=$((failures + 1)); }
   version_is_rc 4.0.0rc1 && echo "  ok: 4.0.0rc1 is rc" || { echo "  FAIL: version_is_rc positive"; failures=$((failures + 1)); }
   version_is_rc 4.0.0 && { echo "  FAIL: version_is_rc negative"; failures=$((failures + 1)); } || echo "  ok: 4.0.0 is not rc"
+
+  echo "Overlay application:"
+  check_strict_patch_application
 
   echo ""
   if [[ "$failures" -eq 0 ]]; then

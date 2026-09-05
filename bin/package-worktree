@@ -5,6 +5,7 @@ BUILD_ROOT=$(realpath "${BASH_SOURCE[0]%/*}/..")
 source "$BUILD_ROOT/helpers/message-helpers.sh"
 source "$BUILD_ROOT/helpers/paths.sh"
 source "$BUILD_ROOT/helpers/package-metadata.sh"
+source "$BUILD_ROOT/helpers/patch-helpers.sh"
 
 PACKAGE=""
 DEST_DIR=""
@@ -155,7 +156,7 @@ apply_omarchy_patches() {
   local patch_file
   for patch_file in "${patch_files[@]}"; do
     print_info "  Applying $(basename "$patch_file")"
-    if ! (cd "$package_dir" && patch -p1 --forward --batch --no-backup-if-mismatch < "$patch_file"); then
+    if ! apply_patch_strict "$package_dir" "$patch_file"; then
       print_error "Failed to apply patch: $patch_file"
       return 2
     fi
