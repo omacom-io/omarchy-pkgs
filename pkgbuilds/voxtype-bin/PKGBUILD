@@ -3,7 +3,7 @@ pkgname=voxtype-bin
 pkgver=1.0.1
 pkgrel=1
 pkgdesc="Push-to-talk voice-to-text for Linux (pre-built binaries)"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://voxtype.io"
 license=('MIT')
 depends=(
@@ -47,7 +47,7 @@ validpgpkeys=(
     '9CCF7915B750CAE8B095ED1AA3FC9F33FD209279'
 )
 _github="https://github.com/peteonrails/voxtype/releases/download/v$pkgver"
-source=(
+source_x86_64=(
     # Whisper binaries
     "voxtype-$pkgver-avx2::$_github/voxtype-$pkgver-linux-x86_64-avx2"
     "voxtype-$pkgver-avx2.asc::$_github/voxtype-$pkgver-linux-x86_64-avx2.asc"
@@ -97,7 +97,23 @@ source=(
     "voxtype-$pkgver-osd-quickshell.asc::$_github/voxtype-$pkgver-linux-x86_64-osd-quickshell.asc"
     "voxtype-$pkgver-audio-bridge::$_github/voxtype-$pkgver-linux-x86_64-audio-bridge"
     "voxtype-$pkgver-audio-bridge.asc::$_github/voxtype-$pkgver-linux-x86_64-audio-bridge.asc"
-    # Config and support files
+)
+source_aarch64=(
+    "voxtype-$pkgver-cpu::$_github/voxtype-$pkgver-linux-aarch64-cpu"
+    "voxtype-$pkgver-cpu.asc::$_github/voxtype-$pkgver-linux-aarch64-cpu.asc"
+    "voxtype-$pkgver-onnx::$_github/voxtype-$pkgver-linux-aarch64-onnx"
+    "voxtype-$pkgver-onnx.asc::$_github/voxtype-$pkgver-linux-aarch64-onnx.asc"
+    "voxtype-$pkgver-osd::$_github/voxtype-$pkgver-linux-aarch64-osd"
+    "voxtype-$pkgver-osd.asc::$_github/voxtype-$pkgver-linux-aarch64-osd.asc"
+    "voxtype-$pkgver-osd-gtk4::$_github/voxtype-$pkgver-linux-aarch64-osd-gtk4"
+    "voxtype-$pkgver-osd-gtk4.asc::$_github/voxtype-$pkgver-linux-aarch64-osd-gtk4.asc"
+    "voxtype-$pkgver-osd-quickshell::$_github/voxtype-$pkgver-linux-aarch64-osd-quickshell"
+    "voxtype-$pkgver-osd-quickshell.asc::$_github/voxtype-$pkgver-linux-aarch64-osd-quickshell.asc"
+    "voxtype-$pkgver-audio-bridge::$_github/voxtype-$pkgver-linux-aarch64-audio-bridge"
+    "voxtype-$pkgver-audio-bridge.asc::$_github/voxtype-$pkgver-linux-aarch64-audio-bridge.asc"
+)
+source=(
+    # Architecture-independent config and support files
     "config-$pkgver.toml::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/config/default.toml"
     "voxtype-$pkgver.service::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/systemd/voxtype.service"
     "voxtype-$pkgver.bash::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/packaging/completions/voxtype.bash"
@@ -125,46 +141,62 @@ source=(
     "quickshell-voxtype-shared-RecipeRenderer-$pkgver.qml::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/quickshell/voxtype-shared/RecipeRenderer.qml"
     "quickshell-voxtype-shared-qmldir-$pkgver::https://raw.githubusercontent.com/peteonrails/voxtype/v$pkgver/quickshell/voxtype-shared/qmldir"
 )
-sha256sums=(
+sha256sums_x86_64=(
     # Whisper binaries
     'cb3843a894ef47aca230b30bb1c45c2ef8e0d015adf2fa754d60e55123165fd0'  # voxtype-avx2
-    'SKIP'                                                             # voxtype-avx2.asc
+    '21357d39412619e8a3fc473153e6e2a28b219aa02007682737afedd73a08bdbe'  # voxtype-avx2.asc
     '77d49275ae4c3a6d93671014278b0dabd69ba52e65d2ee6ab3ec1bff0af34d55'  # voxtype-avx512
-    'SKIP'                                                             # voxtype-avx512.asc
+    'e3421641b4b5fa5d42ee0698eb43552e177f8b095a1acea32445693404b4fd54'  # voxtype-avx512.asc
     'c569d038057464aa60290296794bcbd79b928ee0efd038e33062a4c015558ed8'  # voxtype-vulkan
-    'SKIP'                                                             # voxtype-vulkan.asc
+    'a82bd4108dc70d7d2b6e25a83a6744170502f5110780d4a2e97a3e76047ea60d'  # voxtype-vulkan.asc
     # ONNX CPU binaries
     '19b8716ff7bd388ffb18843fc0ee5e614faa84544d22918ecf72a7c3d6c02929'  # voxtype-onnx-avx2
-    'SKIP'                                                             # voxtype-onnx-avx2.asc
+    '3021aa3a13555bdab0ecccfb522db8391d7e05810d218608a6372477f11cb2af'  # voxtype-onnx-avx2.asc
     '69a6e6fc1c04a55eeb62cf1eaa5fe81873c70eabffff120ce1a4ff7ef62fd559'  # voxtype-onnx-avx512
-    'SKIP'                                                             # voxtype-onnx-avx512.asc
+    '305d33b6f4dc8ac7a38a5f522c1af95b462355fa057b2eb39d3add59303145e1'  # voxtype-onnx-avx512.asc
     # ONNX CUDA 12 binary + companion .so
     'e7180f17add10bb441368d8495fc99bde0ba1a1978ea5f7a52d7e626779eca16'  # voxtype-onnx-cuda-12
-    'SKIP'                                                             # voxtype-onnx-cuda-12.asc
+    '34f7242fe16867ab029af9ed4854d3930aa2ed91bc37e062962edbfc65522af5'  # voxtype-onnx-cuda-12.asc
     'a8584727d51ba646ac63fc991c2f36ad6cd5b8cc8b1141896e46938700b888d0'  # cuda-12.libonnxruntime_providers_cuda.so
     '1b028afc079628d76a28d7eb09700a4baead4a27f9634ba82c35398486134114'  # cuda-12.libonnxruntime_providers_shared.so
     # ONNX CUDA 13 binary + companion .so + dlopen-target libonnxruntime
     '4de2aac42b67a05c34ac0b23f771fc83968670fd77d14781cbf4483524304cd1'  # voxtype-onnx-cuda-13
-    'SKIP'                                                             # voxtype-onnx-cuda-13.asc
+    'adb768be0b115f38bc28ea35614ae59e1c1adfb6e11ae08a252c45d52932fab2'  # voxtype-onnx-cuda-13.asc
     'b6cb7744d0efd2faced5c83ead374c13e7f2630b5a249ffaf393cdb1e092c92b'  # cuda-13.libonnxruntime_providers_cuda.so
     'c6a12593396095f5670160e284c35d1700b7708cf3037b7042e2a5200ccae772'  # cuda-13.libonnxruntime_providers_shared.so
     '1aacefdf0b4afa145d410b2381bbc3db3d978c485fb182c42a2b0b09f91f5310'  # cuda-13.libonnxruntime.so.1.24.4
     # ONNX MIGraphX binary + companion .so
     'f7a4cc0deaf35110b5106f1fc1f83dded41c0b1780f9fb5aa9cccc3c62e5eb6a'  # voxtype-onnx-migraphx
-    'SKIP'                                                             # voxtype-onnx-migraphx.asc
+    '9e9c767605923c084c97659326cb0f03ad4e5db0aded4da052fa208b4de9cf45'  # voxtype-onnx-migraphx.asc
     'ddd67e6193ade819ee21f1706d1b03b9151f1d2d2843701e2d19d8b183631707'  # migraphx.libonnxruntime_providers_migraphx.so
     '17f7cf47ad0d7b5ac895ae588fd62c7f85a13842588161b6a24c7d480f062be4'  # migraphx.libonnxruntime_providers_shared.so
     # OSD launcher + GTK4 frontend
     '7250027b1672507a6d584f795731c87e1d3b5c1de891438bd55e34b136a2d5cc'  # voxtype-osd
-    'SKIP'                                                             # voxtype-osd.asc
+    '1a944200fbac1e773c70d036075745b0e868885443e29c30797f262d44928cc1'  # voxtype-osd.asc
     '74fb0f6ad87feb0c1c9e06a8b28a7f7ecee101caef4248f77dcf613b5271238e'  # voxtype-osd-gtk4
-    'SKIP'                                                             # voxtype-osd-gtk4.asc
+    '60224685717fea0582d570160282e9e215cd4713b3bdb695edc7bae8b6860cac'  # voxtype-osd-gtk4.asc
     # Quickshell OSD launcher + audio-bridge sidecar (new in v0.7.5)
     'b809c5140e844a6add801d7e592775cd89af8cce73fa399b6a3aec15dfd09533'  # voxtype-osd-quickshell
-    'SKIP'                                                             # voxtype-osd-quickshell.asc
+    '39412691ab1f8ffe4fa6bf1eb9763c29f94b8892d1ba59fd49dc65dd0d80297a'  # voxtype-osd-quickshell.asc
     '45776290e364194d83a8b89445166406c278e890507bf07ec52a5f0e8fa57720'  # voxtype-audio-bridge
-    'SKIP'                                                             # voxtype-audio-bridge.asc
-    # Config and support files
+    '5be1174a78d70b78fd8d923c88e3406962443b39a1c452eb985b1e2484ef5668'  # voxtype-audio-bridge.asc
+)
+sha256sums_aarch64=(
+    'b5e31a85aaa952d1a78c12b8a16ba5cbdcd92eb31adc7d1a908f3c9d06edd4f1'  # voxtype-cpu
+    '3cd2f3fafca40e394a42b90dac031c67160256898a7f4a52893585b99f8f74bb'  # voxtype-cpu.asc
+    'c3771f3e568629178201990976520f88da6d7599ec2d9e404a137570d6c1e108'  # voxtype-onnx
+    'cd58773349eac0108cdad0efcc78d13f5d7c21623117381afa99b912c397b94a'  # voxtype-onnx.asc
+    'ea910d4fd1fe331d38dbed1c3a639cb7e0c04542919192ff6f74be2139afe3c6'  # voxtype-osd
+    'e079ebdd567e318502b710af95e4987fe13623d65673e21877afe88fe18bda55'  # voxtype-osd.asc
+    '0d2148e0cd32bac538692470edc06aa9a2f5c6a891aaa373f59fbe78c247fae3'  # voxtype-osd-gtk4
+    '0ce841f2caa9a1a7e8294a521bef0bab8823dddacd36fff66012b1127e0c1957'  # voxtype-osd-gtk4.asc
+    '097bd518d5e2eac2c3cbad714b65dd8058c818dcb4d900b9a16e442af7d65b8a'  # voxtype-osd-quickshell
+    'f48b8071f78fde0b2d20072e875a8b8e0d8fab4caf6c8ec91cd8e2aa0b031063'  # voxtype-osd-quickshell.asc
+    '35170ad89fea2874fce0f08758ccc2164892ed643aacae632bcfbc6f10433976'  # voxtype-audio-bridge
+    '787965900647ee9b04c8b65123d04b63e38636bfc671fa3b53360823f886b42c'  # voxtype-audio-bridge.asc
+)
+sha256sums=(
+    # Architecture-independent config and support files
     'f4b2bccd56b31a6a50e1c0a8b6b72383dc1e636f9ccb8cb070442d58b7314579'  # config/default.toml
     '531c3658e229619e56bb01659fb81f401767b85e1d6e2acd1ac67ee3414a168c'  # voxtype.service
     '65c95805d9b03ccc2fadb9d63a03ab79974b00091df8457ee8ef290ec6bd5b12'  # voxtype.bash
@@ -189,16 +221,20 @@ sha256sums=(
 )
 
 package() {
-    # Install Whisper CPU binaries to /usr/lib/voxtype/
-    install -Dm755 "$srcdir/voxtype-$pkgver-avx2" "$pkgdir/usr/lib/voxtype/voxtype-avx2"
-    install -Dm755 "$srcdir/voxtype-$pkgver-avx512" "$pkgdir/usr/lib/voxtype/voxtype-avx512"
+    if [[ "$CARCH" == aarch64 ]]; then
+        install -Dm755 "$srcdir/voxtype-$pkgver-cpu" "$pkgdir/usr/lib/voxtype/voxtype-cpu"
+        install -Dm755 "$srcdir/voxtype-$pkgver-onnx" "$pkgdir/usr/lib/voxtype/voxtype-onnx"
+    else
+        # Install Whisper CPU binaries to /usr/lib/voxtype/
+        install -Dm755 "$srcdir/voxtype-$pkgver-avx2" "$pkgdir/usr/lib/voxtype/voxtype-avx2"
+        install -Dm755 "$srcdir/voxtype-$pkgver-avx512" "$pkgdir/usr/lib/voxtype/voxtype-avx512"
 
-    # Install Whisper Vulkan GPU binary
-    install -Dm755 "$srcdir/voxtype-$pkgver-vulkan" "$pkgdir/usr/lib/voxtype/voxtype-vulkan"
+        # Install Whisper Vulkan GPU binary
+        install -Dm755 "$srcdir/voxtype-$pkgver-vulkan" "$pkgdir/usr/lib/voxtype/voxtype-vulkan"
 
-    # Install ONNX CPU binaries (no GPU EP, no companion .so files)
-    install -Dm755 "$srcdir/voxtype-$pkgver-onnx-avx2" "$pkgdir/usr/lib/voxtype/voxtype-onnx-avx2"
-    install -Dm755 "$srcdir/voxtype-$pkgver-onnx-avx512" "$pkgdir/usr/lib/voxtype/voxtype-onnx-avx512"
+        # Install ONNX CPU binaries (no GPU EP, no companion .so files)
+        install -Dm755 "$srcdir/voxtype-$pkgver-onnx-avx2" "$pkgdir/usr/lib/voxtype/voxtype-onnx-avx2"
+        install -Dm755 "$srcdir/voxtype-$pkgver-onnx-avx512" "$pkgdir/usr/lib/voxtype/voxtype-onnx-avx512"
 
     # GPU-using ONNX binaries each live in their own subdirectory alongside
     # the EP companion shared libs they dlopen at runtime. ort 2.0.0-rc.12's
@@ -248,7 +284,8 @@ package() {
     # voxtype-onnx-rocm name. The AMD GPU EP changed from ROCm to MIGraphX
     # in v0.7.0; ship one release with both names to soften the transition.
     # Drop in v0.8.0.
-    ln -sf "voxtype-onnx-migraphx" "$pkgdir/usr/lib/voxtype/voxtype-onnx-rocm"
+        ln -sf "voxtype-onnx-migraphx" "$pkgdir/usr/lib/voxtype/voxtype-onnx-rocm"
+    fi
 
     # /usr/bin/voxtype symlink and the unversioned voxtype-onnx-cuda symlink
     # are created by the .install script's post_install/post_upgrade hooks

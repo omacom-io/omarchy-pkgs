@@ -15,10 +15,11 @@
 #   { "source": "local", "channels": ["edge"] }
 #   { "source": "local", "channels": ["edge", "rc", "stable"] }
 #   { "source": "local", "min_release_age": "24h" }
-#   { "source": "local", "upstream": { "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "x86_64": "name-{tag}-x64.tar.xz" } } }
+#   { "source": "local", "upstream": { "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "x86_64": ["name-{tag}-x64.tar.xz"] } } }
 #   { "source": "local", "upstream": { "github": "owner/repo", "digests": true, "assets": { "x86_64": "name-{tag}-x64.tar.xz" } } }
 #   { "source": "local", "upstream": { "git_tags": "https://example/repo.git", "tag_pattern": "v{pkgver}", "sources": { "any": ["https://example/archive/{tag}.tar.gz"] } } }
 #   { "source": "local", "upstream": { "npm": "@scope/package", "sources": { "any": ["{npm_tarball}"] } } }
+#   { "source": "local", "upstream": { "debian": "https://example/debian/dists/stable/main/binary-amd64/Packages", "package": "example", "sources": { "any": ["https://example/releases/{pkgver}.tar.gz"] } } }
 #
 # bin/sync-aur also writes upstream_commit for AUR-backed packages, and
 # bin/sync-rebuilds writes rebuilt_against for packages declaring rebuild_on.
@@ -141,6 +142,31 @@ package_has_metadata() {
 package_has_pkgbuild() {
   local pkgdir="$1"
   [[ -f "$pkgdir/PKGBUILD" ]]
+}
+
+# The architectures declared by a PKGBUILD. Set CARCH while reading it so a
+# conditional arch=() assignment is evaluated for the architecture we are
+# actually checking, even when the repository host is a different one.
+package_arches() {
+  local pkgdir="$1"
+  local arch="${2:-${ARCH:-x86_64}}"
+
+  (cd "$pkgdir" && env -u OMARCHY_SRC CARCH="$arch" bash -c '
+    source PKGBUILD >/dev/null 2>&1
+    printf "%s\n" "${arch[*]}"
+  ')
+}
+
+package_supports_arch() {
+  local pkgdir="$1"
+  local target="${2:-${ARCH:-x86_64}}"
+  local arches
+
+  arches=$(package_arches "$pkgdir" "$target") || return 1
+  case " $arches " in
+    *" any "* | *" $target "*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # Channel membership: where a package may be published. Packages without a
@@ -301,9 +327,12 @@ packages_for_mirror() {
 
 packages_for_unscoped_build() {
   local mirror="$1"
+  local arch="${2:-${ARCH:-x86_64}}"
 
   package_dirs | while IFS= read -r pkgdir; do
-    if package_builds_for_mirror "$pkgdir" "$mirror" && ! package_build_skipped "$pkgdir"; then
+    if package_builds_for_mirror "$pkgdir" "$mirror" &&
+      ! package_build_skipped "$pkgdir" &&
+      package_supports_arch "$pkgdir" "$arch"; then
       basename "$pkgdir"
     fi
   done
@@ -454,30 +483,45 @@ validate_package_metadata() {
         (.key | test("\\A[a-z0-9_]+\\z"))
         and (.value | type == "array" and length > 0 and all(type == "string" and length > 0))
       ));
+    def valid_assets:
+      type == "object" and length > 0 and (to_entries | all(
+        (.key | test("\\A[a-z0-9_]+\\z"))
+        and (.value |
+          (type == "string" and length > 0)
+          or (type == "array" and length > 0 and all(type == "string" and length > 0) and (unique | length) == length)
+        )
+      ));
     if has("upstream") | not then true
     elif (.upstream | type) != "object" then false
     else .upstream |
-      ([has("github"), has("git_tags"), has("npm")] | map(select(.)) | length) == 1
+      ([has("github"), has("git_tags"), has("npm"), has("debian")] | map(select(.)) | length) == 1
       and if has("github") then
         (.github | type == "string" and test("\\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\\z"))
         and (if has("checksums") then (.checksums | type == "string" and length > 0) else true end)
         and (if has("digests") then (.digests | type == "boolean") else true end)
+        and (if has("latest_only") then (.latest_only | type == "boolean") else true end)
         and (has("checksums") != (has("digests") and .digests == true))
-        and (.assets | type == "object" and length > 0 and (to_entries | all(
-          (.key | test("\\A[a-z0-9_]+\\z")) and (.value | type == "string" and length > 0)
-        )))
+        and (.assets | valid_assets)
+        and (if has("sources") then
+          (.sources | valid_sources)
+          and ((.assets | keys) as $assets | (.sources | keys) as $sources | ($assets - $sources | length) == ($assets | length))
+        else true end)
       elif has("git_tags") then
         (.git_tags | type == "string" and test("\\Ahttps://[^[:space:]]+\\.git\\z"))
         and (.tag_pattern | type == "string" and (split("{pkgver}") | length) == 2)
         and (.sources | valid_sources)
-      else
+      elif has("npm") then
         (.npm | type == "string" and test("\\A(@[a-z0-9_.-]+/)?[a-z0-9_.-]+\\z"))
         and ((.dist_tag // "latest") | type == "string" and test("\\A[a-z0-9_.-]+\\z"))
+        and (.sources | valid_sources)
+      else
+        (.debian | type == "string" and test("\\Ahttps://[^[:space:]]+\\z"))
+        and (.package | type == "string" and test("\\A[a-z0-9][a-z0-9+.-]*\\z"))
         and (.sources | valid_sources)
       end
     end
   ' "$metadata" >/dev/null; then
-    echo "invalid upstream for $(basename "$pkgdir"): configure exactly one valid github, git_tags, or npm provider"
+    echo "invalid upstream for $(basename "$pkgdir"): configure exactly one valid github, git_tags, npm, or debian provider"
     return 1
   fi
 
@@ -502,12 +546,28 @@ validate_package_metadata() {
     return 1
   fi
 
-  if ! jq -e '(.rebuilt_against // {}) | type == "object" and (to_entries | all(.value | type == "string" and length > 0))' "$metadata" >/dev/null; then
-    echo "invalid rebuilt_against for $(basename "$pkgdir"): must be an object mapping package names to versions"
+  if ! jq -e '
+    def version_map:
+      type == "object" and (to_entries | all(.value | type == "string" and length > 0));
+    (.rebuilt_against // {}) as $record |
+    ($record | version_map) or
+      (($record | type) == "object"
+       and ((($record | keys) - ["x86_64", "aarch64"]) | length == 0)
+       and ($record | to_entries | all(.value | version_map)))
+  ' "$metadata" >/dev/null; then
+    echo "invalid rebuilt_against for $(basename "$pkgdir"): must map architectures to package-version maps"
     return 1
   fi
 
-  if ! jq -e '((.rebuilt_against // {}) | keys) - (.rebuild_on // []) | length == 0' "$metadata" >/dev/null; then
+  if ! jq -e '
+    (.rebuild_on // []) as $triggers |
+    (.rebuilt_against // {}) as $record |
+    if ($record | to_entries | all(.value | type == "string")) then
+      ((($record | keys) - $triggers) | length == 0)
+    else
+      ($record | to_entries | all((((.value | keys) - $triggers) | length) == 0))
+    end
+  ' "$metadata" >/dev/null; then
     echo "invalid rebuilt_against for $(basename "$pkgdir"): records a package that rebuild_on does not name"
     return 1
   fi

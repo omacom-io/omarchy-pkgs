@@ -27,6 +27,7 @@ jobs:
               set -euo pipefail
               pacman -Syu --noconfirm jq
               ./bin/sync-upstream self-test
+              ./bin/sync-rebuilds --self-test
               ./bin/omarchy-pkgs self-test
               ./bin/omarchy-release self-test
             '

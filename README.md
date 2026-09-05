@@ -30,18 +30,57 @@ The filesystem no longer encodes release policy. Instead:
 ## Prerequisites
 ### aarch64 Builds (Optional)
 
-To build ARM64 packages on x86_64, enable QEMU emulation:
+The repository host builds every architecture it publishes on the same
+machine. A foreign architecture runs under QEMU user emulation, which
+`bin/build` checks by actually running a container for the target platform.
+Rootful Docker registers QEMU on first use. Rootless Podman uses the host's
+registration and prints the one-time Arch setup commands when it is missing or
+lacks the credential flag required by `sudo` inside the builder:
 
 ```bash
-# Run after each reboot
-docker run --privileged --rm tonistiigi/binfmt --install arm64
-
 # Verify
-docker run --rm --platform linux/arm64 alpine:latest uname -m
+podman run --rm --platform linux/arm64 docker.io/library/alpine:latest uname -m
 # Should output: aarch64
 ```
 
-**Note**: aarch64 builds use QEMU and slower than native x86_64 builds.
+**Note**: emulated builds are much slower than native ones.
+
+### Published architectures
+
+`helpers/paths.sh` names the architectures this repository publishes:
+
+```bash
+PUBLISHED_ARCHES="${OMARCHY_ARCHES:-x86_64}"
+```
+
+That list drives the whole scheduled pipeline. `check-versions` compares
+PKGBUILDs against each architecture's channel databases and writes one queue
+file per channel and architecture (`.sync-needed-<channel>-<arch>`);
+`auto-release <channel>` works through the queues one architecture at a
+time, each with its own backoff (`.build-failed-<channel>-<arch>`), so a
+failing build on one architecture never holds up the other; and the release
+train advances channels with `--arch all`: it takes one host-wide lock and
+verifies every architecture's source database before moving any of them. The
+first entry is the reference architecture the release train observes channels
+through. A remote sync failure can still leave a promotion temporarily partial;
+rerunning the same advance completes it safely.
+
+Adding an architecture to the scheduled pipeline is therefore one checked-in
+change to that list: the next `check-versions` tick queues everything the new
+architecture lacks, and the next `auto-release` tick starts building it. A
+checked-in list also means the rebuild workflow and release host cannot drift
+onto different architecture sets. For a one-off run, override it directly:
+
+```bash
+OMARCHY_ARCHES=x86_64 bin/check-versions
+OMARCHY_ARCHES=aarch64 bin/check-versions
+OMARCHY_ARCHES="x86_64 aarch64" bin/check-versions
+```
+
+The builder image bootstraps
+`omarchy-keyring` from the x86_64 tree for every architecture, so the first
+build of a new architecture does not depend on a repository that only it can
+create.
 
 ## Quick Start
 
@@ -300,7 +339,8 @@ bin/sync-upstream openai-codex-desktop  # Update specific packages
 
 Some vendors publish a release feed of their own that is faster and more precise
 than the AUR packaging of it. Those packages are `source: local` — Omarchy owns
-the PKGBUILD — and declare where releases come from in one of two ways.
+the PKGBUILD — and declare where releases come from either as data or, for an
+unusual feed, a small hook.
 
 A vendor shipping tagged GitHub releases is pure data, declared as `upstream`
 in `.omarchy/package.json` with no code at all:
@@ -321,6 +361,32 @@ none sets `"digests": true` instead, and the checksums come from the SHA-256
 digest GitHub's release API reports for every asset — see
 `pkgbuilds/schist-bin/.omarchy/package.json`. Either way the artifacts
 themselves are never downloaded.
+
+An architecture may map to an ordered array when its PKGBUILD downloads more
+than one release asset. Small versioned files outside the release assets can be
+listed under `sources` and are downloaded and hashed when a new version appears:
+
+```json
+"upstream": {
+  "github": "owner/project",
+  "digests": true,
+  "assets": {
+    "x86_64": ["tool-{pkgver}-x86_64", "tool-{pkgver}-x86_64.asc"],
+    "aarch64": ["tool-{pkgver}-aarch64", "tool-{pkgver}-aarch64.asc"]
+  },
+  "sources": {
+    "any": ["https://raw.githubusercontent.com/owner/project/{tag}/LICENSE"]
+  }
+}
+```
+
+Asset and source keys must be disjoint because each key maps to one PKGBUILD
+checksum array (`any` means the unsuffixed `sha256sums`).
+
+Repositories whose historical releases use incompatible tag schemes may set
+`"latest_only": true`. The provider then considers only the newest stable
+GitHub release, while retaining all validation for that release. A quarantine
+will wait for that release to age instead of falling back to an older one.
 
 `{tag}` and `{pkgver}` interpolate into asset names; a leading `v` on the tag is
 stripped for `pkgver`; drafts and prereleases are ignored. Only the 100 most
@@ -364,14 +430,33 @@ the tarball named by the selected dist-tag:
 
 `dist_tag` defaults to `latest`. The registry's publication timestamp is
 carried into the provider result, so `min_release_age` works for npm packages.
-Exactly one of `github`, `git_tags`, or `npm` may appear in a declaration.
+
+A vendor with a plain-text Debian `Packages` index can use it to discover the
+newest exact package version, then hash immutable source URLs:
+
+```json
+"upstream": {
+  "debian": "https://example.com/debian/dists/stable/main/binary-amd64/Packages",
+  "package": "example-app",
+  "sources": {
+    "x86_64": ["https://example.com/tool-{pkgver}-x64.tar.gz"],
+    "aarch64": ["https://example.com/tool-{pkgver}-arm64.tar.gz"]
+  }
+}
+```
+
+This deliberately accepts only Debian versions that are already valid Arch
+`pkgver` values. Feeds needing epoch, revision, or filename translation retain
+a hook. Exactly one of `github`, `git_tags`, `npm`, or `debian` may appear in a
+declaration.
 
 A timestamped provider may also declare `"min_release_age": "24h"`
 (`s`/`m`/`h`/`d` suffix or bare seconds) to quarantine fresh releases until
 maintainers have had time to pull a bad or compromised one. GitHub Releases and
-npm provide publication times; raw git tags do not, so combining `git_tags`
-with this policy fails closed. The newest release that has cleared the window
-ships, so a fast release cadence cannot starve updates. The window is enforced
+npm provide publication times; raw git tags and Debian Packages indexes do not,
+so combining either with this policy fails closed. The newest release that has
+cleared the window ships, so a fast release cadence cannot starve updates. The
+window is enforced
 centrally: whatever reports the release must prove its age via `published_at`,
 or the sync fails. A maintainer deliberately shipping inside the window runs
 `BYPASS_MIN_RELEASE_AGE=1 bin/sync-upstream <package>` locally and merges the
@@ -424,7 +509,12 @@ A package names those dependencies in `.omarchy/package.json`:
 { "source": "aur", "sync": false, "rebuild_on": ["qt6-base", "qt6-declarative", "qt6-wayland"] }
 ```
 
-`bin/sync-rebuilds` reads each named package's version from the official repositories and compares it to `rebuilt_against`, the record of what the checked-in pkgrel was last bumped for. pkgrel is bumped unless every name in `rebuild_on` is recorded and still matches, so a name the record does not carry reads as changed rather than going unexamined forever. Opting a package in therefore buys one rebuild: what its published build actually linked against is not knowable from here, and a record written without a rebuild would certify a build nobody checked.
+`bin/sync-rebuilds` reads each named package's version from the official
+repositories for every published architecture the package supports and compares
+it to `rebuilt_against`. Records are kept per architecture because Arch and
+Arch Linux ARM can carry different dependency versions. pkgrel is bumped once
+when any recorded version moves; that one source revision is then rebuilt by
+each architecture's normal queue.
 
 The bump is the point of the command, and it has to land in git rather than in the builder. A rebuild that reuses the published version string produces a package pacman will never offer anyone, so merely unlocking the build gate would ship nothing. Bumping pkgrel needs no other change: `bin/check-versions` and the builder both already rebuild when pkgrel moves.
 
@@ -432,9 +522,12 @@ For an AUR-synced package the bump is expressed as the dotted Omarchy pkgrel suf
 
 The bumped version is checked against the published one as well as the checked-in one, and refused when pacman would not order it higher. The checked-in version is not the floor; what a user already has is, and a checkout that has fallen behind the repository can otherwise be bumped to something that loses to the package it means to replace. That check is skipped with a warning when the published database cannot be read.
 
-Versions are read from the local pacman database, so this runs on Arch or in an Arch container against a synced database. Only `core`, `extra` and `multilib` count: a Qt release sitting in testing or kde-unstable is not what the builder will link against, and rebuilding for it would ship a package built against the wrong ABI. The workflow points that database at `mirror.omarchy.org`, the mirror the x86_64 builder itself uses, because a mirror running ahead of the builder would record a version the build never linked against and nothing re-fires once the record matches.
-
-aarch64 is not covered. Those builds resolve Qt from Arch Linux ARM, which can lag Arch, so one record cannot describe both architectures. Only x86_64 is published today, so nothing currently ships from the untracked side; if ARM publishing starts, `rebuilt_against` has to become per-architecture before this can be trusted there.
+x86_64 versions are read from the local pacman database, so the workflow runs
+in an Arch container pointed at `mirror.omarchy.org`, the same mirror as the
+x86_64 builder. aarch64 versions are read directly from the live Arch Linux ARM
+repository database, which is also what the ARM builder uses. Testing and
+staging repositories do not count. A legacy flat `rebuilt_against` record is
+read as x86_64 and is migrated naturally the next time a rebuild is needed.
 
 ### Other
 
@@ -632,7 +725,7 @@ Minimal examples:
 Fields:
 
 - `source`: `aur` or `local`. A `local` package can still follow an upstream release, either declaratively via `upstream` or with an `.omarchy/upstream.sh` hook.
-- `upstream`: optional for `local` packages whose vendor ships tagged GitHub releases. `{ "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "<arch>": "name-{tag}.tar.xz" } }`, or `"digests": true` in place of `checksums` to use the release API's per-asset digests — see [Sync Upstream Releases](#sync-upstream-releases). Mutually exclusive with `.omarchy/upstream.sh`.
+- `upstream`: optional for `local` packages following GitHub releases, git tags, npm dist-tags, or a Debian `Packages` index. GitHub architecture assets may be a string or an ordered array, and can be combined with disjoint versioned `sources` — see [Sync Upstream Releases](#sync-upstream-releases). Mutually exclusive with `.omarchy/upstream.sh`.
 - `min_release_age`: optional quarantine for upstream releases (`"24h"`, `"2d"`, or bare seconds). The newest release older than the window ships; anything younger waits, and a release whose age cannot be proven fails the sync. Bypass deliberately with `BYPASS_MIN_RELEASE_AGE=1 bin/sync-upstream <package>`.
 - `sync`: optional for AUR packages; defaults to `true`. Set `false` for AUR-origin packages that Omarchy maintains manually.
 - `aur`: optional AUR package name when it differs from the local package directory, usually for split packages.
@@ -642,7 +735,7 @@ Fields:
 - `skip_build`: optional boolean; defaults to `false`. Set `true` to exclude a package from scheduled version checks and unscoped builds. The package can still be built explicitly with `bin/repo release --package <name>`.
 - `pkgrel`: optional Omarchy pkgrel suffix for a version-pinned rebuild bump. This emits `<aur pkgrel>.<suffix>` instead of replacing AUR's pkgrel. `offset` can be used only when preserving monotonic upgrades from old absolute pkgrel bumps. The metadata is removed automatically when AUR sync changes `pkgver`; the current package version is read from the checked-in PKGBUILD, so the version is not duplicated in JSON.
 - `rebuild_on`: optional array of package names this package links against closely enough that it must be rebuilt when they change, independent of its own source. Read by `bin/sync-rebuilds`.
-- `rebuilt_against`: written by `bin/sync-rebuilds`. Records the version of each `rebuild_on` package that the current pkgrel was bumped for.
+- `rebuilt_against`: written by `bin/sync-rebuilds`. Maps each published architecture to the versions of its `rebuild_on` packages that the current pkgrel was bumped for.
 - `upstream_commit`: set by `bin/sync-aur` for AUR packages. Used by `bin/package-worktree` to recreate the exact raw AUR package that Omarchy last synced.
 
 ### Build Matrix
@@ -737,10 +830,15 @@ bin/repo release --package my-package
 - Mirrors: mirror.omarchy.org, rackspace, pkgbuild.com
 
 ### aarch64
-- QEMU emulation required on x86_64 hosts (slower)
-- Uses Arch Linux ARM repositories
+- Built on the repository host like x86_64; under QEMU when the host is x86_64
+- On an ARM host, package builds and the signing/database utility containers
+  run natively; only an explicitly requested x86_64 package build is emulated
+- Uses Arch Linux ARM repositories through the same HTTPS mirror for every
+  channel (Arch Linux ARM publishes no dated snapshots to pin a channel's base)
 - Additional repos: `[alarm]`, `[aur]`
-- Same workflow, just add `--arch aarch64`
+- Same workflow, just add `--arch aarch64`; the scheduled pipeline runs it
+  automatically once `aarch64` is in `PUBLISHED_ARCHES`
+- Packages whose `arch=()` lacks `aarch64` are skipped, not failed
 
 ### Building for Both Architectures
 
@@ -791,8 +889,8 @@ The repository includes GitHub workflows and systemd services for automated rele
 All four units run **every 5 minutes**, staggered by a minute each, so a push
 reaches the mirror in minutes rather than hours:
 
-1. **check-versions** (`*:0/5`): Pulls latest from git, compares PKGBUILD versions to published versions, creates state files if builds are needed
-2. **auto-release-edge** (`*:1/5`): If a state file exists, builds all edge packages that need updates
+1. **check-versions** (`*:0/5`): Pulls latest from git, compares PKGBUILD versions to published versions for every published architecture, creates one state file per channel and architecture if builds are needed
+2. **auto-release-edge** (`*:1/5`): For each published architecture with a state file, builds all edge packages that need updates
 3. **auto-release-rc** (`*:2/5`): Builds fast-ring packages for rc, from the main checkout like the other two — natively in the rc image, not copied from another channel. The pinned release pair is built separately by `omarchy-release rc` in the `rc` branch worktree
 4. **auto-release-stable** (`*:3/5`): If a state file exists, builds `release_ring=fast` packages for stable and replicates them to rc
 
@@ -806,10 +904,11 @@ That cadence is only safe because of three guards:
   an operator expects. `check-versions` takes it too — its `git pull` would
   otherwise swap PKGBUILDs out from under a running build.
 - **Backoff on failure.** A failed release records the attempt in
-  `.build-failed-<channel>` and backs off exponentially — 10m, 20m, 40m, up to
+  `.build-failed-<channel>-<arch>` and backs off exponentially — 10m, 20m, 40m, up to
   a 6h ceiling — instead of rebuilding the same broken tree every 5 minutes.
   **Any new commit clears the backoff immediately**, since a push is the most
-  likely fix. Clear it by hand with `rm /root/.state/.build-failed-<channel>`.
+  likely fix. Clear it by hand with
+  `rm /root/.state/.build-failed-<channel>-<arch>`.
 - **Quiet when idle.** With nothing queued a tick exits without output, so the
   journal shows the runs that mattered rather than 288 no-ops a day.
 
@@ -862,10 +961,14 @@ bin/repo timers --local   # inspect this machine instead
 ```
 
 State files are stored in `/root/.state/`:
-- `.sync-needed-<channel>` — the packages queued for that channel, one per
-  line; the release run reads them to name what it is building
-- `.build-failed-<channel>` — consecutive failure count, timestamp, and the
-  commit it failed on (drives the backoff; removing it forces a retry)
+- `.sync-needed-<channel>-<arch>` — the packages queued for that channel and
+  architecture, one per line; the release run reads them to name what it is
+  building
+- `.build-failed-<channel>-<arch>` — consecutive failure count, timestamp, and
+  the commit it failed on (drives the backoff; removing it forces a retry)
+
+Legacy files without the architecture suffix are consumed once as x86_64
+state, so upgrading the host does not lose an in-flight build.
 
 ### Schedule (America/New_York)
 
