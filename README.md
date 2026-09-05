@@ -339,7 +339,8 @@ bin/sync-upstream openai-codex-desktop  # Update specific packages
 
 Some vendors publish a release feed of their own that is faster and more precise
 than the AUR packaging of it. Those packages are `source: local` — Omarchy owns
-the PKGBUILD — and declare where releases come from in one of two ways.
+the PKGBUILD — and declare where releases come from either as data or, for an
+unusual feed, a small hook.
 
 A vendor shipping tagged GitHub releases is pure data, declared as `upstream`
 in `.omarchy/package.json` with no code at all:
@@ -360,6 +361,32 @@ none sets `"digests": true` instead, and the checksums come from the SHA-256
 digest GitHub's release API reports for every asset — see
 `pkgbuilds/schist-bin/.omarchy/package.json`. Either way the artifacts
 themselves are never downloaded.
+
+An architecture may map to an ordered array when its PKGBUILD downloads more
+than one release asset. Small versioned files outside the release assets can be
+listed under `sources` and are downloaded and hashed when a new version appears:
+
+```json
+"upstream": {
+  "github": "owner/project",
+  "digests": true,
+  "assets": {
+    "x86_64": ["tool-{pkgver}-x86_64", "tool-{pkgver}-x86_64.asc"],
+    "aarch64": ["tool-{pkgver}-aarch64", "tool-{pkgver}-aarch64.asc"]
+  },
+  "sources": {
+    "any": ["https://raw.githubusercontent.com/owner/project/{tag}/LICENSE"]
+  }
+}
+```
+
+Asset and source keys must be disjoint because each key maps to one PKGBUILD
+checksum array (`any` means the unsuffixed `sha256sums`).
+
+Repositories whose historical releases use incompatible tag schemes may set
+`"latest_only": true`. The provider then considers only the newest stable
+GitHub release, while retaining all validation for that release. A quarantine
+will wait for that release to age instead of falling back to an older one.
 
 `{tag}` and `{pkgver}` interpolate into asset names; a leading `v` on the tag is
 stripped for `pkgver`; drafts and prereleases are ignored. Only the 100 most
@@ -403,14 +430,33 @@ the tarball named by the selected dist-tag:
 
 `dist_tag` defaults to `latest`. The registry's publication timestamp is
 carried into the provider result, so `min_release_age` works for npm packages.
-Exactly one of `github`, `git_tags`, or `npm` may appear in a declaration.
+
+A vendor with a plain-text Debian `Packages` index can use it to discover the
+newest exact package version, then hash immutable source URLs:
+
+```json
+"upstream": {
+  "debian": "https://example.com/debian/dists/stable/main/binary-amd64/Packages",
+  "package": "example-app",
+  "sources": {
+    "x86_64": ["https://example.com/tool-{pkgver}-x64.tar.gz"],
+    "aarch64": ["https://example.com/tool-{pkgver}-arm64.tar.gz"]
+  }
+}
+```
+
+This deliberately accepts only Debian versions that are already valid Arch
+`pkgver` values. Feeds needing epoch, revision, or filename translation retain
+a hook. Exactly one of `github`, `git_tags`, `npm`, or `debian` may appear in a
+declaration.
 
 A timestamped provider may also declare `"min_release_age": "24h"`
 (`s`/`m`/`h`/`d` suffix or bare seconds) to quarantine fresh releases until
 maintainers have had time to pull a bad or compromised one. GitHub Releases and
-npm provide publication times; raw git tags do not, so combining `git_tags`
-with this policy fails closed. The newest release that has cleared the window
-ships, so a fast release cadence cannot starve updates. The window is enforced
+npm provide publication times; raw git tags and Debian Packages indexes do not,
+so combining either with this policy fails closed. The newest release that has
+cleared the window ships, so a fast release cadence cannot starve updates. The
+window is enforced
 centrally: whatever reports the release must prove its age via `published_at`,
 or the sync fails. A maintainer deliberately shipping inside the window runs
 `BYPASS_MIN_RELEASE_AGE=1 bin/sync-upstream <package>` locally and merges the
@@ -679,7 +725,7 @@ Minimal examples:
 Fields:
 
 - `source`: `aur` or `local`. A `local` package can still follow an upstream release, either declaratively via `upstream` or with an `.omarchy/upstream.sh` hook.
-- `upstream`: optional for `local` packages whose vendor ships tagged GitHub releases. `{ "github": "owner/repo", "checksums": "SHASUMS256.txt", "assets": { "<arch>": "name-{tag}.tar.xz" } }`, or `"digests": true` in place of `checksums` to use the release API's per-asset digests — see [Sync Upstream Releases](#sync-upstream-releases). Mutually exclusive with `.omarchy/upstream.sh`.
+- `upstream`: optional for `local` packages following GitHub releases, git tags, npm dist-tags, or a Debian `Packages` index. GitHub architecture assets may be a string or an ordered array, and can be combined with disjoint versioned `sources` — see [Sync Upstream Releases](#sync-upstream-releases). Mutually exclusive with `.omarchy/upstream.sh`.
 - `min_release_age`: optional quarantine for upstream releases (`"24h"`, `"2d"`, or bare seconds). The newest release older than the window ships; anything younger waits, and a release whose age cannot be proven fails the sync. Bypass deliberately with `BYPASS_MIN_RELEASE_AGE=1 bin/sync-upstream <package>`.
 - `sync`: optional for AUR packages; defaults to `true`. Set `false` for AUR-origin packages that Omarchy maintains manually.
 - `aur`: optional AUR package name when it differs from the local package directory, usually for split packages.
